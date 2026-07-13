@@ -126,9 +126,9 @@ const server = http.createServer((req, res) => {
   // ── Static File Serving ───────────────────────────────────────────
   let filePath;
   if (url === '/' || url === '/index') {
-    filePath = path.join(__dirname, 'stealth-popup.html');
+    filePath = path.join(__dirname, 'frontend', 'stealth-popup.html');
   } else {
-    filePath = path.join(__dirname, url);
+    filePath = path.join(__dirname, 'frontend', url);
   }
 
   const ext = path.extname(filePath);

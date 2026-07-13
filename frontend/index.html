@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stealth AI Assistant</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <div class="app-container" style="position: relative;">
+    <!-- 1. SETUP SESSION VIEW -->
+    <div id="setup-view" class="setup-view-container">
+      <!-- Title Bar with Close + Recent Sessions -->
+      <div
+        style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 10px;">
+        <div
+          style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--accent-chat); box-shadow: 0 0 8px var(--accent-chat); flex-shrink: 0;">
+        </div>
+        <h2
+          style="margin: 0; font-size: 13px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; flex: 1;">
+          Start Live Session</h2>
+        <!-- Recent Sessions page toggle button -->
+        <button id="recent-sessions-btn" class="interactive" title="Recent Sessions"
+          style="display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); border-radius: 8px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; outline: none; white-space: nowrap;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          Recent
+        </button>
+        <!-- Settings button in steps -->
+        <button id="setup-settings-btn" class="interactive" title="Settings"
+          style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); border-radius: 8px; width: 26px; height: 26px; cursor: pointer; transition: all 0.2s; outline: none; flex-shrink: 0; margin-right: 4px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+        <!-- Close / Kill Electron button -->
+        <button id="quit-app-btn" class="interactive" title="Quit Application"
+          style="display: flex; align-items: center; justify-content: center; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #ef4444; border-radius: 8px; width: 26px; height: 26px; cursor: pointer; transition: all 0.2s; outline: none; flex-shrink: 0;">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 1A. SYNC ACCOUNT VIEW -->
+      <div id="setup-sync-view" style="display: none; flex-direction: column; align-items: center; justify-content: center; height: 385px; text-align: center; padding: 20px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-chat)" stroke-width="1.5" style="margin-bottom: 16px;">
+          <path d="M23 12a11 11 0 1 1-2.07-6.56L23 8"></path>
+          <path d="M17 8h6V2"></path>
+        </svg>
+        <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px;">Synchronizing with Web Account</h3>
+        <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.6; max-width: 320px; margin-bottom: 24px;">
+          Please log in to your web browser. We will automatically link your account and unlock the desktop app once synced.
+        </p>
+        <button id="manual-sync-btn" class="setup-btn-start interactive" style="width: auto; padding: 10px 24px; display: flex; align-items: center; gap: 8px; justify-content: center; outline: none; cursor: pointer;">
+          Link Account in Browser
+        </button>
+      </div>
+
+      <!-- 1B. SETUP STEPS WRAPPER -->
+      <div id="setup-steps-wrapper" style="display: flex; flex-direction: column; width: 100%;">
+        <!-- Step Indicator -->
+      <div
+        style="display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px; margin-bottom: 16px;">
+        <div class="step-indicator" data-step="1" style="display: flex; align-items: center; gap: 6px;">
+          <div class="step-num active" id="step-num-1"
+            style="width: 18px; height: 18px; border-radius: 50%; background: var(--accent-chat); color: #fff; font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; transition: all 0.3s;">
+            1</div>
+          <span class="step-text active" id="step-text-1"
+            style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-primary);">Details</span>
+        </div>
+        <div class="step-line" id="step-line-1"
+          style="flex: 1; height: 2px; background: rgba(255,255,255,0.06); transition: all 0.3s;"></div>
+        <div class="step-indicator" data-step="2" style="display: flex; align-items: center; gap: 6px;">
+          <div class="step-num" id="step-num-2"
+            style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; transition: all 0.3s;">
+            2</div>
+          <span class="step-text" id="step-text-2"
+            style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Context</span>
+        </div>
+        <div class="step-line" id="step-line-2"
+          style="flex: 1; height: 2px; background: rgba(255,255,255,0.06); transition: all 0.3s;"></div>
+        <div class="step-indicator" data-step="3" style="display: flex; align-items: center; gap: 6px;">
+          <div class="step-num" id="step-num-3"
+            style="width: 18px; height: 18px; border-radius: 50%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center; transition: all 0.3s;">
+            3</div>
+          <span class="step-text" id="step-text-3"
+            style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);">Options</span>
+        </div>
+      </div>
+
+      <!-- STEP 1: Job Details -->
+      <div id="setup-step-1" class="setup-step-content" style="display: flex; flex-direction: column; height: 350px;">
+        <div class="setup-form-group">
+          <label class="setup-label">Session Type</label>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px;">
+            <button class="type-badge active interactive" data-type="Interview+Coding"
+              style="outline: none;">Interview+Coding</button>
+            <button class="type-badge interactive" data-type="Coding Test" style="outline: none;">Coding Test</button>
+            <button class="type-badge interactive" data-type="HR Round" style="outline: none;">HR Round</button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+          <div class="setup-form-group" style="margin: 0;">
+            <label class="setup-label">Company Name</label>
+            <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..." />
+          </div>
+          <div class="setup-form-group" style="margin: 0;">
+            <label class="setup-label">Target Role</label>
+            <input type="text" id="setup-role" class="setup-input" placeholder="e.g. Senior SDE..." />
+          </div>
+        </div>
+
+        <div class="setup-form-group" style="margin-bottom: 0; flex: 1; display: flex; flex-direction: column;">
+          <label class="setup-label">Job Description (Optional)</label>
+          <textarea id="setup-jd" class="setup-textarea" style="flex: 1; min-height: 140px;"
+            placeholder="Paste the target Job Description to personalize answers..."></textarea>
+        </div>
+      </div>
+
+      <!-- STEP 2: Context Sources -->
+      <div id="setup-step-2" class="setup-step-content"
+        style="display: none; flex-direction: column; height: 350px; justify-content: center; gap: 20px;">
+
+        <!-- Backend status / retry banner -->
+        <div id="dropdown-status-msg"
+          style="display:none; align-items:center; gap:8px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:8px 12px; font-size:10.5px; color:#fca5a5;">
+          <span style="font-size:13px;">⚠️</span>
+          <span id="dropdown-status-text" style="flex:1;">Backend offline — lists unavailable.</span>
+          <button id="dropdown-retry-btn" class="interactive"
+            style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.35);color:#a78bfa;border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;outline:none;white-space:nowrap;">↺
+            Retry</button>
+        </div>
+
+        <div class="setup-form-group">
+          <label class="setup-label"
+            style="font-size: 11px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; color: #fff;">
+            📄 Select Resume Context
+          </label>
+          <select id="setup-resume-select" class="setup-input" style="padding: 12px; font-size: 12px;">
+            <option value="">-- None --</option>
+            <option value="upload">📂 Upload new resume...</option>
+          </select>
+          <input type="file" id="setup-resume-file" style="display: none;" accept=".pdf,.docx,.doc,.txt" />
+        </div>
+
+        <div class="setup-form-group">
+          <label class="setup-label"
+            style="font-size: 11px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; color: #fff;">
+            📚 Select Reference Document
+          </label>
+          <select id="setup-doc-select" class="setup-input" style="padding: 12px; font-size: 12px;">
+            <option value="">-- None --</option>
+            <option value="upload">📂 Upload new document...</option>
+          </select>
+          <input type="file" id="setup-doc-file" style="display: none;" accept=".pdf,.docx,.doc,.txt,.md" />
+        </div>
+      </div>
+
+      <!-- STEP 3: AI Options -->
+      <div id="setup-step-3" class="setup-step-content"
+        style="display: none; flex-direction: column; height: 350px; justify-content: center; gap: 24px;">
+        <div class="setup-form-group">
+          <label class="setup-label"
+            style="font-size: 11px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; color: #fff;">
+            🧠 Preferred AI Model
+          </label>
+          <select id="setup-model-select" class="setup-input" style="padding: 12px; font-size: 12px;">
+            <option value="gpt-5.5" selected>GPT 5.5</option>
+            <option value="gpt-5.5-mini">GPT 5.5 Mini</option>
+            <option value="gptoss">OpenAI o3-mini (GPTOSS)</option>
+            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            <option value="llama-3.3-70b-specdec">Llama 3.3 70B</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+          </select>
+        </div>
+
+        <div
+          style="display: flex; flex-direction: column; gap: 14px; padding: 16px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.04); border-radius: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="checkbox" id="setup-auto-answer" class="interactive"
+              style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-chat);" />
+            <div style="text-align: left;">
+              <label for="setup-auto-answer"
+                style="display: block; font-size: 12px; font-weight: 700; color: #fff; cursor: pointer;">Auto
+                Answer</label>
+              <span style="font-size: 10px; color: var(--text-secondary);">AI answers questions automatically without
+                manual triggers.</span>
+            </div>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="checkbox" id="setup-save-transcript" class="interactive"
+              style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-chat);" checked />
+            <div style="text-align: left;">
+              <label for="setup-save-transcript"
+                style="display: block; font-size: 12px; font-weight: 700; color: #fff; cursor: pointer;">Save
+                Transcript</label>
+              <span style="font-size: 10px; color: var(--text-secondary);">Saves all transcription dialogue logs to the
+                session history database.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons Footer -->
+      <div
+        style="display: flex; gap: 10px; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px; width: 100%;">
+        <button id="setup-back-btn" class="setup-btn-start interactive"
+          style="flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); display: none; box-shadow: none;">Back</button>
+        <button id="setup-next-btn" class="setup-btn-start interactive" style="flex: 2;">Next</button>
+        <button id="start-session-btn" class="setup-btn-start interactive" style="flex: 2; display: none;">Start Session
+          & Collapse</button>
+      </div> <!-- #setup-steps-wrapper -->
+    </div>
+
+    <!-- 1b. RECENT SESSIONS PAGE VIEW -->
+    <div id="recent-sessions-view" class="setup-view-container" style="display: none;">
+      <!-- Header -->
+      <div
+        style="display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px; margin-bottom: 14px;">
+        <button id="recent-sessions-back-btn" class="interactive"
+          style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); border-radius: 8px; width: 26px; height: 26px; cursor: pointer; outline: none; flex-shrink: 0; transition: all 0.2s;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <div>
+          <h2
+            style="margin: 0; font-size: 13px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">
+            Recent Live Sessions</h2>
+          <p style="margin: 2px 0 0 0; font-size: 10px; color: var(--text-muted);">Click any session to start a new live
+            session with the same config.</p>
+        </div>
+        <div id="sessions-count-badge"
+          style="margin-left: auto; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3); color: #a78bfa; border-radius: 20px; padding: 2px 10px; font-size: 10px; font-weight: 700;">
+          — total</div>
+        <!-- Quit button -->
+        <button id="recent-view-quit-btn" class="interactive" title="Quit Application"
+          style="display: flex; align-items: center; justify-content: center; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #ef4444; border-radius: 8px; width: 26px; height: 26px; cursor: pointer; transition: all 0.2s; outline: none; flex-shrink: 0;">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+            <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Table Header -->
+      <div
+        style="display: grid; grid-template-columns: 2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr; gap: 4px; padding: 0 6px 6px; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 4px;">
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Title</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Description</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Mode</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Duration</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">AI
+          Use</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Created</span>
+        <span
+          style="font-size: 9px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;">Actions</span>
+      </div>
+
+      <!-- Sessions List -->
+      <div id="recent-sessions-table"
+        style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0;">
+        <div style="text-align: center; padding: 30px 0; color: var(--text-muted); font-size: 12px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+            style="margin-bottom: 8px; opacity: 0.4;">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <div>Loading sessions...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. MAIN TOOLBAR VIEW -->
+    <div id="toolbar-view" style="display: none; flex-direction: column; width: 100%; align-items: center;">
+      <!-- Slim Toolbar at Top -->
+      <div class="toolbar-wrapper">
+        <div class="brand-zone interactive">
+          <div class="brand-dot"></div>
+          <div class="brand-text">Sutra AI</div>
+          <div id="session-timer"
+            style="margin-left: 6px; font-size: 10px; font-weight: 700; font-family: monospace; color: var(--text-secondary); background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; display: none;">
+            00:00</div>
+        </div>
+
+        <!-- Navigation buttons (Interactive) -->
+        <div class="nav-buttons">
+          <button id="ai-btn" class="nav-btn ai-btn interactive">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z" />
+            </svg>
+              Assistant
+            </button>
+          <button id="capture-btn" class="nav-btn capture-btn interactive">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+              <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            Capture
+          </button>
+        </div>
+
+        <!-- Native Controls (Interactive) -->
+        <div class="win-controls">
+          <button id="settings-btn" class="ctrl-btn interactive" title="Settings" style="margin-right: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
+          <button id="shrink-btn" class="ctrl-btn interactive" title="Shrink Toolbar" style="margin-right: 4px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 14 10 14 10 20"></polyline>
+              <polyline points="20 10 14 10 14 4"></polyline>
+              <line x1="14" y1="10" x2="21" y2="3"></line>
+              <line x1="10" y1="14" x2="3" y2="21"></line>
+            </svg>
+          </button>
+          <div id="position-btn" class="ctrl-btn position interactive" title="Drag to move window"
+            style="cursor:move; display: flex; align-items: center; justify-content: center;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <!-- four-directions move arrow -->
+              <path
+                d="M12 2l-3 4h2.5v4.5H7l0-2.5L3 11l4 3V11.5h4.5V16H9l3 4 3-4h-2.5v-4.5H17v2.5l4-3-4-3v2.5h-4.5V6H15z" />
+            </svg>
+          </div>
+
+
+          <button id="stop-session-btn" class="ctrl-btn interactive" title="Stop & Configure Session"
+            style="color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.08);">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible Panels (Whole container is Interactive) -->
+      <div id="panels" class="panels-container interactive">
+        <!-- 1. AI Help Tab -->
+        <div id="ai-panel" class="panel-tab">
+          <div class="panel-header">
+            <div class="panel-title" style="color: var(--accent-ai);">
+              <div class="panel-title-dot"
+                style="background-color: var(--accent-ai); box-shadow: 0 0 8px var(--accent-ai);"></div>
+              AI Assistant Help
+            </div>
+            <div class="recording-controls" style="display: flex; gap: 8px;">
+              <!-- Screen Audio Capture -->
+              <button id="record-btn" class="action-badge record-badge interactive"
+                style="cursor: pointer; display: flex; align-items: center; gap: 6px; border: 1px solid rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.12); color: #f87171; font-weight: 500; transition: all 0.3s ease; padding: 4px 10px;">
+                <span class="record-dot"
+                  style="width: 8px; height: 8px; border-radius: 50%; background-color: #ef4444; display: inline-block;"></span>
+                <span id="record-text">Listening</span>
+              </button>
+              <!-- Mic Audio Capture -->
+              <button id="mic-btn-ai" class="action-badge record-badge interactive"
+                style="cursor: pointer; display: flex; align-items: center; gap: 6px; border: 1px solid rgba(6, 182, 212, 0.4); background: rgba(6, 182, 212, 0.12); color: #22d3ee; font-weight: 500; transition: all 0.3s ease; padding: 4px 10px; border-radius: 6px;">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                  stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
+                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" x2="12" y1="19" y2="22" />
+                </svg>
+                <span id="mic-text">Mic</span>
+              </button>
+            </div>
+          </div>
+          <div class="panel-content"
+            style="display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow-y: auto;">
+            <!-- Transcript block -->
+            <div class="block-container" style="display: flex; flex-direction: column; gap: 4px;">
+              <div class="block-label"
+                style="display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">
+                <span>🎤 Real-Time Transcript</span>
+                <div style="display: flex; gap: 8px;">
+                  <button id="copy-transcript-btn" class="interactive"
+                    style="background: none; border: none; color: var(--accent-ai); font-size: 9.5px; cursor: pointer; text-decoration: underline; font-weight: 600; outline: none; padding: 2px 6px;">Copy</button>
+                  <button id="clear-transcript-btn" class="interactive"
+                    style="background: none; border: none; color: var(--accent-ai); font-size: 9.5px; cursor: pointer; text-decoration: underline; font-weight: 600; outline: none; padding: 2px 6px;">Clear</button>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
+<div id="transcript-block" class="scrollable-block hide-scrollbar"
+                style="flex: 1; height: 28px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 4px 10px; overflow-x: auto; overflow-y: hidden; font-size: 11px; color: var(--text-primary); line-height: 18px; word-break: normal; white-space: nowrap; font-weight: 400; text-align: left;"></div>
+<button id="ai-answer-btn" class="interactive" style="align-self: flex-start; margin-top: 0; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; border: none; font-weight: 600; cursor: pointer; border-radius: 4px; font-size: 10px; height: 38px; padding: 0 16px; box-shadow: 0 0 8px rgba(139, 92, 246, 0.35);">Answer</button>
+</div>
+              </div>
+
+            <!-- Answer block -->
+            <div class="block-container" style="display: flex; flex-direction: column; gap: 4px;">
+              <div class="block-label"
+                style="display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; font-weight: 600; text-transform: uppercase; color: var(--accent-ai); letter-spacing: 0.05em; text-align: left;">
+                <span>💡 AI Expert Answer</span>
+                <button id="copy-answer-btn" class="interactive"
+                  style="background: none; border: none; color: var(--accent-ai); font-size: 9.5px; cursor: pointer; text-decoration: underline; font-weight: 600; outline: none; padding: 2px 6px;">Copy</button>
+              </div>
+              <div id="answer-nav-container" class="interactive" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 4px 10px; margin-bottom: 4px; font-size: 11px;">
+                <button id="prev-answer-btn" class="interactive" style="background: none; border: none; color: var(--accent-ai); cursor: pointer; font-weight: bold; font-size: 13px; outline: none; padding: 0 8px; transition: opacity 0.2s;">&larr;</button>
+                <span id="answer-nav-label" style="color: var(--text-secondary); font-weight: 600; font-family: inherit;">No answers yet</span>
+                <button id="next-answer-btn" class="interactive" style="background: none; border: none; color: var(--accent-ai); cursor: pointer; font-weight: bold; font-size: 13px; outline: none; padding: 0 8px; transition: opacity 0.2s;">&rarr;</button>
+              </div>
+              <div style="position: relative;">
+                <div id="answer-block" class="scrollable-block"
+                  style="height: 110px; max-height: 1000px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: var(--text-primary); line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left;"></div>
+                <button id="copy-all-answer-btn" class="interactive" title="Copy entire answer" style="position: sticky; bottom: 8px; float: right; margin-top: -28px; margin-right: 6px; display: none;
+                  background: rgba(139,92,246,0.18); border: 1px solid rgba(139,92,246,0.4); color: #a78bfa;
+                  font-size: 9px; font-weight: 700; letter-spacing: 0.4px; padding: 3px 9px; border-radius: 5px;
+                  cursor: pointer; outline: none; transition: all 0.2s; backdrop-filter: blur(4px); z-index: 10;">⎘
+                  Copy All</button>
+              </div>
+            </div>
+          </div>
+          <div class="input-area"
+            style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.04); padding: 10px 16px; align-items: center;">
+            <input type="text" id="ai-input" class="custom-input" placeholder="Type a manual question instead..."
+              style="flex: 1;" />
+            <button id="ai-send" class="btn-send interactive">Ask</button>
+            <button id="expand-answer-btn" class="interactive" title="Expand Answer Panel" 
+              style="display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; outline: none; flex-shrink: 0;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <polyline points="9 21 3 21 3 15"></polyline>
+                <line x1="21" y1="3" x2="14" y2="10"></line>
+                <line x1="3" y1="21" x2="10" y2="14"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        </div>
+      </div>
+    </div> <!-- #toolbar-view -->
+    <!-- Settings Popup (re-parented to app-container to show over both views) -->
+    <div id="settings-popup" class="interactive" style="display: none; position: absolute; top: 40px; right: 10px; background: rgba(15, 15, 22, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 12px; z-index: 100; min-width: 180px; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 4px; margin-bottom: 2px;">
+        <span style="font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Preferences</span>
+        <button id="settings-close-btn" class="interactive" title="Close Settings" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s; padding: 0 2px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+      </div>
+      
+      <!-- User Account / Mail Section -->
+      <div id="settings-sec-useraccount" style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="user-email-input" style="font-size: 10px; color: #aaa; display: flex; align-items: center; gap: 4px;">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          User Email
+        </label>
+        <input type="email" id="user-email-input" class="interactive" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #fff; padding: 4px 6px; border-radius: 6px; font-size: 11px; outline: none; transition: border-color 0.2s;" placeholder="premium@stealth.ai">
+      </div>
+      
+      <!-- Font Size Section -->
+      <div id="settings-sec-fontsize" style="display: flex; flex-direction: column; gap: 4px;">
+        <label for="font-size-input" style="font-size: 10px; color: #aaa;">Font Size (px)</label>
+        <input type="number" id="font-size-input" value="12.5" step="0.5" min="8" max="24" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #fff; padding: 4px 6px; border-radius: 6px; font-size: 11px; outline: none;">
+      </div>
+
+      <!-- Zoom Section -->
+      <div id="settings-sec-zoom" style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label style="font-size: 10px; color: #aaa;">Zoom Factor</label>
+          <div id="zoom-display" style="font-size: 9px; color: var(--text-secondary);">100%</div>
+        </div>
+        <input type="range" id="zoom-slider" min="0.7" max="1.3" step="0.05" value="1.0" style="width: 100%; accent-color: var(--accent-chat); cursor: pointer;">
+      </div>
+
+      <!-- Opacity Section -->
+      <div id="settings-sec-opacity" style="display: flex; flex-direction: column; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label style="font-size: 10px; color: #aaa;">Opacity</label>
+          <div id="opacity-display" style="font-size: 9px; color: var(--text-secondary);">100%</div>
+        </div>
+        <input type="range" id="opacity-slider" min="0.1" max="1.0" step="0.1" value="1.0" style="width: 100%; accent-color: var(--accent-chat); cursor: pointer;">
+      </div>
+    </div>
+  </div> <!-- .app-container -->
+    
+    <button id="diamond-btn" class="interactive" style="display: none; position: absolute; top: 4px; left: 4px; width: 36px; height: 36px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; align-items: center; justify-content: center; z-index: 99999; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.5); -webkit-app-region: no-drag;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2 22 12 12 22 2 12 12 2"></polygon>
+      </svg>
+    </button>
+
+<!-- Custom virtual cursor removed to use OS cursor -->
+
+  <script src="renderer.js"></script>
+</body>
+
+</html>

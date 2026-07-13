@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stealth Toolbar</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100vh; font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #06040f 0%, #0c0820 100%);
+      color: #f1f5f9; overflow-x: hidden;
+    }
+    .orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.18; animation: od 14s ease-in-out infinite alternate; }
+    .orb-1 { width: 500px; height: 500px; background: #7c3aed; top: -150px; left: -200px; }
+    .orb-2 { width: 400px; height: 400px; background: #06b6d4; bottom: -100px; right: -150px; animation-delay: -5s; }
+    @keyframes od { from{transform:translate(0,0)scale(1)} to{transform:translate(30px,-30px)scale(1.08)} }
+    .page {
+      position: relative; z-index: 1; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; gap: 24px;
+    }
+    .hero { text-align: center; }
+    .badge-line {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+      color: #06b6d4; background: rgba(6,182,212,.08); border: 1px solid rgba(6,182,212,.2);
+      border-radius: 999px; padding: 5px 16px; margin-bottom: 18px;
+    }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #06b6d4; animation: bl 1.5s infinite; }
+    @keyframes bl { 0%,100%{opacity:1} 50%{opacity:.15} }
+    h1 {
+      font-size: clamp(2rem,5vw,3rem); font-weight: 800;
+      background: linear-gradient(130deg,#a78bfa,#06b6d4,#10b981);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: -.03em; line-height: 1.1;
+    }
+    p { margin-top: 12px; font-size: 14px; color: #64748b; max-width: 440px; line-height: 1.65; margin-inline: auto; }
+    .card {
+      width: 100%; max-width: 480px;
+      background: rgba(14,10,30,.85); backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,.07); border-radius: 20px; padding: 26px;
+    }
+    .cl { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #334155; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+    .cl::after { content:''; flex:1; height:1px; background: rgba(255,255,255,.06); }
+    .btn-l {
+      width: 100%; padding: 15px; border: none; border-radius: 12px;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
+      cursor: pointer; background: linear-gradient(135deg,#7c3aed,#06b6d4); color: #fff;
+      transition: transform .15s, box-shadow .15s, opacity .15s;
+      box-shadow: 0 4px 24px rgba(124,58,237,.45);
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .btn-l:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,58,237,.6); }
+    .btn-l:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+    .st {
+      margin-top: 14px; padding: 11px 15px; border-radius: 10px;
+      font-size: 13px; font-weight: 500; display: none; align-items: center; gap: 10px;
+    }
+    .st.info    { display:flex; background:rgba(6,182,212,.1);  color:#67e8f9; border:1px solid rgba(6,182,212,.2); }
+    .st.success { display:flex; background:rgba(16,185,129,.1); color:#6ee7b7; border:1px solid rgba(16,185,129,.2); }
+    .st.error   { display:flex; background:rgba(239,68,68,.1);  color:#fca5a5; border:1px solid rgba(239,68,68,.2); }
+    .note {
+      margin-top: 14px; padding: 10px 14px;
+      background: rgba(245,158,11,.07); border: 1px solid rgba(245,158,11,.18);
+      border-radius: 10px; font-size: 11px; color: #fde68a; line-height: 1.6;
+    }
+    kbd { font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-bottom-width:2px; color:#67e8f9; }
+    .srow { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }
+    .sp { font-size:11px; color:#475569; padding:4px 10px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06); border-radius:999px; }
+    
+    /* Native dragging support */
+    body {
+      -webkit-app-region: drag;
+    }
+    button, .card, .badge-line, #win-custom-controls {
+      -webkit-app-region: no-drag;
+    }
+    
+    #win-custom-controls button:hover {
+      background: rgba(255,255,255,0.12) !important;
+      transform: scale(1.08);
+    }
+    #win-custom-controls button#closeAppBtn:hover {
+      background: rgba(239,68,68,0.25) !important;
+      color: #ffcdd2 !important;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      border-color: rgba(6, 182, 212, 0.4) !important;
+      box-shadow: 0 0 8px rgba(6, 182, 212, 0.15) !important;
+    }
+  </style>
+</head>
+<body>
+<div id="win-custom-controls" style="position: absolute; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 1000;">
+  <button id="minAppBtn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; transition: all 0.2s ease; outline: none;">–</button>
+  <button id="closeAppBtn" style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #fca5a5; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 10px; transition: all 0.2s ease; outline: none;">✕</button>
+</div>
+<div class="orbs"><div class="orb orb-1"></div><div class="orb orb-2"></div></div>
+<div class="page">
+  <div class="hero">
+    <div class="badge-line"><span class="dot"></span>Stealth Toolbar</div>
+    <h1>👁️ Stealth Toolbar</h1>
+    <p>Transparent floating toolbar — see straight through it. AI Help & Code Answer panels. Invisible to screen recording.</p>
+  </div>
+  <div class="card">
+    <div class="cl">🚀 Launch Controls</div>
+    
+    <div class="form-group" style="margin-bottom: 14px; text-align: left;">
+      <label style="display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.05em;">Company Name</label>
+      <input type="text" id="company" placeholder="e.g. Amazon, Google, Stripe..." style="width: 100%; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 12px; outline: none; transition: all 0.2s; border-color: rgba(255,255,255,0.08);" />
+    </div>
+
+    <div class="form-group" style="margin-bottom: 14px; text-align: left;">
+      <label style="display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.05em;">Target Role</label>
+      <input type="text" id="role" placeholder="e.g. Senior Software Engineer..." style="width: 100%; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 12px; outline: none; transition: all 0.2s; border-color: rgba(255,255,255,0.08);" />
+    </div>
+
+    <div class="form-group" style="margin-bottom: 14px; text-align: left;">
+      <label style="display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.05em;">Job Description (Optional)</label>
+      <textarea id="jd" rows="3" placeholder="Paste the target Job Description to personalize AI answers..." style="width: 100%; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 12px; resize: none; outline: none; transition: all 0.2s; border-color: rgba(255,255,255,0.08);"></textarea>
+    </div>
+
+    <div class="form-group" style="margin-bottom: 18px; text-align: left;">
+      <label style="display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.05em;">Resume Text (Optional)</label>
+      <textarea id="resume" rows="3" placeholder="Paste your resume content to anchor AI responses in your background..." style="width: 100%; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 12px; resize: none; outline: none; transition: all 0.2s; border-color: rgba(255,255,255,0.08);"></textarea>
+    </div>
+
+    <button class="btn-l" id="launchBtn"><span>👁️</span> Launch Stealth Toolbar</button>
+    <button class="btn-stop" id="stopBtn" style="display:none; width:100%; padding:12px; margin-top:8px; border:1px solid rgba(239,68,68,0.3); border-radius:12px; background:rgba(239,68,68,0.1); color:#fca5a5; font-family:'Inter',sans-serif; font-size:14px; font-weight:700; cursor:pointer; transition:all 0.2s;">✕ Stop Stealth Toolbar</button>
+    <div class="status-row" id="statusRow" style="margin-top:12px; display:flex; align-items:center; gap:8px;">
+      <span id="statusDot" style="width:8px; height:8px; border-radius:50%; background:#334155; display:inline-block;"></span>
+      <span id="statusText" style="font-size:11px; color:#475569;">Checking status...</span>
+    </div>
+    <div class="st" id="stMsg"></div>
+    <div class="srow">
+      <span class="sp"><kbd>1</kbd> AI Help</span>
+      <span class="sp"><kbd>2</kbd> Code Answer</span>
+      <span class="sp"><kbd>Esc</kbd> Close panel</span>
+    </div>
+    <div class="note">Click <strong>Launch</strong> to activate the native Electron stealth toolbar — always-on-top, hidden from Alt+Tab, and completely invisible to screen recording.</div>
+  </div>
+</div>
+
+<script>
+const SERVER = 'http://127.0.0.1:2999';
+
+function setMsg(t,i,m){const e=document.getElementById('stMsg');e.className='st '+t;e.innerHTML=`<span style="font-size:18px">${i}</span><span>${m}</span>`;}
+
+function setStatus(running) {
+  const dot  = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const stopBtn = document.getElementById('stopBtn');
+  const launchBtn = document.getElementById('launchBtn');
+  if (running) {
+    dot.style.background = '#10b981';
+    dot.style.boxShadow  = '0 0 8px #10b981';
+    text.textContent = 'Stealth Toolbar is ACTIVE';
+    text.style.color = '#6ee7b7';
+    stopBtn.style.display  = 'block';
+    launchBtn.disabled = true;
+    launchBtn.style.opacity = '0.4';
+  } else {
+    dot.style.background = '#ef4444';
+    dot.style.boxShadow  = 'none';
+    text.textContent = 'Stealth Toolbar is OFFLINE';
+    text.style.color = '#475569';
+    stopBtn.style.display  = 'none';
+    launchBtn.disabled = false;
+    launchBtn.style.opacity = '1';
+  }
+}
+
+async function pollStatus() {
+  try {
+    const r = await fetch(SERVER + '/status');
+    const d = await r.json();
+    setStatus(d.running);
+  } catch {
+    document.getElementById('statusText').textContent = 'Server offline — run: node server.js';
+    document.getElementById('statusDot').style.background = '#f59e0b';
+  }
+}
+
+// Poll status every 2 seconds
+pollStatus();
+setInterval(pollStatus, 2000);
+
+// Initialize native launcher controls if running inside Electron
+if (window.electronAPI) {
+  document.getElementById('minAppBtn').addEventListener('click', () => window.electronAPI.minimizeApp());
+  document.getElementById('closeAppBtn').addEventListener('click', () => window.electronAPI.closeApp());
+} else {
+  document.getElementById('win-custom-controls').style.display = 'none';
+}
+
+document.getElementById('launchBtn').addEventListener('click', async function() {
+  const btn = this;
+  btn.disabled = true;
+  setMsg('info', '⏳', 'Launching secure stealth toolbar...');
+
+  const payload = {
+    company: document.getElementById('company').value.trim() || 'Stealth Practice',
+    role: document.getElementById('role').value.trim() || 'Software Engineer',
+    jd: document.getElementById('jd').value.trim(),
+    resume: document.getElementById('resume').value.trim()
+  };
+
+  // If opened inside Electron natively, use IPC
+  if (window.electronAPI && window.electronAPI.launchToolbar) {
+    window.electronAPI.launchToolbar(payload);
+    setMsg('success', '✅', 'Stealth Toolbar is active! 100% screenshot protected.');
+    setStatus(true);
+    return;
+  }
+
+  // Browser mode: hit our local server
+  try {
+    const res = await fetch(SERVER + '/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      setMsg('success', '✅', 'Stealth Toolbar launched! Hidden from Alt+Tab & screen recording.');
+      setStatus(true);
+    } else {
+      setMsg('error', '⚠️', data.message);
+      btn.disabled = false;
+    }
+  } catch {
+    setMsg('error', '❌', 'Cannot reach server. Open a terminal and run: <kbd>node server.js</kbd>');
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('stopBtn').addEventListener('click', async function() {
+  try {
+    const res = await fetch(SERVER + '/stop', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      setMsg('info', '🛑', 'Stealth Toolbar has been stopped.');
+      setStatus(false);
+    }
+  } catch {
+    setMsg('error', '❌', 'Cannot reach server.');
+  }
+});
+</script>
+</body>
+</html>

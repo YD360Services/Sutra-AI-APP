@@ -248,7 +248,7 @@ function createWindow() {
   mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
 
   // Load the root index.html (stealth toolbar)
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, 'frontend', 'index.html'));
 
   // Enable screen capture protection
   mainWindow.setContentProtection(true);
