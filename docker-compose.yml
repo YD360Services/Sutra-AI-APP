@@ -1,0 +1,22 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: copilotx-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@copilotx-db:5432/copilotx
+      - REDIS_URL=redis://copilotx-redis:6379/0
+    networks:
+      - default
+
+networks:
+  default:
+    external: true
+    name: copilotx-live-demo-product_default

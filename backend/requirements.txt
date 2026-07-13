@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+openai
+python-multipart
+websockets
+python-dotenv
+pydantic
+google-genai
+pydantic-settings
+sqlalchemy>=2.0.0
+asyncpg
+alembic
+python-jose[cryptography]
+passlib[bcrypt]
+redis>=5.0.0
+aiosqlite

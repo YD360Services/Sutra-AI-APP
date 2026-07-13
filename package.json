@@ -1,0 +1,14 @@
+{
+  "name": "stealth-toolbar",
+  "version": "1.0.0",
+  "description": "A native transparent stealth overlay toolbar with capture protection",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "server": "node server.js",
+    "launch": "node launch.js"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
