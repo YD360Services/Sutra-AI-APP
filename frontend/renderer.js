@@ -444,10 +444,10 @@ async function loadRecentSessions() {
             fetch(`${base}/api/sessions/${s.id}/transcripts`),
             fetch(`${base}/api/sessions/${s.id}/answers`)
           ]);
-          
+
           if (!tRes.ok) throw new Error(`Transcripts: HTTP ${tRes.status}`);
           if (!aRes.ok) throw new Error(`Answers: HTTP ${aRes.status}`);
-          
+
           const transcripts = await tRes.json();
           const answers = await aRes.json();
 
@@ -466,7 +466,7 @@ async function loadRecentSessions() {
           // Generate beautiful timeline HTML
           const html = timeline.map(b => {
             const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-            
+
             if (b.type === 'audio') {
               const speakerLabel = b.speaker === 'interviewer' ? 'Interviewer' : 'You';
               const speakerColor = b.speaker === 'interviewer' ? '#5eead4' : '#4ade80';
@@ -1318,7 +1318,7 @@ startSessionBtn.addEventListener('click', async () => {
     currentWidth = Math.max(WIDTH, savedState.width || WIDTH);
     currentHeight = savedState.height || COLLAPSED_HEIGHT;
     await window.electronAPI.restoreSavedBounds();
-    
+
     // Restore the active panel state
     const savedActiveTab = safeGetItem('stealth_activeTab') || null;
     if (savedActiveTab === 'ai' || savedActiveTab === 'code') {
@@ -1383,7 +1383,7 @@ stopSessionBtn.addEventListener('click', async () => {
     const tokenToReset = sessionToken;
     const seconds = sessionSecondsElapsed;
     sessionToken = ''; // clear immediately
-    
+
     // Fire-and-forget backend updates so they don't block the UI transition
     window.electronAPI.updateBackendSession(tokenToReset, {
       status: 'completed',
@@ -1491,7 +1491,7 @@ window.addEventListener('pointerup', (e) => {
     // Release pointer capture
     const expandAnswerBtn = document.getElementById('expand-answer-btn');
     if (expandAnswerBtn) {
-      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) {}
+      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
     }
 
     // Re-evaluate click-through after resize ends so buttons don't freeze
@@ -1650,7 +1650,7 @@ function updateWindowSize(reposition = false) {
       const settingsPopupEl = document.getElementById('settings-popup');
       const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
       const settingsBuffer = settingsOpen ? 180 : 0;
-      
+
       // Use scrollHeight to capture the full unclipped content height
       const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
       const targetHeight = Math.min(MAX_HEIGHT, contentHeight + 12 + settingsBuffer);
@@ -1731,8 +1731,7 @@ aiBtn.addEventListener('click', () => toggleTab('ai'));
 const dragButtons = [
   document.getElementById('setup-position-btn'),
   document.getElementById('recent-position-btn'),
-  document.getElementById('position-btn'),
-  document.getElementById('diamond-btn')
+  document.getElementById('position-btn')
 ];
 dragButtons.forEach(btn => {
   if (btn) {
@@ -1791,13 +1790,13 @@ async function toggleMicRecording() {
 // Toggle audio capture for a specific source ('system' or 'mic')
 async function toggleSource(source) {
   const isCurrentlyRecordingAny = isRecordingSystem || isRecordingMic;
-  
+
   if (source === 'system') {
     isRecordingSystem = !isRecordingSystem;
   } else if (source === 'mic') {
     isRecordingMic = !isRecordingMic;
   }
-  
+
   isRecording = isRecordingSystem || isRecordingMic;
 
   // Case 1: Both are now inactive → Stop recording completely
@@ -1830,9 +1829,9 @@ async function toggleSource(source) {
       dgSocket.onopen = async () => {
         console.log('[Deepgram Socket] Connected successfully.');
         if (audioCtx && audioCtx.state === 'suspended') {
-          try { await audioCtx.resume(); } catch (e) {}
+          try { await audioCtx.resume(); } catch (e) { }
         }
-        
+
         recordBtn.style.pointerEvents = 'auto';
         if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
 
@@ -1953,11 +1952,11 @@ async function toggleSource(source) {
           });
           // Keep video tracks alive to prevent Chromium/Electron from closing the stream
           console.log('[Audio Capture] Acquired system loopback tracks:', activeSystemStream.getTracks().map(t => `${t.kind}: state=${t.readyState}, enabled=${t.enabled}`));
-          
+
           systemSourceNode = audioCtx.createMediaStreamSource(activeSystemStream);
           systemSourceNode.connect(audioDestNode);
-          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) {} }
-          
+          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
+
           recordBtn.style.pointerEvents = 'auto';
           recordBtn.classList.add('recording');
           recordDot.classList.add('recording');
@@ -1978,7 +1977,7 @@ async function toggleSource(source) {
     } else {
       // Stop system loopback
       if (systemSourceNode) {
-        try { systemSourceNode.disconnect(); } catch (e) {}
+        try { systemSourceNode.disconnect(); } catch (e) { }
         systemSourceNode = null;
       }
       if (activeSystemStream) {
@@ -1997,11 +1996,11 @@ async function toggleSource(source) {
       try {
         console.log('[Audio Capture] Attempting hardware microphone capture...');
         activeMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
+
         micSourceNode = audioCtx.createMediaStreamSource(activeMicStream);
         micSourceNode.connect(audioDestNode);
-        if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) {} }
-        
+        if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
+
         if (micBtnAi) {
           micBtnAi.style.pointerEvents = 'auto';
           micBtnAi.classList.add('recording');
@@ -2022,7 +2021,7 @@ async function toggleSource(source) {
     } else {
       // Stop microphone
       if (micSourceNode) {
-        try { micSourceNode.disconnect(); } catch (e) {}
+        try { micSourceNode.disconnect(); } catch (e) { }
         micSourceNode = null;
       }
       if (activeMicStream) {
@@ -2062,7 +2061,7 @@ function stopRecording() {
   dgSocket = null;
 
   if (systemSourceNode) {
-    try { systemSourceNode.disconnect(); } catch (e) {}
+    try { systemSourceNode.disconnect(); } catch (e) { }
     systemSourceNode = null;
   }
   if (activeSystemStream) {
@@ -2071,7 +2070,7 @@ function stopRecording() {
   }
 
   if (micSourceNode) {
-    try { micSourceNode.disconnect(); } catch (e) {}
+    try { micSourceNode.disconnect(); } catch (e) { }
     micSourceNode = null;
   }
   if (activeMicStream) {
@@ -2080,7 +2079,7 @@ function stopRecording() {
   }
 
   if (audioCtx) {
-    audioCtx.close().catch(e => {});
+    audioCtx.close().catch(e => { });
     audioCtx = null;
   }
   audioDestNode = null;
@@ -2267,7 +2266,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
           const _ttftMs = ttftMs || (Date.now() - _ttftStart);
           const _ttftSec = (_ttftMs / 1000).toFixed(1);
           newEntry.totalTimeSec = `first token ${_ttftSec}s · total ${(data.total_ms / 1000).toFixed(1)}s`;
-          
+
           renderActiveAnswer();
 
           window.electronAPI.removeAnswerStreamListeners();
@@ -2379,7 +2378,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
 
     hasActiveAnswer = true;
     answerBlock.classList.remove('loading');
-    
+
     // Typewriter effect
     let idx = 0;
     function typeResponse() {
@@ -2396,7 +2395,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
         const _ttftMs = Date.now() - _ttftStart;
         const _ttftSec = (_ttftMs / 1000).toFixed(1);
         newEntry.totalTimeSec = `${_ttftSec}s`;
-        
+
         renderActiveAnswer();
       }
     }
@@ -2427,9 +2426,9 @@ function updateAnswerNav() {
   const prevBtn = document.getElementById('prev-answer-btn');
   const nextBtn = document.getElementById('next-answer-btn');
   const label = document.getElementById('answer-nav-label');
-  
+
   if (!prevBtn || !nextBtn || !label) return;
-  
+
   if (answerHistory.length === 0) {
     label.textContent = 'No answers yet';
     prevBtn.style.opacity = '0.3';
@@ -2438,9 +2437,9 @@ function updateAnswerNav() {
     nextBtn.style.pointerEvents = 'none';
     return;
   }
-  
+
   label.textContent = `Answer ${currentAnswerIndex + 1} of ${answerHistory.length}`;
-  
+
   // Previous button state
   if (currentAnswerIndex > 0) {
     prevBtn.style.opacity = '1.0';
@@ -2449,7 +2448,7 @@ function updateAnswerNav() {
     prevBtn.style.opacity = '0.3';
     prevBtn.style.pointerEvents = 'none';
   }
-  
+
   // Next button state
   if (currentAnswerIndex < answerHistory.length - 1) {
     nextBtn.style.opacity = '1.0';
@@ -2468,7 +2467,7 @@ function renderActiveAnswer() {
   }
   const entry = answerHistory[currentAnswerIndex];
   renderAnswerToDOM(answerBlock, entry.answer, entry.question);
-  
+
   if (entry.totalTimeSec) {
     const badge = document.createElement('div');
     badge.className = 'ttft-badge';
@@ -2476,7 +2475,7 @@ function renderActiveAnswer() {
     badge.textContent = `⏱ ${entry.totalTimeSec}`;
     answerBlock.appendChild(badge);
   }
-  
+
   updateAnswerNav();
   answerBlock.scrollTop = 0; // scroll to top when switching
   updateWindowSize();
@@ -2587,7 +2586,7 @@ Rules:
     const _screenshotMs = Date.now() - _screenshotStart;
     const _screenshotSec = (_screenshotMs / 1000).toFixed(1);
     newEntry.totalTimeSec = `${_screenshotSec}s`;
-    
+
     renderActiveAnswer();
   } catch (err) {
     console.error('[Solve Screen Error]', err);
@@ -2633,7 +2632,7 @@ function detectLang(rawAnswer) {
   if (/#include|std::|cout|cin|<iostream>/i.test(clean)) return 'cpp';
   if (/Console\.WriteLine|using System/i.test(clean)) return 'csharp';
   if (/System\.out\.print|public static void main|import java\./.test(clean)) return 'java';
-  
+
   // Curly braces check: Python does not use braces for class/function blocks
   const hasBraces = /\{[\s\S]*\}/.test(clean);
 
@@ -3261,7 +3260,7 @@ async function loadAllSettings() {
     if (zoomDisplay) zoomDisplay.textContent = Math.round(val * 100) + '%';
     document.body.style.zoom = '1.0';
   }
-  
+
   if (window.electronAPI && window.electronAPI.setZoomFactor) {
     window.electronAPI.setZoomFactor(1.0);
   }
@@ -3275,7 +3274,7 @@ const manualSyncBtn = document.getElementById('manual-sync-btn');
 async function verifySessionOnStartup() {
   const email = safeGetItem('stealth_user_email');
   const token = safeGetItem('stealth_login_token');
-  
+
   if (!email || !token) {
     // Not logged in -> Show sync page and trigger browser sync
     showSyncPage();
@@ -3289,7 +3288,7 @@ async function verifySessionOnStartup() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: USER_ID, login_token: token })
     });
-    
+
     if (res.ok) {
       const data = await res.json();
       if (data.valid) {
@@ -3347,7 +3346,7 @@ initApp();
 setInterval(async () => {
   const email = safeGetItem('stealth_user_email');
   const token = safeGetItem('stealth_login_token');
-  
+
   if (email && token) {
     try {
       const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
@@ -3434,7 +3433,7 @@ function logoutLocalUser() {
     localStorage.removeItem('stealth_user_id');
     localStorage.removeItem('stealth_login_token');
     localStorage.removeItem('stealth_session_token');
-  } catch (e) {}
+  } catch (e) { }
   USER_ID = '856fdc6d-19b9-547e-be7b-0df7fa5b505b';
   if (userEmailDisplay) {
     userEmailDisplay.textContent = 'Not Synced';
@@ -3476,7 +3475,7 @@ function applyOpacity(val) {
   if (opacitySlider) opacitySlider.value = userOpacity;
   safeSetItem('stealth_opacity', userOpacity.toString());
   if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
-  
+
   const appCont = document.querySelector('.app-container');
   if (appCont) {
     if (document.body.classList.contains('stealth-active')) {
@@ -3565,6 +3564,7 @@ async function toggleShrunk(shrunk) {
     window.electronAPI.resizeWindow(44, 44, toolbarPosition, false);
     updateClickThrough(); // always interactive in diamond mode
   } else {
+    isDraggingWindow = false; // Reset drag flag immediately on expand
     justExpanded = true;
     clearTimeout(justExpandedTimeout);
     justExpandedTimeout = setTimeout(() => {
@@ -3671,10 +3671,10 @@ if (expandAnswerBtn) {
     startMouseY = e.screenY;
     isDragClick = false;
     e.preventDefault();
-    
+
     // Capture pointer events globally to allow dragging outside window boundaries
     expandAnswerBtn.setPointerCapture(e.pointerId);
-    
+
     window.electronAPI.setIgnoreMouseEvents(false);
   });
 
@@ -3689,7 +3689,7 @@ if (expandAnswerBtn) {
       expandAnswerBtn.style.color = 'var(--accent-ai)';
       expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
       expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.08)';
-      
+
       // Default large dimensions
       currentWidth = Math.max(currentWidth, 600);
       currentHeight = Math.max(currentHeight, 664);
@@ -3697,11 +3697,11 @@ if (expandAnswerBtn) {
       expandAnswerBtn.style.color = 'var(--text-secondary)';
       expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
       expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
-      
+
       // Default collapsed dimensions
       currentWidth = 600;
       currentHeight = 664;
-      
+
       const panelsContainer = document.getElementById('panels');
       if (panelsContainer) {
         panelsContainer.style.height = 'auto';
@@ -3791,7 +3791,7 @@ window.addEventListener('keydown', (e) => {
     if (captureBtn) captureBtn.click();
     e.preventDefault();
   }
-  
+
   // Scroll Answer block
   if (checkShortcut('scrollUp', e)) {
     const answerBlock = document.getElementById('answer-block');
@@ -3800,7 +3800,7 @@ window.addEventListener('keydown', (e) => {
       e.preventDefault();
     }
   }
-  
+
   if (checkShortcut('scrollDown', e)) {
     const answerBlock = document.getElementById('answer-block');
     if (answerBlock) {
@@ -3825,11 +3825,11 @@ window.addEventListener('keydown', (e) => {
   // Toggle stealth hover check with F8 or Ctrl+Shift+M
   if (e.key === 'F8' || (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'M')) {
     const isSessionActive = document.body.classList.contains('stealth-active');
-                            
+
     if (isSessionActive || !isStealthHoverEnabled) {
       isStealthHoverEnabled = !isStealthHoverEnabled;
       console.log('[Stealth Hover Toggle] isStealthHoverEnabled =', isStealthHoverEnabled);
-      
+
       if (isStealthHoverEnabled) {
         document.body.classList.add('stealth-active');
         // Let normal mouse move handle ignore events
@@ -3884,18 +3884,18 @@ function updateShortcutUI() {
   const answerBadge = document.getElementById('badge-answer');
   const askBadge = document.getElementById('badge-ask');
   const scrollBadge = document.getElementById('badge-scroll');
-  
+
   if (captureBadge) captureBadge.textContent = formatShortcut(window.appShortcuts.capture);
   if (answerBadge) answerBadge.textContent = formatShortcut(window.appShortcuts.answer);
   if (askBadge) askBadge.textContent = formatShortcut(window.appShortcuts.answer);
   if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)} / ${formatShortcut(window.appShortcuts.scrollDown)}`;
-  
+
   // Update Recorders in Settings
   const recCapture = document.getElementById('set-shortcut-capture');
   const recAnswer = document.getElementById('set-shortcut-answer');
   const recScrollUp = document.getElementById('set-shortcut-scrollUp');
   const recScrollDown = document.getElementById('set-shortcut-scrollDown');
-  
+
   if (recCapture && !recCapture.classList.contains('recording')) recCapture.textContent = formatShortcut(window.appShortcuts.capture);
   if (recAnswer && !recAnswer.classList.contains('recording')) recAnswer.textContent = formatShortcut(window.appShortcuts.answer);
   if (recScrollUp && !recScrollUp.classList.contains('recording')) recScrollUp.textContent = formatShortcut(window.appShortcuts.scrollUp);
@@ -3916,37 +3916,37 @@ function loadShortcuts() {
 function setupRecorder(btnId, actionKey) {
   const btn = document.getElementById(btnId);
   if (!btn) return;
-  
+
   btn.addEventListener('click', (e) => {
     btn.classList.add('recording');
     btn.textContent = 'Press Key...';
     e.stopPropagation();
-    
+
     const handler = (evt) => {
       evt.preventDefault();
       evt.stopPropagation();
-      
+
       // Ignore bare modifiers
       if (['Control', 'Shift', 'Alt', 'Meta'].includes(evt.key)) return;
-      
+
       let keyToSave = evt.key === ' ' ? 'Space' : evt.key;
-      
+
       window.appShortcuts[actionKey] = {
         ctrl: evt.ctrlKey,
         shift: evt.shiftKey,
         alt: evt.altKey,
         key: keyToSave
       };
-      
+
       safeSetItem('stealth_shortcuts', JSON.stringify(window.appShortcuts));
-      
+
       btn.classList.remove('recording');
       window.removeEventListener('keydown', handler, true);
       updateShortcutUI();
     };
-    
+
     window.addEventListener('keydown', handler, true);
-    
+
     // Cancel on click away
     const cancelHandler = () => {
       btn.classList.remove('recording');

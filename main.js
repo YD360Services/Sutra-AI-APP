@@ -172,19 +172,24 @@ function loadSavedBounds() {
       if (data && typeof data.x === 'number' && typeof data.y === 'number') {
         let width = data.width || 600;
         let height = data.height || 56;
-        
+
+        // Ignore small dimensions (shrunk state bounds)
+        if (width < 100 || height < 100) {
+          return null;
+        }
+
         // Sanitize bounds to prevent vertical stick glitches
         if (width < 300) width = 600;
         if (height < 40) height = 56;
-        
+
         const rect = { x: data.x, y: data.y, width, height };
         const displays = screen.getAllDisplays();
         const isVisible = displays.some(display => {
           const bounds = display.bounds;
           return rect.x < bounds.x + bounds.width &&
-                 rect.x + rect.width > bounds.x &&
-                 rect.y < bounds.y + bounds.height &&
-                 rect.y + rect.height > bounds.y;
+            rect.x + rect.width > bounds.x &&
+            rect.y < bounds.y + bounds.height &&
+            rect.y + rect.height > bounds.y;
         });
         if (isVisible) {
           return rect;
@@ -200,7 +205,21 @@ function loadSavedBounds() {
 function saveSavedBounds(bounds) {
   const filePath = path.join(app.getPath('userData'), 'stealth_window_state.json');
   try {
-    fs.writeFileSync(filePath, JSON.stringify(bounds, null, 2), 'utf8');
+    let existing = {};
+    if (fs.existsSync(filePath)) {
+      try {
+        existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
+      } catch (e) {}
+    }
+
+    const dataToSave = {
+      x: bounds.x,
+      y: bounds.y,
+      width: (bounds.width >= 100) ? bounds.width : (existing.width || 600),
+      height: (bounds.height >= 100) ? bounds.height : (existing.height || 56)
+    };
+
+    fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2), 'utf8');
   } catch (e) {
     console.error('Failed to save window bounds:', e.message);
   }
@@ -348,7 +367,7 @@ function createWindow() {
       return imageBuffer.toString('base64');
     } catch (e) {
       // Always restore content protection on error
-      try { mainWindow.setContentProtection(true); } catch (_) {}
+      try { mainWindow.setContentProtection(true); } catch (_) { }
       console.error('[Screenshot IPC] Failed:', e.message);
       throw e;
     }
@@ -437,7 +456,7 @@ function createWindow() {
     try {
       let companyName = config?.company_name || 'Stealth AI';
       let roleName = config?.role_name || 'Software Engineer';
-      
+
       const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
       if (fs.existsSync(localPath)) {
         try {
@@ -460,7 +479,7 @@ function createWindow() {
       if (status >= 400 || !data?.id) {
         throw new Error(data?.detail || 'Failed to create session on FastAPI backend');
       }
-      
+
       // Save active session info to track duration if app quits/closes abruptly
       activeSessionId = data.id;
       activeSessionStartTime = Date.now();
@@ -479,13 +498,13 @@ function createWindow() {
       if (status >= 400) {
         throw new Error(data?.detail || 'Failed to update session');
       }
-      
+
       // If completed cleanly, clear active session tracking
       if (sessionId === activeSessionId && updateData?.status === 'completed') {
         activeSessionId = null;
         activeSessionStartTime = null;
       }
-      
+
       return data;
     } catch (e) {
       console.error('[Backend IPC] update-backend-session failed:', e.message);
@@ -526,9 +545,9 @@ function createWindow() {
 
       const buffer = Buffer.from(base64Image, 'base64');
       const boundary = '----StealthBoundary' + Math.random().toString(16);
-      
+
       const parts = [];
-      
+
       // File parameter
       parts.push(
         `--${boundary}\r\n` +
@@ -636,7 +655,7 @@ function createWindow() {
         token
       );
       if (status >= 400 || !data) return { error: data?.detail || 'Backend error' };
-      
+
       return {
         answer: data.answer,
         question_detected: data.question || manual_question || '',
@@ -664,7 +683,7 @@ function createWindow() {
           doc_id = content.doc_id || '';
           doc_type = content.doc_type || '';
           model = content.model || '';
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // Format knowledge_content parameter to help the backend query the active database document / prompt
@@ -812,7 +831,7 @@ function createWindow() {
       const bounds = win.getBounds();
       let x = bounds.x;
       let y = bounds.y;
-      
+
       if (height === 580) {
         isToolbarMode = false;
       } else {
@@ -836,10 +855,10 @@ function createWindow() {
 
         const activeDisplay = screen.getDisplayMatching(bounds);
         const { width: activeScreenWidth, height: activeScreenHeight, y: screenY, x: screenX } = activeDisplay.workArea;
-        
+
         x = Math.round((activeScreenWidth - width) / 2) + screenX;
         y = screenY;
-        
+
         if (position === 'bottom') {
           y = screenY + activeScreenHeight - height;
         } else if (position === 'left') {
@@ -929,7 +948,7 @@ function createWindow() {
   ipcMain.on('close-app', async () => {
     try {
       await autoSaveActiveSession();
-    } catch (e) {}
+    } catch (e) { }
     app.exit(0);
   });
 
@@ -937,7 +956,7 @@ function createWindow() {
   ipcMain.on('quit-app', async () => {
     try {
       await autoSaveActiveSession();
-    } catch (e) {}
+    } catch (e) { }
     app.exit(0);
   });
 
