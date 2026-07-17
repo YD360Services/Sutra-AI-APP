@@ -36,10 +36,15 @@ class Settings(BaseSettings):
         extra = "ignore"  # Ignore unknown fields like OPEN_API_KEY
 
     def __init__(self, **values):
+        import os
         super().__init__(**values)
+        if not self.OPENAI_API_KEY:
+            self.OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPEN_API_KEY") or ""
+        if not self.GROQ_API_KEY:
+            self.GROQ_API_KEY = os.environ.get("GROQ_API_KEY") or os.environ.get("groq") or ""
+            
         if not self.OPENAI_API_KEY or not self.GROQ_API_KEY:
             try:
-                import os
                 # Look in same folder or parent directories for .env
                 paths = [
                     os.path.join(os.path.dirname(__file__), "..", "..", ".env"),

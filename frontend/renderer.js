@@ -27,10 +27,10 @@ const copyCodeBtn = document.getElementById('copy-code-btn');
 const codeScreenshotBtn = document.getElementById('code-screenshot-btn');
 
 // Size Definitions
-const WIDTH = 850;
+const WIDTH = 600;
 const COLLAPSED_HEIGHT = 56;
 const EXPANDED_HEIGHT = 664; // Toolbar 48px + margin 8px + panels 600px + padding/buffer = 664px
-const MAX_HEIGHT = 1000; // Hard cap — never exceeded
+const MAX_HEIGHT = 1500; // Hard cap — never exceeded
 
 
 let currentWidth = WIDTH;
@@ -40,21 +40,7 @@ let currentHeight = EXPANDED_HEIGHT;
 let pendingProgrammaticResizes = 0;
 let isDraggingWindow = false;
 
-let resizeDebounceTimeout;
-window.addEventListener('resize', () => {
-  // Ignore any resize event that WE triggered programmatically or that
-  // arrives while the user is physically dragging the window.
-  if (pendingProgrammaticResizes > 0 || isDraggingWindow) {
-    if (pendingProgrammaticResizes > 0) pendingProgrammaticResizes--;
-    return;
-  }
-  
-  // Track native window expansion/resizing initiated by the user
-  clearTimeout(resizeDebounceTimeout);
-  resizeDebounceTimeout = setTimeout(() => {
-    currentWidth = window.innerWidth;
-  }, 100);
-});
+
 
 // Active state tracking
 let activeTab = null; // 'ai', 'code', or null
@@ -98,6 +84,16 @@ function safeSetItem(key, value) {
 
 let USER_ID = '856fdc6d-19b9-547e-be7b-0df7fa5b505b';
 
+function normalizeUserId(value) {
+  if (!value) return USER_ID;
+  if (typeof value !== 'string') return String(value);
+  const trimmed = value.trim();
+  if (!trimmed) return USER_ID;
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidPattern.test(trimmed)) return trimmed;
+  return trimmed;
+}
+
 async function syncUserEmail(email) {
   if (!email) return;
   try {
@@ -116,10 +112,18 @@ async function syncUserEmail(email) {
       const data = await res.json();
       if (data && data.id) {
         USER_ID = data.id;
+        safeSetItem('stealth_user_id', USER_ID);
+        if (data.login_token) {
+          safeSetItem('stealth_login_token', data.login_token);
+        }
         console.log('[Stealth Settings] User synchronized successfully. Mapped USER_ID:', USER_ID);
         // Reload recent sessions if page is currently visible
         if (typeof recentSessionsView !== 'undefined' && recentSessionsView && recentSessionsView.style.display !== 'none') {
           loadRecentSessions();
+        }
+        // Reload user-specific resumes/docs dropdowns
+        if (typeof loadDropdowns === 'function') {
+          loadDropdowns();
         }
       }
     } else {
@@ -154,9 +158,9 @@ function setDropdownStatus(type, message) {
     banner.style.borderColor = 'rgba(239,68,68,0.25)';
     banner.style.color = '#fca5a5';
   } else if (type === 'loading') {
-    banner.style.background = 'rgba(139,92,246,0.06)';
-    banner.style.borderColor = 'rgba(139,92,246,0.2)';
-    banner.style.color = '#a78bfa';
+    banner.style.background = 'rgba(20, 184, 166,0.06)';
+    banner.style.borderColor = 'rgba(20, 184, 166,0.2)';
+    banner.style.color = '#2dd4bf';
   } else if (type === 'success') {
     banner.style.background = 'rgba(16,185,129,0.06)';
     banner.style.borderColor = 'rgba(16,185,129,0.2)';
@@ -172,21 +176,16 @@ async function loadDropdowns() {
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
 
-    // Clear existing options (except the first placeholder)
-    while (setupResumeSelect.options.length > 1) setupResumeSelect.remove(1);
-    // Clear all optgroups and options from doc select (keep only first placeholder option)
-    while (setupDocSelect.options.length > 1) setupDocSelect.remove(1);
-    const existingGroups = setupDocSelect.querySelectorAll('optgroup');
-    existingGroups.forEach(g => g.remove());
-
     let resumeError = false;
     let docError = false;
 
     // Fetch resumes list
     try {
-      const resResumes = await fetch(`${base}/api/resumes?user_id=${USER_ID}`);
+      const resResumes = await fetch(`${base}/api/resumes?user_id=${encodeURIComponent(normalizeUserId(USER_ID))}`);
       if (resResumes.ok) {
         backendResumes = await resResumes.json();
+        // Clear existing options right before appending to avoid race condition duplicates
+        while (setupResumeSelect.options.length > 1) setupResumeSelect.remove(1);
         backendResumes.forEach(r => {
           const opt = document.createElement('option');
           opt.value = r.id;
@@ -206,10 +205,15 @@ async function loadDropdowns() {
 
     // Fetch knowledge/reference docs list
     try {
-      const resDocs = await fetch(`${base}/api/knowledge?user_id=${USER_ID}`);
+      const resDocs = await fetch(`${base}/api/knowledge?user_id=${encodeURIComponent(normalizeUserId(USER_ID))}`);
       if (resDocs.ok) {
         backendDocs = await resDocs.json();
         console.log(`[Stealth] Loaded ${backendDocs.length} docs/prompts`);
+
+        // Clear existing options and groups right before appending to avoid race condition duplicates
+        while (setupDocSelect.options.length > 1) setupDocSelect.remove(1);
+        const existingGroups = setupDocSelect.querySelectorAll('optgroup');
+        existingGroups.forEach(g => g.remove());
 
         const promptsGroup = document.createElement('optgroup');
         promptsGroup.label = 'Prompt Instructions';
@@ -238,16 +242,13 @@ async function loadDropdowns() {
       docError = true;
     }
 
-    // Add Upload options at bottom of each dropdown
-    const resumeUploadOpt = document.createElement('option');
-    resumeUploadOpt.value = '__upload__';
-    resumeUploadOpt.textContent = '⬆ Upload new resume...';
-    setupResumeSelect.appendChild(resumeUploadOpt);
-
-    const docUploadOpt = document.createElement('option');
-    docUploadOpt.value = '__upload__';
-    docUploadOpt.textContent = '⬆ Upload new document...';
-    setupDocSelect.appendChild(docUploadOpt);
+    // Add Resume upload option at bottom of resume dropdown if not already present
+    if (![...setupResumeSelect.options].some(o => o.value === '__upload__')) {
+      const resumeUploadOpt = document.createElement('option');
+      resumeUploadOpt.value = '__upload__';
+      resumeUploadOpt.textContent = '⬆ Upload new resume...';
+      setupResumeSelect.appendChild(resumeUploadOpt);
+    }
 
     if (resumeError || docError) {
       const parts = [];
@@ -257,6 +258,7 @@ async function loadDropdowns() {
     } else {
       const total = backendResumes.length + backendDocs.length;
       setDropdownStatus('success', `✓ Loaded ${backendResumes.length} resume(s) and ${backendDocs.length} document(s)`);
+      updateResumeJdScore();
     }
 
   } catch (e) {
@@ -286,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load dropdown options
   await loadDropdowns();
+  updateResumeJdScore();
 
   // Initially show setup form in index.html
   setupView.style.display = 'flex';
@@ -314,23 +317,30 @@ function getModeBadge(sessionName) {
   const n = (sessionName || '').toLowerCase();
   if (n.includes('coding test')) return { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', color: '#fbbf24', label: 'Coding Test' };
   if (n.includes('hr')) return { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', color: '#4ade80', label: 'HR Round' };
-  return { bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.3)', color: '#a78bfa', label: 'Interview+Coding' };
+  return { bg: 'rgba(20, 184, 166,0.12)', border: 'rgba(20, 184, 166,0.3)', color: '#2dd4bf', label: 'Interview+Coding' };
 }
 
 // Show/hide recent sessions page
 async function showRecentSessionsPage() {
+  console.log('[Stealth Debug] showRecentSessionsPage called');
   setupView.style.display = 'none';
   recentSessionsView.style.display = 'flex';
+  console.log('[Stealth Debug] setupView hidden, recentSessionsView displayed');
   // Resize window to give sessions table room
   pendingProgrammaticResizes++;
-  window.electronAPI.resizeWindow(WIDTH, 530, 'top', false);
+  window.electronAPI.resizeWindow(800, 580, 'top', true);
   window.electronAPI.setIgnoreMouseEvents(false, {});
   await loadRecentSessions();
 }
 
 function hideRecentSessionsPage() {
+  console.log('[Stealth Debug] hideRecentSessionsPage called');
   recentSessionsView.style.display = 'none';
   setupView.style.display = 'flex';
+  console.log('[Stealth Debug] recentSessionsView hidden, setupView displayed');
+  // Resize window back to default setup wizard bounds
+  pendingProgrammaticResizes++;
+  window.electronAPI.resizeWindow(600, 580, 'top', true);
 }
 
 async function loadRecentSessions() {
@@ -380,7 +390,7 @@ async function loadRecentSessions() {
         <div>
           <div style="display: flex; gap: 5px; align-items: center;">
             <!-- Transcript Button -->
-            <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.25);color:#a78bfa;cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(20, 184, 166,0.12);border:1px solid rgba(20, 184, 166,0.25);color:#2dd4bf;cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
             </button>
             <!-- Summary Button -->
@@ -432,31 +442,110 @@ async function loadRecentSessions() {
         e.stopPropagation();
         try {
           const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-          const res = await fetch(`${base}/api/sessions/${s.id}/transcripts`);
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          const blocks = await res.json();
+          const [tRes, aRes] = await Promise.all([
+            fetch(`${base}/api/sessions/${s.id}/transcripts`),
+            fetch(`${base}/api/sessions/${s.id}/answers`)
+          ]);
+          
+          if (!tRes.ok) throw new Error(`Transcripts: HTTP ${tRes.status}`);
+          if (!aRes.ok) throw new Error(`Answers: HTTP ${aRes.status}`);
+          
+          const transcripts = await tRes.json();
+          const answers = await aRes.json();
 
-          if (!blocks || blocks.length === 0) {
+          if ((!transcripts || transcripts.length === 0) && (!answers || answers.length === 0)) {
             showModalOverlay(`Transcript — ${title}`, `<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:11px;">No transcript records found for this session.</div>`);
             return;
           }
 
-          const html = blocks.map(b => {
-            const speakerLabel = b.speaker === 'interviewer' ? 'Interviewer' : 'You';
-            const speakerColor = b.speaker === 'interviewer' ? '#a78bfa' : '#4ade80';
-            const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-            return `
-              <div style="margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.03);">
-                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 3px;">
-                  <span style="font-size: 9px; font-weight: 700; color: ${speakerColor}; text-transform: uppercase; letter-spacing: 0.3px;">${speakerLabel}</span>
-                  <span style="font-size: 8px; color: var(--text-muted); font-family: monospace;">${timeStr}</span>
+          // Combine and sort chronologically
+          const timeline = [
+            ...transcripts.map(t => ({ ...t, type: 'audio' })),
+            ...answers.map(a => ({ ...a, type: 'ai' }))
+          ];
+          timeline.sort((x, y) => new Date(x.created_at) - new Date(y.created_at));
+
+          // Generate beautiful timeline HTML
+          const html = timeline.map(b => {
+            const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+            
+            if (b.type === 'audio') {
+              const speakerLabel = b.speaker === 'interviewer' ? 'Interviewer' : 'You';
+              const speakerColor = b.speaker === 'interviewer' ? '#5eead4' : '#4ade80';
+              return `
+                <div style="margin-bottom: 12px; padding: 6px 10px; background: rgba(255,255,255,0.02); border-left: 2px solid rgba(255,255,255,0.15); border-radius: 0 6px 6px 0;">
+                  <div style="font-size: 9px; font-weight: 700; color: ${speakerColor}; margin-bottom: 2px;">
+                    [${timeStr}] ${speakerLabel}
+                  </div>
+                  <div style="font-size: 10.5px; color: #e4e4e7; white-space: pre-wrap; line-height: 1.4;">${b.content}</div>
                 </div>
-                <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: rgba(255,255,255,0.9);">${b.content}</div>
-              </div>
-            `;
+              `;
+            } else {
+              return `
+                <div style="margin-bottom: 16px; padding: 10px 12px; background: rgba(20, 184, 166, 0.05); border-left: 2px solid #14b8a6; border-radius: 0 8px 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                  <div style="font-size: 9px; font-weight: 800; color: #5eead4; margin-bottom: 6px; display: flex; align-items: center; gap: 4px;">
+                    <span style="display: inline-block; width: 4px; height: 4px; background: #5eead4; border-radius: 50%;"></span>
+                    [${timeStr}] AI
+                  </div>
+                  <div style="margin-bottom: 6px; font-size: 10.5px; color: #e4e4e7; line-height: 1.4;">
+                    <span style="margin-right: 4px;">💬</span><strong>Question:</strong> ${b.question}
+                  </div>
+                  <div style="border-top: 1px dashed rgba(20, 184, 166, 0.2); margin: 6px 0; padding-top: 6px;">
+                    <div style="font-size: 10.5px; color: #2dd4bf; font-weight: 600; margin-bottom: 4px; line-height: 1.4;">
+                      <span style="margin-right: 4px;">⭐️</span><strong>Answer:</strong>
+                    </div>
+                    <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: #fff;">${b.answer}</div>
+                  </div>
+                </div>
+              `;
+            }
           }).join('');
 
-          showModalOverlay(`Transcript — ${title}`, html);
+          // Generate raw export string for copy to clipboard
+          const rawText = timeline.map(b => {
+            const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+            if (b.type === 'audio') {
+              const speakerLabel = b.speaker === 'interviewer' ? 'Interviewer' : 'You';
+              return `[${timeStr}] ${speakerLabel}\n${b.content}`;
+            } else {
+              return `[${timeStr}] AI\n💬 **Question**: ${b.question}\n\n---\n\n⭐️ **Answer**:  \n${b.answer}`;
+            }
+          }).join('\n\n');
+
+          // Create container with a Copy Button at the top
+          const wrapperHtml = `
+            <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
+              <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  Copy Raw Timeline
+                </button>
+              </div>
+              <div style="flex: 1;">
+                ${html}
+              </div>
+            </div>
+          `;
+
+          showModalOverlay(`Transcript — ${title}`, wrapperHtml);
+
+          // Add copy click listener
+          const copyBtn = document.getElementById('copy-timeline-btn');
+          if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+              navigator.clipboard.writeText(rawText).then(() => {
+                copyBtn.textContent = 'Copied!';
+                copyBtn.style.background = 'rgba(74, 222, 128, 0.15)';
+                copyBtn.style.borderColor = 'rgba(74, 222, 128, 0.3)';
+                copyBtn.style.color = '#4ade80';
+                setTimeout(() => {
+                  copyBtn.textContent = 'Copy Raw Timeline';
+                  copyBtn.style.background = 'rgba(20, 184, 166,0.15)';
+                  copyBtn.style.borderColor = 'rgba(20, 184, 166,0.3)';
+                  copyBtn.style.color = '#5eead4';
+                }, 2000);
+              });
+            });
+          }
         } catch (err) {
           showInlineError('Failed to load transcript: ' + err.message, recentSessionsTable);
         }
@@ -598,13 +687,19 @@ function showModalOverlay(title, contentHtml) {
 // Quit app button — forcefully kills entire Electron process
 const quitAppBtn = document.getElementById('quit-app-btn');
 if (quitAppBtn) {
-  quitAppBtn.addEventListener('click', () => window.electronAPI.quitApp());
+  quitAppBtn.addEventListener('click', () => {
+    console.log('[Stealth] Main close button clicked.');
+    window.electronAPI.quitApp();
+  });
 }
 
 // Recent-view quit button
 const recentViewQuitBtn = document.getElementById('recent-view-quit-btn');
 if (recentViewQuitBtn) {
-  recentViewQuitBtn.addEventListener('click', () => window.electronAPI.quitApp());
+  recentViewQuitBtn.addEventListener('click', () => {
+    console.log('[Stealth] Recent sessions view close button clicked.');
+    window.electronAPI.quitApp();
+  });
 }
 
 // Recent Sessions button → toggle to recent sessions page
@@ -624,15 +719,155 @@ setupResumeSelect.addEventListener('change', () => {
   if (setupResumeSelect.value === '__upload__') {
     setupResumeFile.click();
     setupResumeSelect.value = '';
+    return;
   }
+  updateResumeJdScore();
 });
 
-setupDocSelect.addEventListener('change', () => {
-  if (setupDocSelect.value === '__upload__') {
+let scoreDebounceTimeout;
+function debounceUpdateScore() {
+  clearTimeout(scoreDebounceTimeout);
+  scoreDebounceTimeout = setTimeout(() => {
+    updateResumeJdScore();
+  }, 800);
+}
+
+setupJd.addEventListener('input', debounceUpdateScore);
+setupCompany.addEventListener('input', debounceUpdateScore);
+setupRole.addEventListener('input', debounceUpdateScore);
+
+// Extra Context Action Buttons
+const inputPromptBtn = document.getElementById('input-prompt-btn');
+const uploadDocBtn = document.getElementById('upload-doc-btn');
+
+const promptModal = document.getElementById('prompt-modal');
+const modalPromptName = document.getElementById('modal-prompt-name');
+const modalPromptContent = document.getElementById('modal-prompt-content');
+const modalPromptCancel = document.getElementById('modal-prompt-cancel');
+const modalPromptSave = document.getElementById('modal-prompt-save');
+
+if (inputPromptBtn && promptModal) {
+  inputPromptBtn.addEventListener('click', () => {
+    modalPromptName.value = '';
+    modalPromptContent.value = '';
+    promptModal.style.display = 'flex';
+  });
+}
+
+if (modalPromptCancel && promptModal) {
+  modalPromptCancel.addEventListener('click', () => {
+    promptModal.style.display = 'none';
+  });
+}
+
+if (modalPromptSave && promptModal) {
+  modalPromptSave.addEventListener('click', async () => {
+    const promptName = modalPromptName.value.trim();
+    const promptContent = modalPromptContent.value.trim();
+    if (!promptName || !promptContent) return;
+
+    modalPromptSave.disabled = true;
+    modalPromptSave.textContent = 'Saving...';
+
+    try {
+      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const res = await fetch(`${base}/api/knowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          document_name: promptName,
+          document_type: 'prompt',
+          content: promptContent
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      backendDocs.push(data);
+      await loadDropdowns();
+      setupDocSelect.value = data.id;
+      promptModal.style.display = 'none';
+    } catch (e) {
+      console.error('[Stealth] Custom prompt save failed:', e.message);
+      showInlineError('Failed to save custom prompt instructions.', document.getElementById('setup-step-2'));
+    } finally {
+      modalPromptSave.disabled = false;
+      modalPromptSave.textContent = 'Save';
+    }
+  });
+}
+
+if (uploadDocBtn) {
+  uploadDocBtn.addEventListener('click', () => {
     setupDocFile.click();
-    setupDocSelect.value = '';
+  });
+}
+
+// Resume-JD Match Scoring function
+async function updateResumeJdScore() {
+  const scoreSpan = document.getElementById('resume-jd-score');
+  if (!scoreSpan) return;
+
+  const resumeId = setupResumeSelect.value;
+  if (!resumeId) {
+    scoreSpan.style.display = 'none';
+    return;
   }
-});
+
+  const resumeObj = backendResumes.find(r => r.id === resumeId);
+  if (!resumeObj) {
+    scoreSpan.style.display = 'none';
+    return;
+  }
+
+  scoreSpan.style.display = 'inline-block';
+  scoreSpan.textContent = '⏳ Scoring...';
+  scoreSpan.style.color = '#38bdf8';
+  scoreSpan.style.background = 'rgba(56,189,248,0.1)';
+
+  try {
+    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const res = await fetch(`${base}/api/answers/transcript`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        resume_content: resumeObj.parsed_content,
+        jd_content: setupJd.value.trim(),
+        role: setupRole.value.trim() || 'Software Engineer',
+        company: setupCompany.value.trim() || 'Target Company'
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const scoreNum = parseInt(data.answer);
+      if (!isNaN(scoreNum)) {
+        scoreSpan.textContent = `🎯 Match: ${scoreNum}%`;
+        if (scoreNum >= 80) {
+          scoreSpan.style.color = '#10b981';
+          scoreSpan.style.background = 'rgba(16,185,129,0.1)';
+        } else if (scoreNum >= 50) {
+          scoreSpan.style.color = '#f59e0b';
+          scoreSpan.style.background = 'rgba(245,158,11,0.1)';
+        } else {
+          scoreSpan.style.color = '#ef4444';
+          scoreSpan.style.background = 'rgba(239,68,68,0.1)';
+        }
+      } else {
+        scoreSpan.textContent = '⚠️ Match: N/A';
+      }
+    } else {
+      scoreSpan.textContent = '⚠️ Match: Error';
+    }
+  } catch (e) {
+    console.error('[Stealth] Score calculation error:', e);
+    scoreSpan.textContent = '⚠️ Match: Offline';
+  }
+}
 
 // File upload event handlers
 setupResumeFile.addEventListener('change', async () => {
@@ -640,7 +875,7 @@ setupResumeFile.addEventListener('change', async () => {
   const file = setupResumeFile.files[0];
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('user_id', USER_ID);
+  formData.append('user_id', normalizeUserId(USER_ID));
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
@@ -668,7 +903,7 @@ setupDocFile.addEventListener('change', async () => {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('document_type', 'document');
-  formData.append('user_id', USER_ID);
+  formData.append('user_id', normalizeUserId(USER_ID));
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
@@ -743,10 +978,10 @@ function updateWizardView() {
       ind.num.style.color = '#fff';
       ind.text.style.color = '#10b981';
     } else if (stepIdx === currentStep) {
-      ind.num.style.background = 'var(--accent-chat)';
-      ind.num.style.borderColor = 'var(--accent-chat)';
+      ind.num.style.background = '#ffffff';
+      ind.num.style.borderColor = '#ffffff';
       ind.num.textContent = stepIdx;
-      ind.num.style.color = '#fff';
+      ind.num.style.color = '#0a0a0f';
       ind.text.style.color = 'var(--text-primary)';
     } else {
       ind.num.style.background = 'rgba(255,255,255,0.04)';
@@ -757,8 +992,8 @@ function updateWizardView() {
     }
   });
 
-  stepLine1.style.background = currentStep > 1 ? 'var(--accent-chat)' : 'rgba(255,255,255,0.06)';
-  stepLine2.style.background = currentStep > 2 ? 'var(--accent-chat)' : 'rgba(255,255,255,0.06)';
+  stepLine1.style.background = currentStep > 1 ? '#ffffff' : 'rgba(255,255,255,0.06)';
+  stepLine2.style.background = currentStep > 2 ? '#ffffff' : 'rgba(255,255,255,0.06)';
 
   if (currentStep === 1) {
     step1Container.style.display = 'flex';
@@ -811,7 +1046,149 @@ setupBackBtn.addEventListener('click', () => {
   }
 });
 
-// Session timer variables
+// ── Edit Session Feature ──────────────────────────────────────────────────────
+// Tracks the current live session data so the edit modal can be pre-populated.
+let liveSessionData = {
+  company: '',
+  role: '',
+  jd: '',
+  resumeId: '',
+  docId: ''
+};
+
+const editSessionModal = document.getElementById('edit-session-modal');
+const editSessionCloseBtn = document.getElementById('edit-session-close');
+const editSessionCancelBtn = document.getElementById('edit-session-cancel');
+const editSessionSaveBtn = document.getElementById('edit-session-save');
+const editSessionStatus = document.getElementById('edit-session-status');
+const editCompanyInput = document.getElementById('edit-company');
+const editRoleInput = document.getElementById('edit-role');
+const editJdInput = document.getElementById('edit-jd');
+const editResumeSelect = document.getElementById('edit-resume-select');
+const editDocSelect = document.getElementById('edit-doc-select');
+const editSessionBtn = document.getElementById('edit-session-btn');
+
+/** Opens the edit session modal and populates all fields with live session data */
+function openEditSessionModal() {
+  if (!editSessionModal) return;
+
+  // Populate fields with current live session data
+  if (editCompanyInput) editCompanyInput.value = liveSessionData.company || '';
+  if (editRoleInput) editRoleInput.value = liveSessionData.role || '';
+  if (editJdInput) editJdInput.value = liveSessionData.jd || '';
+
+  // Populate resume options from cached list
+  if (editResumeSelect) {
+    editResumeSelect.innerHTML = '<option value="">-- No Resume --</option>';
+    backendResumes.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.file_name || r.id;
+      if (r.id === liveSessionData.resumeId) opt.selected = true;
+      editResumeSelect.appendChild(opt);
+    });
+  }
+
+  // Populate doc options from cached list
+  if (editDocSelect) {
+    editDocSelect.innerHTML = '<option value="">-- No Document --</option>';
+    backendDocs.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.document_name || d.id;
+      if (d.id === liveSessionData.docId) opt.selected = true;
+      editDocSelect.appendChild(opt);
+    });
+  }
+
+  // Hide status, reset button
+  if (editSessionStatus) { editSessionStatus.style.display = 'none'; editSessionStatus.textContent = ''; }
+  if (editSessionSaveBtn) { editSessionSaveBtn.disabled = false; editSessionSaveBtn.textContent = ''; editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session'; }
+
+  editSessionModal.style.display = 'flex';
+  window.electronAPI.setIgnoreMouseEvents(false);
+}
+
+function closeEditSessionModal() {
+  if (editSessionModal) editSessionModal.style.display = 'none';
+}
+
+if (editSessionBtn) {
+  editSessionBtn.addEventListener('click', () => {
+    openEditSessionModal();
+  });
+}
+if (editSessionCloseBtn) editSessionCloseBtn.addEventListener('click', closeEditSessionModal);
+if (editSessionCancelBtn) editSessionCancelBtn.addEventListener('click', closeEditSessionModal);
+
+if (editSessionSaveBtn) {
+  editSessionSaveBtn.addEventListener('click', async () => {
+    const newCompany = (editCompanyInput?.value || '').trim() || liveSessionData.company;
+    const newRole = (editRoleInput?.value || '').trim() || liveSessionData.role;
+    const newJd = (editJdInput?.value || '').trim();
+    const newResumeId = editResumeSelect?.value || '';
+    const newDocId = editDocSelect?.value || '';
+
+    editSessionSaveBtn.disabled = true;
+    editSessionSaveBtn.textContent = 'Updating...';
+
+    // 1. Patch backend session metadata (company/role)
+    if (backendUrl && sessionToken) {
+      try {
+        await window.electronAPI.updateBackendSession(sessionToken, {
+          company_name: newCompany,
+          role_name: newRole,
+          session_name: `${newCompany} (${selectedSessionType})`
+        });
+      } catch (e) {
+        console.warn('[EditSession] Backend patch failed:', e.message);
+      }
+    }
+
+    // 2. Update the L4 context so the AI uses updated data for future answers
+    const resumeObj = backendResumes.find(r => r.id === newResumeId);
+    const resume = resumeObj ? resumeObj.parsed_content : '';
+    const docObj = backendDocs.find(d => d.id === newDocId);
+    const docText = docObj ? docObj.content : '';
+    const isPrompt = docObj ? (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt') || docObj.document_name.toLowerCase().includes('instruction')) : false;
+
+    try {
+      const currentModel = document.getElementById('setup-model-select')?.value || 'gemini-flash';
+      await window.electronAPI.saveL4Context({
+        resume,
+        resume_id: newResumeId || '',
+        job_description: newJd,
+        code_context: docText,
+        doc_id: newDocId || '',
+        doc_type: isPrompt ? 'prompt' : 'document',
+        company: newCompany,
+        role: newRole,
+        model: currentModel
+      });
+      offlineUserContext = { resume, job_description: newJd, code_context: docText, company: newCompany, role: newRole };
+    } catch (e) {
+      console.error('[EditSession] Failed to update context:', e.message);
+    }
+
+    // 3. Update local live session tracking state
+    liveSessionData = { company: newCompany, role: newRole, jd: newJd, resumeId: newResumeId, docId: newDocId };
+
+    // 4. Show success and close
+    if (editSessionStatus) {
+      editSessionStatus.style.display = 'block';
+      editSessionStatus.style.background = 'rgba(16,185,129,0.12)';
+      editSessionStatus.style.border = '1px solid rgba(16,185,129,0.3)';
+      editSessionStatus.style.color = '#10b981';
+      editSessionStatus.textContent = '✓ Session context updated — AI will use new data for next answer.';
+    }
+    editSessionSaveBtn.disabled = false;
+    editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session';
+
+    setTimeout(() => closeEditSessionModal(), 1800);
+  });
+}
+
+
 let sessionTimerInterval = null;
 let sessionSecondsElapsed = 0;
 const sessionTimerElement = document.getElementById('session-timer');
@@ -919,17 +1296,28 @@ startSessionBtn.addEventListener('click', async () => {
   // 3. Switch views and collapse window to toolbar size
   setupView.style.display = 'none';
   toolbarView.style.display = 'flex';
+  const logoutTextSpan = document.getElementById('settings-logout-text');
+  if (logoutTextSpan) logoutTextSpan.textContent = 'Exit';
+
+  // Capture current session data for the Edit Session modal
+  liveSessionData = {
+    company,
+    role,
+    jd,
+    resumeId: selectedResumeId || '',
+    docId: selectedDocId || ''
+  };
 
   // Hide cursor from screen-share capture while in stealth overlay mode
   document.body.classList.add('stealth-active');
   isStealthHoverEnabled = true;
   toggleStealthTooltips(true);
-  document.querySelector('.app-container').style.opacity = userOpacity;
+  document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
 
   // Load saved bounds if any
   const savedState = await window.electronAPI.getSavedBounds();
   if (savedState) {
-    currentWidth = savedState.width || WIDTH;
+    currentWidth = Math.max(WIDTH, savedState.width || WIDTH);
     currentHeight = savedState.height || COLLAPSED_HEIGHT;
     await window.electronAPI.restoreSavedBounds();
     
@@ -941,7 +1329,9 @@ startSessionBtn.addEventListener('click', async () => {
       closeAllPanels();
     }
   } else {
-    // Collapse window to default 680x56 collapsed state
+    // Collapse window to default collapsed state (600x56)
+    currentWidth = WIDTH;
+    currentHeight = COLLAPSED_HEIGHT;
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(WIDTH, COLLAPSED_HEIGHT, 'top', true);
   }
@@ -978,9 +1368,9 @@ startSessionBtn.addEventListener('click', async () => {
 
 // Stop session button event handler
 stopSessionBtn.addEventListener('click', async () => {
-  // Expand window back to 500x530 setup state
+  // Expand window back to 600x580 setup state
   pendingProgrammaticResizes++;
-  window.electronAPI.resizeWindow(500, 530, 'top', true);
+  window.electronAPI.resizeWindow(600, 580, 'top', true);
 
   // Close any active panel/tabs
   if (activeTab) {
@@ -990,18 +1380,21 @@ stopSessionBtn.addEventListener('click', async () => {
     activeTab = null;
   }
 
-  // Reset session & save ending duration/status to backend
+  // Reset session & save ending duration/status to backend (non-blocking)
   if (sessionToken) {
-    try {
-      await window.electronAPI.updateBackendSession(sessionToken, {
-        status: 'completed',
-        duration_seconds: sessionSecondsElapsed
-      });
-      await window.electronAPI.resetSessionMemory(sessionToken);
-    } catch (e) {
+    const tokenToReset = sessionToken;
+    const seconds = sessionSecondsElapsed;
+    sessionToken = ''; // clear immediately
+    
+    // Fire-and-forget backend updates so they don't block the UI transition
+    window.electronAPI.updateBackendSession(tokenToReset, {
+      status: 'completed',
+      duration_seconds: seconds
+    }).then(() => {
+      return window.electronAPI.resetSessionMemory(tokenToReset);
+    }).catch(e => {
       console.error('[Stealth] Failed to complete session on backend:', e.message);
-    }
-    sessionToken = '';
+    });
   }
 
   // Reset step wizard back to Step 1
@@ -1014,6 +1407,9 @@ stopSessionBtn.addEventListener('click', async () => {
   renderActiveAnswer();
 
   // Restore cursor visibility when exiting stealth mode
+  isStealthHoverEnabled = false;
+  isShrunk = false;  // ensure shrunk state is cleared so click-through isn't triggered
+  window.electronAPI.setIgnoreMouseEvents(false);
   document.body.classList.remove('stealth-active');
   toggleStealthTooltips(false);
   document.body.classList.remove('hover-active');
@@ -1025,6 +1421,11 @@ stopSessionBtn.addEventListener('click', async () => {
   // Switch views
   toolbarView.style.display = 'none';
   setupView.style.display = 'flex';
+  const logoutTextSpan = document.getElementById('settings-logout-text');
+  if (logoutTextSpan) logoutTextSpan.textContent = 'Logout';
+  // Guarantee the window is fully interactive after returning to setup portal
+  window.electronAPI.setIgnoreMouseEvents(false);
+
 
   // Clear all setup form fields so wizard starts fresh (no stale company/role data)
   setupCompany.value = '';
@@ -1043,15 +1444,44 @@ stopSessionBtn.addEventListener('click', async () => {
 // When moving the mouse, we check if the cursor is above a designated ".interactive" element.
 // Resizing state
 let isResizingPanel = false;
+let isDraggingSlider = false;
+let justExpanded = false;
+let justExpandedTimeout;
 let startWidth, startHeight;
 let startMouseX, startMouseY;
 
-window.addEventListener('mouseleave', () => {
-  if (isShrunk || isResizingPanel) return;
-  if (document.body.classList.contains('stealth-active') && isStealthHoverEnabled) {
-    document.querySelector('.app-container').style.opacity = userOpacity;
-    document.body.classList.remove('hover-active');
+// Track last known cursor position so we can re-evaluate click-through
+// even without a fresh mouse move (e.g. after OS native drag or state changes)
+let _lastClientX = 0;
+let _lastClientY = 0;
+
+/**
+ * Central function to evaluate and set the correct click-through state.
+ * Call this after ANY state change that could affect interactivity.
+ * @param {number} [clientX] - cursor X in client coords (uses last known if omitted)
+ * @param {number} [clientY] - cursor Y in client coords (uses last known if omitted)
+ */
+function updateClickThrough(clientX, clientY) {
+  // Always keep the window interactive and click-accepting
+  window.electronAPI.setIgnoreMouseEvents(false);
+
+  const appCont = document.querySelector('.app-container');
+  if (appCont) {
+    if (document.body.classList.contains('stealth-active')) {
+      appCont.style.opacity = Math.min(1.0, userOpacity);
+    } else {
+      appCont.style.opacity = '1';
+    }
   }
+}
+
+window.addEventListener('mouseleave', () => {
+  // Removed auto-hiding behavior on mouseleave
+});
+
+window.addEventListener('mouseenter', () => {
+  isDraggingWindow = false;
+  updateClickThrough();
 });
 
 window.addEventListener('pointerup', (e) => {
@@ -1059,45 +1489,55 @@ window.addEventListener('pointerup', (e) => {
     isResizingPanel = false;
     safeSetItem('stealth_panelWidth', currentWidth);
     safeSetItem('stealth_panelHeight', currentHeight);
-    
+
     // Release pointer capture
     const expandAnswerBtn = document.getElementById('expand-answer-btn');
     if (expandAnswerBtn) {
-      try {
-        expandAnswerBtn.releasePointerCapture(e.pointerId);
-      } catch (err) {}
+      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) {}
     }
+
+    // Re-evaluate click-through after resize ends so buttons don't freeze
+    requestAnimationFrame(() => updateClickThrough());
   }
   isDraggingWindow = false;
+  isDraggingSlider = false;
+
+  // After any pointer release, re-evaluate click-through using last known position
+  // This fixes the case where OS-level drag ends and pointermove never fires
+  requestAnimationFrame(() => updateClickThrough());
 });
 
 window.addEventListener('pointermove', (e) => {
+  // Always track cursor position for state-change re-evaluations
+  _lastClientX = e.clientX;
+  _lastClientY = e.clientY;
+
   // Handle panel resizing
   if (isResizingPanel) {
     const dx = e.screenX - startMouseX;
     const dy = e.screenY - startMouseY;
-    
+
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
       isDragClick = true;
     }
-    
+
     // Scale delta direction depending on where the toolbar is docked
     let dxSigned = dx;
     let dySigned = dy;
     if (toolbarPosition === 'bottom') {
-      dySigned = -dy; // dragging upwards (negative dy) expands panels height
+      dySigned = -dy;
     }
     if (toolbarPosition === 'right') {
-      dxSigned = -dx; // dragging leftwards (negative dx) expands panels width
+      dxSigned = -dx;
     }
-    
-    const newWidth = Math.max(600, Math.min(1400, startWidth + dxSigned));
-    const newHeight = Math.max(200, Math.min(MAX_HEIGHT, startHeight + dySigned));
-    
+
+    const newWidth = Math.max(400, Math.min(1200, startWidth + dxSigned));
+    const newHeight = Math.max(300, Math.min(MAX_HEIGHT, startHeight + dySigned));
+
     currentWidth = newWidth;
     currentHeight = newHeight;
 
-    const panelsContainer = document.getElementById('panels-container');
+    const panelsContainer = document.getElementById('panels');
     if (panelsContainer) {
       panelsContainer.style.height = (newHeight - COLLAPSED_HEIGHT - 12) + 'px';
       panelsContainer.style.maxHeight = 'none';
@@ -1118,27 +1558,7 @@ window.addEventListener('pointermove', (e) => {
     return;
   }
 
-  if (isShrunk) {
-    window.electronAPI.setIgnoreMouseEvents(false);
-    return;
-  }
-  
-  const inStealth = document.body.classList.contains('stealth-active') && isStealthHoverEnabled;
-  if (!inStealth) {
-    window.electronAPI.setIgnoreMouseEvents(false);
-    return;
-  }
-
-  const element = document.elementFromPoint(e.clientX, e.clientY);
-  if (element && (element.closest('.interactive') || element.closest('.panels-container'))) {
-    window.electronAPI.setIgnoreMouseEvents(false);
-    document.querySelector('.app-container').style.opacity = userOpacity;
-    document.body.classList.add('hover-active');
-  } else {
-    window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
-    document.querySelector('.app-container').style.opacity = 0.05;
-    document.body.classList.remove('hover-active');
-  }
+  updateClickThrough(e.clientX, e.clientY);
 });
 
 // Initialize with click-through disabled at startup
@@ -1173,7 +1593,7 @@ function updateWindowSize(reposition = false) {
   // NEVER resize while user is dragging — it causes the window to expand
   if (isDraggingWindow) return;
 
-  // If in setup wizard view, do not resize the window (keep 500x530 bounds)
+  // If in setup wizard view, do not resize the window (keep 600x580 bounds)
   if (setupView && setupView.style.display !== 'none') {
     return;
   }
@@ -1183,15 +1603,15 @@ function updateWindowSize(reposition = false) {
     const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
     const targetHeight = settingsOpen ? 280 : COLLAPSED_HEIGHT;
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(currentWidth, targetHeight, toolbarPosition, reposition);
+    window.electronAPI.resizeWindow(WIDTH, targetHeight, toolbarPosition, reposition);
   } else {
     const answerBlock = document.getElementById('answer-block');
     const codeDisplayPre = document.getElementById('code-display');
 
     if (isAnswerExpanded) {
       if (answerBlock) {
-        answerBlock.style.height = '480px';
-        answerBlock.style.maxHeight = '550px';
+        answerBlock.style.height = 'auto';
+        answerBlock.style.maxHeight = '1350px';
         answerBlock.style.overflowY = 'auto';
       }
       if (codeDisplayPre) {
@@ -1228,12 +1648,14 @@ function updateWindowSize(reposition = false) {
 
     setTimeout(() => {
       const appContainer = document.querySelector('.app-container');
-      const rect = appContainer.getBoundingClientRect();
+      const rect = appContainer ? appContainer.getBoundingClientRect() : { height: 0 };
       const settingsPopupEl = document.getElementById('settings-popup');
       const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
       const settingsBuffer = settingsOpen ? 180 : 0;
-      // Clamp target height to MAX_HEIGHT maximum
-      const targetHeight = Math.min(MAX_HEIGHT, Math.round(rect.height) + 12 + settingsBuffer);
+      
+      // Use scrollHeight to capture the full unclipped content height
+      const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
+      const targetHeight = Math.min(MAX_HEIGHT, contentHeight + 12 + settingsBuffer);
 
       pendingProgrammaticResizes++;
       window.electronAPI.resizeWindow(currentWidth, targetHeight, toolbarPosition, reposition);
@@ -1308,6 +1730,21 @@ aiBtn.addEventListener('click', () => toggleTab('ai'));
 // Now using native OS-level dragging via CSS `-webkit-app-region: drag` to prevent
 // DPI-scaling related sub-pixel rounding errors that caused the window to slowly expand.
 // The custom javascript `setPosition` loop was removed.
+const dragButtons = [
+  document.getElementById('setup-position-btn'),
+  document.getElementById('recent-position-btn'),
+  document.getElementById('position-btn'),
+  document.getElementById('diamond-btn')
+];
+dragButtons.forEach(btn => {
+  if (btn) {
+    btn.addEventListener('pointerdown', () => {
+      isDraggingWindow = true;
+      const appCont = document.querySelector('.app-container');
+      if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
+    });
+  }
+});
 
 // -------------------------------------------------------------
 // 4. MOCK AI AND UTILITY LOGIC
@@ -1392,8 +1829,11 @@ async function toggleSource(source) {
       // Connect to Deepgram live transcription WebSocket
       dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=300', ['token', dgKey]);
 
-      dgSocket.onopen = () => {
+      dgSocket.onopen = async () => {
         console.log('[Deepgram Socket] Connected successfully.');
+        if (audioCtx && audioCtx.state === 'suspended') {
+          try { await audioCtx.resume(); } catch (e) {}
+        }
         
         recordBtn.style.pointerEvents = 'auto';
         if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
@@ -1513,10 +1953,12 @@ async function toggleSource(source) {
               }
             }
           });
-          activeSystemStream.getVideoTracks().forEach(track => track.stop());
+          // Keep video tracks alive to prevent Chromium/Electron from closing the stream
+          console.log('[Audio Capture] Acquired system loopback tracks:', activeSystemStream.getTracks().map(t => `${t.kind}: state=${t.readyState}, enabled=${t.enabled}`));
           
           systemSourceNode = audioCtx.createMediaStreamSource(activeSystemStream);
           systemSourceNode.connect(audioDestNode);
+          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) {} }
           
           recordBtn.style.pointerEvents = 'auto';
           recordBtn.classList.add('recording');
@@ -1560,14 +2002,15 @@ async function toggleSource(source) {
         
         micSourceNode = audioCtx.createMediaStreamSource(activeMicStream);
         micSourceNode.connect(audioDestNode);
+        if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) {} }
         
         if (micBtnAi) {
           micBtnAi.style.pointerEvents = 'auto';
           micBtnAi.classList.add('recording');
           micText.textContent = 'Mic Active';
-          micBtnAi.style.background = 'rgba(239, 68, 68, 0.12)';
-          micBtnAi.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-          micBtnAi.style.color = '#f87171';
+          micBtnAi.style.background = 'rgba(255, 255, 255, 0.18)';
+          micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.5)';
+          micBtnAi.style.color = '#ffffff';
         }
         console.log('[Audio Capture] Successfully acquired microphone stream.');
       } catch (micErr) {
@@ -1591,9 +2034,9 @@ async function toggleSource(source) {
       if (micBtnAi) {
         micBtnAi.classList.remove('recording');
         micText.textContent = 'Mic';
-        micBtnAi.style.background = 'rgba(6, 182, 212, 0.12)';
-        micBtnAi.style.borderColor = 'rgba(6, 182, 212, 0.4)';
-        micBtnAi.style.color = '#22d3ee';
+        micBtnAi.style.background = 'rgba(255, 255, 255, 0.08)';
+        micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.22)';
+        micBtnAi.style.color = '#ffffff';
       }
     }
   }
@@ -1661,9 +2104,9 @@ function resetRecordButton() {
     micBtnAi.style.pointerEvents = 'auto';
     micBtnAi.classList.remove('recording');
     micText.textContent = 'Mic';
-    micBtnAi.style.background = 'rgba(6, 182, 212, 0.12)';
-    micBtnAi.style.borderColor = 'rgba(6, 182, 212, 0.4)';
-    micBtnAi.style.color = '#22d3ee';
+    micBtnAi.style.background = 'rgba(255, 255, 255, 0.08)';
+    micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.22)';
+    micBtnAi.style.color = '#ffffff';
   }
 }
 
@@ -2571,7 +3014,7 @@ function highlightCodeLine(line) {
     } else if (stringToken) {
       html += `<span style="color: #34d399; font-weight: 500;">${escapeHTML(stringToken)}</span>`;
     } else if (keyword) {
-      html += `<span style="color: #a78bfa; font-weight: bold;">${escapeHTML(keyword)}</span>`;
+      html += `<span style="color: #2dd4bf; font-weight: bold;">${escapeHTML(keyword)}</span>`;
     } else if (numberToken) {
       html += `<span style="color: #fbbf24;">${escapeHTML(numberToken)}</span>`;
     } else if (funcName) {
@@ -2604,14 +3047,14 @@ function renderAnswerToDOM(container, text, questionText = '') {
     qDiv.style.padding = '8px 12px';
     qDiv.style.background = 'rgba(0,0,0,0.2)';
     qDiv.style.borderRadius = '6px';
-    qDiv.style.borderLeft = '3px solid #a78bfa';
+    qDiv.style.borderLeft = '3px solid #2dd4bf';
     qDiv.style.display = 'flex';
     qDiv.style.alignItems = 'flex-start';
     qDiv.style.gap = '6px';
 
     const qBadge = document.createElement('span');
     qBadge.textContent = 'Q:';
-    qBadge.style.color = '#a78bfa';
+    qBadge.style.color = '#2dd4bf';
     qBadge.style.fontWeight = '800';
     qBadge.style.fontSize = '1em';
     qBadge.style.flexShrink = '0';
@@ -2635,7 +3078,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
       const codeWrapper = document.createElement('div');
       codeWrapper.style.margin = '10px 0';
       codeWrapper.style.borderRadius = '8px';
-      codeWrapper.style.border = '1px solid rgba(139, 92, 246, 0.3)';
+      codeWrapper.style.border = '1px solid rgba(20, 184, 166, 0.3)';
       codeWrapper.style.background = '#05060f';
       codeWrapper.style.fontFamily = 'monospace';
       codeWrapper.style.fontSize = '0.9em';
@@ -2645,22 +3088,22 @@ function renderAnswerToDOM(container, text, questionText = '') {
       header.style.display = 'flex';
       header.style.justifyContent = 'space-between';
       header.style.alignItems = 'center';
-      header.style.background = 'rgba(124, 58, 237, 0.1)';
+      header.style.background = 'rgba(13, 148, 136, 0.1)';
       header.style.padding = '4px 12px';
-      header.style.borderBottom = '1px solid rgba(139, 92, 246, 0.2)';
+      header.style.borderBottom = '1px solid rgba(20, 184, 166, 0.2)';
 
       const langLabel = document.createElement('span');
       langLabel.textContent = (segment.lang || 'code').toUpperCase();
-      langLabel.style.color = '#c084fc';
+      langLabel.style.color = '#5eead4';
       langLabel.style.fontSize = '0.75em';
       langLabel.style.fontWeight = 'bold';
       langLabel.style.letterSpacing = '0.5px';
 
       const copyBtn = document.createElement('button');
       copyBtn.textContent = 'Copy';
-      copyBtn.style.background = 'rgba(124, 58, 237, 0.2)';
-      copyBtn.style.border = '1px solid rgba(139, 92, 246, 0.2)';
-      copyBtn.style.color = '#c084fc';
+      copyBtn.style.background = 'rgba(13, 148, 136, 0.2)';
+      copyBtn.style.border = '1px solid rgba(20, 184, 166, 0.2)';
+      copyBtn.style.color = '#5eead4';
       copyBtn.style.fontSize = '0.75em';
       copyBtn.style.padding = '2px 8px';
       copyBtn.style.borderRadius = '4px';
@@ -2690,14 +3133,66 @@ function renderAnswerToDOM(container, text, questionText = '') {
       container.appendChild(codeWrapper);
     } else {
       const textDiv = document.createElement('div');
-      textDiv.style.lineHeight = '1.6';
+      textDiv.style.lineHeight = '1.7';
       textDiv.style.color = '#e2e8f0';
-      textDiv.style.whiteSpace = 'pre-wrap';
       textDiv.style.fontSize = '1em';
 
-      let formattedContent = escapeHTML(segment.content);
-      formattedContent = formattedContent.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-      textDiv.innerHTML = formattedContent;
+      // Split into lines and render bullet lines specially
+      const lines = segment.content.split('\n');
+      lines.forEach(line => {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+          // Bullet line — render as a styled bullet row
+          const bulletRow = document.createElement('div');
+          bulletRow.style.display = 'flex';
+          bulletRow.style.alignItems = 'flex-start';
+          bulletRow.style.gap = '8px';
+          bulletRow.style.marginBottom = '8px';
+          bulletRow.style.paddingLeft = '4px';
+
+          const dot = document.createElement('span');
+          dot.textContent = '•';
+          dot.style.color = '#2dd4bf';
+          dot.style.fontWeight = 'bold';
+          dot.style.fontSize = '1.1em';
+          dot.style.flexShrink = '0';
+          dot.style.lineHeight = '1.6';
+
+          const bulletContent = document.createElement('span');
+          bulletContent.style.flex = '1';
+          bulletContent.style.lineHeight = '1.6';
+
+          // Strip leading dash/bullet char
+          let content = trimmed.startsWith('- ') ? trimmed.slice(2) : trimmed.slice(2);
+          // Render **heading:** in purple bold, rest in normal text
+          let html = escapeHTML(content).replace(
+            /\*\*([^*]+)\*\*/g,
+            '<strong style="color:#5eead4;font-weight:700;letter-spacing:0.01em;">$1</strong>'
+          );
+          bulletContent.innerHTML = html;
+
+          bulletRow.appendChild(dot);
+          bulletRow.appendChild(bulletContent);
+          textDiv.appendChild(bulletRow);
+        } else if (trimmed === '') {
+          // Empty line — small spacer
+          const spacer = document.createElement('div');
+          spacer.style.height = '4px';
+          textDiv.appendChild(spacer);
+        } else {
+          // Regular non-bullet line
+          const lineDiv = document.createElement('div');
+          lineDiv.style.marginBottom = '4px';
+          lineDiv.style.lineHeight = '1.6';
+          let html = escapeHTML(trimmed).replace(
+            /\*\*([^*]+)\*\*/g,
+            '<strong style="color:#5eead4;font-weight:700;">$1</strong>'
+          );
+          lineDiv.innerHTML = html;
+          textDiv.appendChild(lineDiv);
+        }
+      });
+
       container.appendChild(textDiv);
     }
   });
@@ -2707,33 +3202,49 @@ const settingsBtn = document.getElementById('settings-btn');
 const opacitySlider = document.getElementById('opacity-slider');
 const opacityDisplay = document.getElementById('opacity-display');
 const fontSizeInput = document.getElementById('font-size-input');
-const userEmailInput = document.getElementById('user-email-input');
+const userEmailDisplay = document.getElementById('user-email-display');
 const mainAnswerBlock = document.getElementById('answer-block');
 const mainTranscriptBlock = document.getElementById('transcript-block');
 const zoomSlider = document.getElementById('zoom-slider');
 const zoomDisplay = document.getElementById('zoom-display');
 
 // Load settings from localStorage
-function loadAllSettings() {
-  const savedEmail = safeGetItem('stealth_user_email') || 'premium@stealth.ai';
-  if (userEmailInput) {
-    userEmailInput.value = savedEmail;
+async function loadAllSettings() {
+  const savedEmail = safeGetItem('stealth_user_email');
+  const savedUserId = safeGetItem('stealth_user_id');
+  if (savedUserId) {
+    USER_ID = normalizeUserId(savedUserId);
   }
-  syncUserEmail(savedEmail); // Dynamically sync user ID
+  if (savedEmail) {
+    if (userEmailDisplay) {
+      userEmailDisplay.textContent = savedEmail;
+    }
+    await syncUserEmail(savedEmail); // Dynamically sync user ID
+  } else {
+    if (userEmailDisplay) {
+      userEmailDisplay.textContent = 'premium@stealth.ai';
+    }
+  }
 
   const savedOpacity = safeGetItem('stealth_opacity');
   if (savedOpacity !== null) {
-    userOpacity = parseFloat(savedOpacity);
-    if (opacitySlider) opacitySlider.value = savedOpacity;
+    userOpacity = Math.max(0.20, Math.min(2.0, parseFloat(savedOpacity)));
+    if (opacitySlider) opacitySlider.value = userOpacity;
     if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
-    // Apply opacity
-    if (!document.body.classList.contains('stealth-active')) {
+    // Apply opacity only when in an active stealth session — not on the setup screen
+    if (document.body.classList.contains('stealth-active')) {
       const appCont = document.querySelector('.app-container');
-      if (appCont) appCont.style.opacity = userOpacity;
+      if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
+    } else {
+      // Always keep setup view at full opacity
+      const appCont = document.querySelector('.app-container');
+      if (appCont) appCont.style.opacity = '1';
     }
   } else {
+    userOpacity = 1.0;
     if (opacityDisplay && opacitySlider) {
-      opacityDisplay.textContent = Math.round(parseFloat(opacitySlider.value) * 100) + '%';
+      opacitySlider.value = 1.0;
+      opacityDisplay.textContent = '100%';
     }
   }
 
@@ -2809,7 +3320,7 @@ function showSetupWizard() {
 async function triggerBrowserSync() {
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-    const syncUrl = `${base}/auth/sync?port=48999`;
+    const syncUrl = 'http://localhost:5173/sync?port=48999';
     window.electronAPI.openExternalUrl(syncUrl);
   } catch (err) {
     console.error('[Stealth Sync] Failed to launch external browser sync page:', err);
@@ -2819,13 +3330,42 @@ async function triggerBrowserSync() {
 function logoutLocalUser() {
   safeSetItem('stealth_user_email', '');
   safeSetItem('stealth_login_token', '');
-  if (userEmailInput) userEmailInput.value = '';
+  if (userEmailDisplay) userEmailDisplay.textContent = 'Not Synced';
   showSyncPage();
 }
 
 // Call settings initialization and startup verification
-loadAllSettings();
-verifySessionOnStartup();
+async function initApp() {
+  await loadAllSettings();
+  await verifySessionOnStartup();
+}
+initApp();
+
+// Run periodic session check every 30 seconds to detect concurrent logins/logouts
+setInterval(async () => {
+  const email = safeGetItem('stealth_user_email');
+  const token = safeGetItem('stealth_login_token');
+  
+  if (email && token) {
+    try {
+      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const res = await fetch(`${base}/api/auth/check-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: USER_ID, login_token: token })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (!data.valid) {
+          console.log('[Stealth Sync] Session invalidated by another login. Logging out.');
+          logoutLocalUser();
+        }
+      }
+    } catch (err) {
+      console.warn('[Stealth Sync] Periodic session check connection error:', err.message);
+    }
+  }
+}, 30000);
 
 // Listen for credentials sent from system browser via Electron local HTTP server
 if (window.electronAPI && window.electronAPI.onSyncCredentials) {
@@ -2834,8 +3374,12 @@ if (window.electronAPI && window.electronAPI.onSyncCredentials) {
     if (data.email && data.token) {
       safeSetItem('stealth_user_email', data.email);
       safeSetItem('stealth_login_token', data.token);
-      if (userEmailInput) {
-        userEmailInput.value = data.email;
+      if (data.user_id) {
+        USER_ID = data.user_id;
+        safeSetItem('stealth_user_id', data.user_id);
+      }
+      if (userEmailDisplay) {
+        userEmailDisplay.textContent = data.email;
       }
       syncUserEmail(data.email);
       showSetupWizard();
@@ -2850,10 +3394,14 @@ if (manualSyncBtn) {
 const setupSettingsBtn = document.getElementById('setup-settings-btn');
 
 function toggleSettingsPopup() {
+  console.log('[Stealth Debug] toggleSettingsPopup called');
   const popup = document.getElementById('settings-popup');
   if (popup) {
     const isShowing = popup.style.display === 'flex';
     popup.style.display = isShowing ? 'none' : 'flex';
+    console.log('[Stealth Debug] settings-popup display toggled to:', popup.style.display);
+  } else {
+    console.log('[Stealth Debug] settings-popup element not found');
   }
   updateWindowSize();
 }
@@ -2877,47 +3425,123 @@ if (settingsCloseBtn) {
   });
 }
 
-if (userEmailInput) {
-  userEmailInput.addEventListener('input', (e) => {
-    const email = e.target.value;
-    safeSetItem('stealth_user_email', email);
-    syncUserEmail(email);
+function logoutLocalUser() {
+  console.log('[Stealth Logout] Logging out account...');
+  try {
+    localStorage.removeItem('stealth_user_email');
+    localStorage.removeItem('stealth_user_id');
+    localStorage.removeItem('stealth_login_token');
+    localStorage.removeItem('stealth_session_token');
+  } catch (e) {}
+  USER_ID = '856fdc6d-19b9-547e-be7b-0df7fa5b505b';
+  if (userEmailDisplay) {
+    userEmailDisplay.textContent = 'Not Synced';
+  }
+  sessionToken = null;
+  if (isRecording) {
+    stopRecording();
+  }
+  showSetupWizard();
+  if (typeof showModalOverlay === 'function') {
+    showModalOverlay('Logged Out', '<div style="text-align:center;padding:24px 0;color:var(--text-primary);font-size:13px;">Your account has been logged out successfully.</div>');
+  }
+}
+
+const settingsLogoutBtn = document.getElementById('settings-logout-btn');
+if (settingsLogoutBtn) {
+  settingsLogoutBtn.addEventListener('click', () => {
+    const popup = document.getElementById('settings-popup');
+    if (popup) {
+      popup.style.display = 'none';
+    }
+    updateWindowSize();
+    logoutLocalUser();
+  });
+}
+
+const settingsDashboardBtn = document.getElementById('settings-dashboard-btn');
+if (settingsDashboardBtn) {
+  settingsDashboardBtn.addEventListener('click', () => {
+    window.electronAPI.openExternalUrl('http://localhost:5173');
+  });
+}
+
+const opacityMinus = document.getElementById('opacity-minus');
+const opacityPlus = document.getElementById('opacity-plus');
+
+function applyOpacity(val) {
+  userOpacity = Math.max(0.20, Math.min(2.0, parseFloat(val)));
+  if (opacitySlider) opacitySlider.value = userOpacity;
+  safeSetItem('stealth_opacity', userOpacity.toString());
+  if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
+  
+  const appCont = document.querySelector('.app-container');
+  if (appCont) {
+    if (document.body.classList.contains('stealth-active')) {
+      appCont.style.opacity = Math.min(1.0, userOpacity);
+    } else {
+      appCont.style.opacity = '1';
+    }
+  }
+}
+
+if (opacityMinus) {
+  opacityMinus.addEventListener('click', () => {
+    const curr = parseFloat(opacitySlider?.value || '1.0');
+    applyOpacity((curr - 0.05).toFixed(2));
+  });
+}
+if (opacityPlus) {
+  opacityPlus.addEventListener('click', () => {
+    const curr = parseFloat(opacitySlider?.value || '1.0');
+    applyOpacity((curr + 0.05).toFixed(2));
   });
 }
 
 if (opacitySlider) {
+  opacitySlider.addEventListener('pointerdown', () => {
+    isDraggingSlider = true;
+    const appCont = document.querySelector('.app-container');
+    if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
+  });
   opacitySlider.addEventListener('input', (e) => {
-    userOpacity = parseFloat(e.target.value);
-    safeSetItem('stealth_opacity', e.target.value);
-    if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
-    if (!document.body.classList.contains('stealth-active')) {
-      const appCont = document.querySelector('.app-container');
-      if (appCont) appCont.style.opacity = userOpacity;
-    } else {
-      if (document.body.classList.contains('hover-active')) {
-        const appCont = document.querySelector('.app-container');
-        if (appCont) appCont.style.opacity = userOpacity;
-      }
-    }
+    applyOpacity(e.target.value);
+  });
+}
+
+const fontSizeMinus = document.getElementById('font-size-minus');
+const fontSizePlus = document.getElementById('font-size-plus');
+
+function applyFontSize(val) {
+  val = Math.max(8, Math.min(36, parseFloat(val)));
+  if (fontSizeInput) fontSizeInput.value = val;
+  safeSetItem('stealth_font_size', val.toString());
+  const valPx = val + 'px';
+  if (mainAnswerBlock) mainAnswerBlock.style.fontSize = valPx;
+  if (mainTranscriptBlock) mainTranscriptBlock.style.fontSize = valPx;
+}
+
+if (fontSizeMinus) {
+  fontSizeMinus.addEventListener('click', () => {
+    const curr = parseFloat(fontSizeInput?.value || '12.5');
+    applyFontSize(curr - 0.5);
+  });
+}
+if (fontSizePlus) {
+  fontSizePlus.addEventListener('click', () => {
+    const curr = parseFloat(fontSizeInput?.value || '12.5');
+    applyFontSize(curr + 0.5);
   });
 }
 
 if (fontSizeInput) {
-  fontSizeInput.addEventListener('input', (e) => {
-    const val = e.target.value;
-    safeSetItem('stealth_font_size', val);
-    const valPx = val + 'px';
-    if (mainAnswerBlock) mainAnswerBlock.style.fontSize = valPx;
-    if (mainTranscriptBlock) mainTranscriptBlock.style.fontSize = valPx;
+  fontSizeInput.addEventListener('pointerdown', () => {
+    isDraggingSlider = true;
+    const appCont = document.querySelector('.app-container');
+    if (appCont) appCont.style.opacity = userOpacity;
   });
-}
-
-if (zoomSlider) {
-  zoomSlider.addEventListener('input', (e) => {
-    const val = parseFloat(e.target.value);
-    safeSetItem('stealth_zoom', e.target.value);
-    if (zoomDisplay) zoomDisplay.textContent = Math.round(val * 100) + '%';
-    document.body.style.zoom = val;
+  fontSizeInput.addEventListener('input', (e) => {
+    applyFontSize(e.target.value);
   });
 }
 
@@ -2937,13 +3561,23 @@ async function toggleShrunk(shrunk) {
     }
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(44, 44, toolbarPosition, false);
-    window.electronAPI.setIgnoreMouseEvents(false);
+    updateClickThrough(); // always interactive in diamond mode
   } else {
+    justExpanded = true;
+    clearTimeout(justExpandedTimeout);
+    justExpandedTimeout = setTimeout(() => {
+      justExpanded = false;
+      updateClickThrough(); // re-evaluate once guard expires
+    }, 300);
+
     if (diamondBtn) {
       diamondBtn.style.display = 'none';
     }
     appContainer.style.display = 'flex';
-    
+
+    // Immediately re-enable mouse events — window is fully interactive again
+    updateClickThrough();
+
     // When expanding, make sure it fades in smoothly if stealth is active
     if (document.body.classList.contains('stealth-active')) {
       appContainer.style.opacity = userOpacity;
@@ -2951,9 +3585,21 @@ async function toggleShrunk(shrunk) {
     } else {
       appContainer.style.opacity = 1.0;
     }
-    
-    updateWindowSize();
+
+    if (setupView && setupView.style.display !== 'none') {
+      pendingProgrammaticResizes++;
+      window.electronAPI.resizeWindow(600, 580, 'top', false);
+    } else {
+      updateWindowSize();
+    }
   }
+}
+
+const setupShrinkBtn = document.getElementById('setup-shrink-btn');
+if (setupShrinkBtn) {
+  setupShrinkBtn.addEventListener('click', () => {
+    toggleShrunk(true);
+  });
 }
 
 if (shrinkBtn) {
@@ -2963,8 +3609,51 @@ if (shrinkBtn) {
 }
 
 if (diamondBtn) {
-  diamondBtn.addEventListener('click', () => {
-    toggleShrunk(false);
+  let _diamondDragging = false;
+  let _diamondStartX = 0;
+  let _diamondStartY = 0;
+  let _diamondLastX = 0;
+  let _diamondLastY = 0;
+  const DRAG_THRESHOLD = 4; // px — below this = click, above = drag
+
+  diamondBtn.addEventListener('pointerdown', (e) => {
+    _diamondDragging = false;
+    _diamondStartX = e.screenX;
+    _diamondStartY = e.screenY;
+    _diamondLastX = e.screenX;
+    _diamondLastY = e.screenY;
+    diamondBtn.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  diamondBtn.addEventListener('pointermove', (e) => {
+    if (!diamondBtn.hasPointerCapture(e.pointerId)) return;
+    const dx = e.screenX - _diamondLastX;
+    const dy = e.screenY - _diamondLastY;
+    const totalMoved = Math.abs(e.screenX - _diamondStartX) + Math.abs(e.screenY - _diamondStartY);
+    if (totalMoved > DRAG_THRESHOLD) {
+      _diamondDragging = true;
+      diamondBtn.style.cursor = 'grabbing';
+    }
+    if (_diamondDragging && (dx !== 0 || dy !== 0)) {
+      window.electronAPI.moveWindowDelta(dx, dy);
+      _diamondLastX = e.screenX;
+      _diamondLastY = e.screenY;
+    }
+    e.preventDefault();
+  });
+
+  diamondBtn.addEventListener('pointerup', (e) => {
+    diamondBtn.style.cursor = 'pointer';
+    if (diamondBtn.hasPointerCapture(e.pointerId)) {
+      diamondBtn.releasePointerCapture(e.pointerId);
+    }
+    if (!_diamondDragging) {
+      // It was a tap/click — expand the window
+      toggleShrunk(false);
+    }
+    _diamondDragging = false;
+    e.preventDefault();
   });
 }
 
@@ -2996,11 +3685,11 @@ if (expandAnswerBtn) {
     expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
     if (isAnswerExpanded) {
       expandAnswerBtn.style.color = 'var(--accent-ai)';
-      expandAnswerBtn.style.borderColor = 'rgba(139, 92, 246, 0.4)';
-      expandAnswerBtn.style.background = 'rgba(139, 92, 246, 0.08)';
+      expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
+      expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.08)';
       
       // Default large dimensions
-      currentWidth = Math.max(currentWidth, 850);
+      currentWidth = Math.max(currentWidth, 600);
       currentHeight = Math.max(currentHeight, 664);
     } else {
       expandAnswerBtn.style.color = 'var(--text-secondary)';
@@ -3008,13 +3697,13 @@ if (expandAnswerBtn) {
       expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
       
       // Default collapsed dimensions
-      currentWidth = 850;
+      currentWidth = 600;
       currentHeight = 664;
       
-      const panelsContainer = document.getElementById('panels-container');
+      const panelsContainer = document.getElementById('panels');
       if (panelsContainer) {
         panelsContainer.style.height = 'auto';
-        panelsContainer.style.maxHeight = '1200px';
+        panelsContainer.style.maxHeight = '1450px';
       }
       const answerBlock = document.getElementById('answer-block');
       if (answerBlock) {
@@ -3058,6 +3747,51 @@ function toggleStealthTooltips(stealthActive) {
 
 // Key listener to temporarily toggle/disable stealth hover-hide behavior
 window.addEventListener('keydown', (e) => {
+  // Load and process dynamic shortcuts
+  const checkShortcut = (action, e) => {
+    const config = window.appShortcuts && window.appShortcuts[action];
+    if (!config) return false;
+    const keyMatch = e.key.toLowerCase() === config.key.toLowerCase() || e.code === config.key || (config.key === 'Space' && e.code === 'Space');
+    return keyMatch && (!!config.ctrl === e.ctrlKey) && (!!config.shift === e.shiftKey) && (!!config.alt === e.altKey);
+  };
+
+  // Capture Shortcut
+  if (checkShortcut('capture', e)) {
+    const captureBtn = document.getElementById('capture-btn');
+    if (captureBtn) captureBtn.click();
+    e.preventDefault();
+  }
+  
+  // Scroll Answer block
+  if (checkShortcut('scrollUp', e)) {
+    const answerBlock = document.getElementById('answer-block');
+    if (answerBlock) {
+      answerBlock.scrollTop -= 80;
+      e.preventDefault();
+    }
+  }
+  
+  if (checkShortcut('scrollDown', e)) {
+    const answerBlock = document.getElementById('answer-block');
+    if (answerBlock) {
+      answerBlock.scrollTop += 80;
+      e.preventDefault();
+    }
+  }
+
+  // Answer Shortcut
+  if (checkShortcut('answer', e)) {
+    const aiSendBtn = document.getElementById('ai-send');
+    const aiAnswerBtn = document.getElementById('ai-answer-btn');
+    const aiInput = document.getElementById('ai-input');
+    if (aiInput && document.activeElement === aiInput && aiInput.value.trim() !== '') {
+      if (aiSendBtn) aiSendBtn.click();
+    } else {
+      if (aiAnswerBtn) aiAnswerBtn.click();
+    }
+    e.preventDefault();
+  }
+
   // Toggle stealth hover check with F8 or Ctrl+Shift+M
   if (e.key === 'F8' || (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'M')) {
     const isSessionActive = document.body.classList.contains('stealth-active');
@@ -3077,3 +3811,130 @@ window.addEventListener('keydown', (e) => {
     }
   }
 });
+
+// Capture override: Ctrl + click on any button
+document.addEventListener('click', (e) => {
+  if (e.ctrlKey && e.target.closest('button')) {
+    const captureBtn = document.getElementById('capture-btn');
+    if (captureBtn && e.target.closest('button') !== captureBtn) {
+      captureBtn.click();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
+}, true);
+
+
+// ── Shortcut Management Logic ───────────────────────────────────────────────
+window.appShortcuts = {
+  capture: { ctrl: true, shift: false, alt: false, key: 'Space' },
+  answer: { ctrl: true, shift: false, alt: false, key: 'Enter' },
+  scrollUp: { ctrl: true, shift: false, alt: false, key: 'ArrowUp' },
+  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' }
+};
+
+function formatShortcut(config) {
+  let parts = [];
+  if (config.ctrl) parts.push('Ctrl');
+  if (config.shift) parts.push('Shift');
+  if (config.alt) parts.push('Alt');
+  let keyName = config.key === ' ' ? 'Space' : config.key;
+  if (keyName === 'ArrowUp') keyName = '↑';
+  if (keyName === 'ArrowDown') keyName = '↓';
+  if (keyName === 'ArrowLeft') keyName = '←';
+  if (keyName === 'ArrowRight') keyName = '→';
+  keyName = keyName.charAt(0).toUpperCase() + keyName.slice(1);
+  parts.push(keyName);
+  return parts.join('+');
+}
+
+function updateShortcutUI() {
+  // Update Badges
+  const captureBadge = document.getElementById('badge-capture');
+  const answerBadge = document.getElementById('badge-answer');
+  const askBadge = document.getElementById('badge-ask');
+  const scrollBadge = document.getElementById('badge-scroll');
+  
+  if (captureBadge) captureBadge.textContent = formatShortcut(window.appShortcuts.capture);
+  if (answerBadge) answerBadge.textContent = formatShortcut(window.appShortcuts.answer);
+  if (askBadge) askBadge.textContent = formatShortcut(window.appShortcuts.answer);
+  if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)} / ${formatShortcut(window.appShortcuts.scrollDown)}`;
+  
+  // Update Recorders in Settings
+  const recCapture = document.getElementById('set-shortcut-capture');
+  const recAnswer = document.getElementById('set-shortcut-answer');
+  const recScrollUp = document.getElementById('set-shortcut-scrollUp');
+  const recScrollDown = document.getElementById('set-shortcut-scrollDown');
+  
+  if (recCapture && !recCapture.classList.contains('recording')) recCapture.textContent = formatShortcut(window.appShortcuts.capture);
+  if (recAnswer && !recAnswer.classList.contains('recording')) recAnswer.textContent = formatShortcut(window.appShortcuts.answer);
+  if (recScrollUp && !recScrollUp.classList.contains('recording')) recScrollUp.textContent = formatShortcut(window.appShortcuts.scrollUp);
+  if (recScrollDown && !recScrollDown.classList.contains('recording')) recScrollDown.textContent = formatShortcut(window.appShortcuts.scrollDown);
+}
+
+function loadShortcuts() {
+  const saved = safeGetItem('stealth_shortcuts');
+  if (saved) {
+    try {
+      window.appShortcuts = { ...window.appShortcuts, ...JSON.parse(saved) };
+    } catch (e) { console.error('Failed to parse shortcuts', e); }
+  }
+  updateShortcutUI();
+}
+
+// Bind Recorder logic
+function setupRecorder(btnId, actionKey) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  
+  btn.addEventListener('click', (e) => {
+    btn.classList.add('recording');
+    btn.textContent = 'Press Key...';
+    e.stopPropagation();
+    
+    const handler = (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      
+      // Ignore bare modifiers
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(evt.key)) return;
+      
+      let keyToSave = evt.key === ' ' ? 'Space' : evt.key;
+      
+      window.appShortcuts[actionKey] = {
+        ctrl: evt.ctrlKey,
+        shift: evt.shiftKey,
+        alt: evt.altKey,
+        key: keyToSave
+      };
+      
+      safeSetItem('stealth_shortcuts', JSON.stringify(window.appShortcuts));
+      
+      btn.classList.remove('recording');
+      window.removeEventListener('keydown', handler, true);
+      updateShortcutUI();
+    };
+    
+    window.addEventListener('keydown', handler, true);
+    
+    // Cancel on click away
+    const cancelHandler = () => {
+      btn.classList.remove('recording');
+      updateShortcutUI();
+      window.removeEventListener('keydown', handler, true);
+      window.removeEventListener('click', cancelHandler, true);
+    };
+    // Delay adding click listener so we don't trigger immediately on the click that opened it
+    setTimeout(() => window.addEventListener('click', cancelHandler, true), 10);
+  });
+}
+
+// Initialize on boot
+setTimeout(() => {
+  loadShortcuts();
+  setupRecorder('set-shortcut-capture', 'capture');
+  setupRecorder('set-shortcut-answer', 'answer');
+  setupRecorder('set-shortcut-scrollUp', 'scrollUp');
+  setupRecorder('set-shortcut-scrollDown', 'scrollDown');
+}, 500);
+

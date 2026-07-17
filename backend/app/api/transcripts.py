@@ -9,6 +9,18 @@ from app.schemas.transcript import TranscriptCreate, TranscriptResponse
 
 router = APIRouter()
 
+
+def serialize_transcript(block) -> TranscriptResponse:
+    return TranscriptResponse(
+        id=block.id,
+        session_id=str(block.session_id),
+        speaker=block.speaker,
+        content=block.content,
+        source=block.source,
+        created_at=block.created_at,
+    )
+
+
 @router.post("/transcripts", response_model=TranscriptResponse)
 async def create_transcript_block(
     payload: TranscriptCreate,
@@ -39,7 +51,7 @@ async def create_transcript_block(
     )
     await db.commit()
     await db.refresh(block)
-    return block
+    return serialize_transcript(block)
 
 @router.get("/sessions/{session_id}/transcripts", response_model=List[TranscriptResponse])
 async def list_session_transcripts(
@@ -64,5 +76,5 @@ async def list_session_transcripts(
     
     repo = TranscriptRepository(db)
     blocks = await repo.list_by_session(session_uuid)
-    return blocks
+    return [serialize_transcript(block) for block in blocks]
 

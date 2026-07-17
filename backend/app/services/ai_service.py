@@ -16,6 +16,8 @@ print("FILE:", Path(__file__).resolve())
 print("=" * 90)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if PROJECT_ROOT == Path("/"):
+    PROJECT_ROOT = Path("/app")
 PROMPT_LOG_DIR = PROJECT_ROOT / "logs" / "prompt_debug"
 PROMPT_LOG_DIR.mkdir(parents=True, exist_ok=True)
 ENABLE_PROMPT_LOGGING = True

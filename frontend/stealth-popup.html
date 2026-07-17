@@ -14,7 +14,7 @@
     }
     .orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
     .orb { position: absolute; border-radius: 50%; filter: blur(90px); opacity: 0.18; animation: od 14s ease-in-out infinite alternate; }
-    .orb-1 { width: 500px; height: 500px; background: #7c3aed; top: -150px; left: -200px; }
+    .orb-1 { width: 500px; height: 500px; background: #0d9488; top: -150px; left: -200px; }
     .orb-2 { width: 400px; height: 400px; background: #06b6d4; bottom: -100px; right: -150px; animation-delay: -5s; }
     @keyframes od { from{transform:translate(0,0)scale(1)} to{transform:translate(30px,-30px)scale(1.08)} }
     .page {
@@ -32,7 +32,7 @@
     @keyframes bl { 0%,100%{opacity:1} 50%{opacity:.15} }
     h1 {
       font-size: clamp(2rem,5vw,3rem); font-weight: 800;
-      background: linear-gradient(130deg,#a78bfa,#06b6d4,#10b981);
+      background: linear-gradient(130deg,#2dd4bf,#06b6d4,#10b981);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
       letter-spacing: -.03em; line-height: 1.1;
     }
@@ -47,12 +47,12 @@
     .btn-l {
       width: 100%; padding: 15px; border: none; border-radius: 12px;
       font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 700;
-      cursor: pointer; background: linear-gradient(135deg,#7c3aed,#06b6d4); color: #fff;
+      cursor: pointer; background: linear-gradient(135deg,#0d9488,#06b6d4); color: #fff;
       transition: transform .15s, box-shadow .15s, opacity .15s;
-      box-shadow: 0 4px 24px rgba(124,58,237,.45);
+      box-shadow: 0 4px 24px rgba(13, 148, 136,.45);
       display: flex; align-items: center; justify-content: center; gap: 10px;
     }
-    .btn-l:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,58,237,.6); }
+    .btn-l:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(13, 148, 136,.6); }
     .btn-l:disabled { opacity: .4; cursor: not-allowed; transform: none; }
     .st {
       margin-top: 14px; padding: 11px 15px; border-radius: 10px;

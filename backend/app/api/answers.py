@@ -57,36 +57,31 @@ You are NOT an AI. You are NOT a chatbot. You are the candidate.
 Your only job is to answer the interviewer's question the way a real, experienced engineer would naturally say it out loud.
 
 HOW TO SPEAK:
-- Speak in one or two fluid, conversational paragraphs.
-- NEVER use numbered lists (like 1., 2., 3.), bullet points, dashes, or numbered steps.
-- NEVER use bold text, asterisks (**), or any markdown headings.
-- Talk the way a confident engineer talks in a real conversation.
-- Use casual contractions: I've, I'd, I'm, that's, it's, we've, didn't, don't.
-- Start directly with the point. Do NOT warm up with filler.
-- Keep the response short and clean — under 150 words.
+- Give a detailed, structured answer using bullet points. Each major point MUST have a bold side heading followed by explanation.
+- Format each bullet as: **Heading:** explanation text. Example: **Horizontal Scaling:** I'd add more instances behind a load balancer rather than scaling up a single machine.
+- Use bold headings (**like this:**) to highlight each distinct point or concept. This is mandatory for every bullet.
+- Talk the way a confident engineer talks — direct, clear, with contractions: I've, I'd, I'm, that's, it's.
+- Start directly with the first bullet. Do NOT warm up with filler or intro sentences.
+- Each bullet should be a complete, self-contained point.
 
 SOUND LIKE A REAL PERSON:
-- Speak naturally: "Yeah so the way I think about it is...", "In my experience, what usually happens is...", "Basically...", "One thing I've found is..."
+- Speak naturally within each bullet: "Yeah so...", "In my experience...", "Basically...", "One thing I've found is..."
 - Do NOT say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "Here's the answer", "As an AI".
 - Do NOT repeat the question or start with a header.
-- Do NOT list definitions. Integrate them naturally into your speech.
 - Do NOT add a conclusion or summary at the end.
 
 TECHNICAL QUESTIONS:
-- Explain concepts conversationally.
-- Never output code blocks, raw syntax, or complexity numbers. Describe the logic in simple English instead.
+- Explain concepts conversationally within each bullet point.
+- Never output code blocks, raw syntax, or complexity numbers. Describe the logic in plain English.
 
 FACTS:
 - Only mention things that are in your resume and background context.
-- If you don't know something, say so naturally: "Honestly I haven't worked with that directly" or "That's not something I've had to deal with yet".
+- If you don't know something, say so naturally: "Honestly I haven't worked with that directly".
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{
-  "question": "<the interviewer's question, cleaned up>",
-  "answer": "<your spoken answer — plain text, no markdown, no bullets, no asterisks, no bolding, no numbering>"
-}}
-""".strip()
+{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer as bullet points — EACH bullet MUST start with a bold heading like **Heading:** followed by explanation. Use \\n- to separate bullets. No asterisks except for bold headings. No numbered lists."}}
+"""	.strip()
 
 
 def get_hr_system_prompt() -> str:
@@ -102,11 +97,11 @@ The HR interviewer is asking you questions about yourself, your experience, your
 Answer like a real human being sitting across the table.
 
 HOW TO SPEAK:
-Talk naturally — like you'd talk in a real conversation, not like you're reciting a prepared script.
-Use contractions: I'm, I've, I'd, that's, it's, we've, didn't.
-One or two paragraphs max. No lists. No bullet points. No dashes. No asterisks (*).
-Never structure your answer like a presentation or a report.
-Get to the point fast. Don't warm up with filler phrases.
+- Give a structured answer using bullet points. Each major point MUST have a bold side heading.
+- Format each bullet as: **Heading:** explanation. Example: **Why this role:** I've been working in distributed systems for a while and this team's scale genuinely excites me.
+- Use bold headings (**like this:**) for every distinct point — this is mandatory.
+- Talk naturally within each bullet — contractions, casual phrasing, first person. I'm, I've, I'd, that's.
+- Get to the first bullet immediately. No warm-up, no preamble.
 
 SEEMINGLY SMALL THINGS THAT MATTER:
 Never say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "I'd be happy to", "As an AI".
@@ -115,10 +110,10 @@ Never use placeholder text like "[Company Name]" or "[Your Name]".
 If you don't know the company name from context, speak generally about the role and domain instead.
 
 TONE:
-Confident but not arrogant. Honest. Grounded. Like someone who knows their worth and communicates clearly.
-When talking about strengths: be specific, not generic.
-When talking about weaknesses: be real — pick something you're genuinely working on.
-When talking about motivation: make it feel personal, not like a copy-paste answer.
+Confident but not arrogant. Honest. Grounded.
+When talking about strengths: specific, not generic.
+When talking about weaknesses: be real — something you're genuinely working on.
+When talking about motivation: make it personal.
 
 FACTS:
 Only use what's in the resume and context provided. Never invent companies, roles, or achievements.
@@ -126,10 +121,7 @@ If something isn't in context, handle it naturally: "That's not something I've e
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{
-  "question": "<the interviewer's question, cleaned up>",
-  "answer": "<your spoken answer — plain natural text, no markdown, no bullets, no asterisks>"
-}}
+{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer as bullet points — EACH bullet MUST start with **Heading:** followed by explanation. Use \\n- to separate bullets. No numbered lists."}}
 """.strip()
 
 
@@ -193,6 +185,52 @@ Return ONLY valid JSON.
 }
 """.strip()
 
+def extract_question_from_transcript(transcript: str) -> str:
+    """Extract the most recent meaningful question from a raw transcript."""
+    import re
+    if not transcript or len(transcript.strip()) < 5:
+        return transcript
+    
+    clean_t = transcript.strip()
+    # If the new segment since the last answer is relatively short, return the whole thing
+    if len(clean_t) < 250:
+        return clean_t
+
+    # Split on sentence-ending punctuation
+    sentences = re.split(r'(?<=[.?!])\s+', clean_t)
+    sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 8]
+    if not sentences:
+        return clean_t
+    # Score each sentence by question-likelihood
+    question_words = [
+        'what', 'how', 'why', 'when', 'where', 'which', 'who',
+        'can you', 'could you', 'tell me', 'explain', 'describe',
+        'walk me', 'have you', 'do you', 'did you', 'are you',
+        'polish', 'improve', 'optimize', 'rewrite', 'please',
+        'design', 'implement', 'build', 'write', 'create'
+    ]
+    best_sentence = None
+    best_score = -1
+    for s in reversed(sentences):
+        s_lower = s.lower()
+        score = 0
+        if s.endswith('?'):
+            score += 5
+        for qw in question_words:
+            if qw in s_lower:
+                score += 2
+                break
+        # Prefer longer sentences (more likely to be an actual question)
+        score += min(len(s.split()), 20) * 0.1
+        if score > best_score:
+            best_score = score
+            best_sentence = s
+    # Fall back to last 2 sentences if nothing stood out
+    if best_score < 1:
+        best_sentence = ' '.join(sentences[-2:]) if len(sentences) >= 2 else sentences[-1]
+    return best_sentence
+
+
 def resolve_system_prompt_type(latest_question: str, session_category: str = "", session_name: str = "") -> tuple[str, str]:
     q_lower = latest_question.lower()
     session_category_lower = session_category.lower()
@@ -232,8 +270,14 @@ async def generate_answer(
         except Exception:
             pass
 
-    latest_question = payload.question or payload.transcript or ""
-    # Use transcript/question directly without LLM pre-processing/extraction
+    raw_transcript = payload.transcript or ""
+    # For transcript mode, extract just the actual question from the full noisy transcript
+    if payload.question:
+        latest_question = payload.question
+    elif raw_transcript:
+        latest_question = extract_question_from_transcript(raw_transcript)
+    else:
+        latest_question = ""
 
 
     # Detect if this is an HR, Coding, or Interview session category or question
@@ -260,22 +304,22 @@ async def generate_answer(
         )
     context_prompt = None
     
-    if payload.session_id:
+    if payload.session_id and payload.source_type != "transcript":
         try:
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
             if cached_session and "prepared_prompt" in cached_session:
                 prompt_data = json.loads(cached_session["prepared_prompt"])
-                context_prompt_data = prompt_data.get("system_prompt", "")
-                base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
-                sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
                 user_p = prompt_data.get("user_prompt", "")
-                if user_p:
-                    if payload.question and payload.question not in user_p:
-                        # User explicitly asked a different question; trigger clean database context rebuild
-                        context_prompt = None
-                    else:
-                        context_prompt = user_p
-                    logger.info(f"Loaded prepared prompt from cache for session {payload.session_id}")
+                # Only use cached prompt if the current question is actually inside it
+                question_in_cache = latest_question and len(latest_question) > 5 and latest_question.lower()[:40] in user_p.lower()
+                if user_p and question_in_cache:
+                    context_prompt_data = prompt_data.get("system_prompt", "")
+                    base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
+                    sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
+                    context_prompt = user_p
+                    logger.info(f"Loaded matching prepared prompt from cache for session {payload.session_id}")
+                else:
+                    logger.info(f"Prepared prompt is stale/mismatched — rebuilding from DB for: {latest_question[:60]}")
         except Exception as e:
             logger.warning(f"Error loading prepared prompt from Redis: {e}")
 
@@ -345,18 +389,16 @@ async def generate_answer(
         base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
         sys_prompt = (
             f"{base_prompt}\n\n"
-            "You are a grammar and spoken flow polisher. You will receive a pre-written candidate introduction. "
-            "Your job is to polish the grammar, readability, and natural spoken flow of this introduction to make it sound perfect and professional for an interview. "
-            "The polished introduction MUST be based strictly and exclusively on the pre-written introduction from the candidate's resume. Do NOT adapt the introduction to match the job role, job description, or company name from the interview context. Focus solely on what is documented in the resume. "
-            "Keep all original facts, dates, technologies, and achievements exactly as they are. "
-            "Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or add any AI-like preambles or greetings. "
-            "Do NOT copy or repeat any leading greetings, preambles, or conversational prefixes from the input introduction text (e.g., if the input text starts with 'Certainly.', 'Sure.', or 'Of course.', you must remove them and start directly). "
-            "Replace any placeholders like '[Your Name]' or '[Company]' with actual details if known from context, or rewrite/omit them to start naturally (e.g., 'I am a software engineer...'). "
-            "You MUST respond with a valid JSON object matching this schema:\n"
-            "{\n"
-            "  \"question\": \"The cleaned up latest question\",\n"
-            "  \"answer\": \"Your polished introduction text only\"\n"
-            "}"
+            "SPECIAL TASK: You are a spoken introduction polisher.\n"
+            "You will receive a pre-written candidate introduction below.\n"
+            "Your ONLY job is to polish the grammar, readability, and natural spoken flow so it sounds perfect for a 3-minute verbal interview delivery.\n"
+            "Rules:\n"
+            "- Keep ALL original facts, dates, technologies, company names, and achievements exactly as they are.\n"
+            "- Do NOT add, invent, or remove any facts.\n"
+            "- Do NOT adapt content to match the job role or company from context.\n"
+            "- Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or any AI preamble.\n"
+            "- Start directly with 'I am...' or similar — no greeting.\n"
+            "- Return ONLY valid JSON: {\"question\": \"<cleaned question>\", \"answer\": \"<polished introduction>\"}"
         )
         context_prompt = f"Pre-written Introduction:\n{stored_introduction}"
 
@@ -417,10 +459,12 @@ async def generate_answer(
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
             if cached_session:
                 prev_ctx = cached_session.get("previous_context", "")
-                new_entry = f"Q: {question}\nA: {answer}"
+                # Truncate answer to 150 chars so stale long answers don't pollute future context
+                answer_snippet = answer[:150] + "..." if len(answer) > 150 else answer
+                new_entry = f"Q: {question}\nA: {answer_snippet}"
                 if prev_ctx and prev_ctx != "None.":
                     parts = [p.strip() for p in prev_ctx.split("Q: ") if p.strip()]
-                    parts.append(f"{question}\nA: {answer}")
+                    parts.append(f"{question}\nA: {answer_snippet}")
                     cached_session["previous_context"] = "\n".join([f"Q: {p}" for p in parts[-2:]])
                 else:
                     cached_session["previous_context"] = new_entry
@@ -455,8 +499,14 @@ async def generate_answer_stream(
         except Exception:
             pass
 
-    latest_question = payload.question or payload.transcript or ""
-    # Use transcript/question directly without LLM pre-processing/extraction
+    raw_transcript = payload.transcript or ""
+    # For transcript mode, extract just the actual question from the full noisy transcript
+    if payload.question:
+        latest_question = payload.question
+    elif raw_transcript:
+        latest_question = extract_question_from_transcript(raw_transcript)
+    else:
+        latest_question = ""
 
 
     # Detect if this is an HR, Coding, or Interview session category or question
@@ -483,27 +533,27 @@ async def generate_answer_stream(
         )
     context_prompt = None
     
-    if payload.session_id:
+    if payload.session_id and payload.source_type != "transcript":
         try:
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
             if cached_session and "prepared_prompt" in cached_session:
                 prompt_data = json.loads(cached_session["prepared_prompt"])
-                context_prompt_data = prompt_data.get("system_prompt", "")
-                base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
-                sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
                 user_p = prompt_data.get("user_prompt", "")
-                if user_p:
-                    if payload.question and payload.question not in user_p:
-                        # User explicitly asked a different question; trigger clean database context rebuild
-                        context_prompt = None
-                    else:
-                        if prompt_type == "coding":
-                            user_p = user_p.replace(
-                                "Provide your verbal guidance or response based on the candidate's context.",
-                                "Provide the fully implemented optimized code block inside the response as specified in the coding round prompt."
-                            )
-                        context_prompt = user_p
-                    logger.info(f"Loaded prepared prompt from cache for session {payload.session_id}")
+                # Only use cached prompt if the current question is actually inside it
+                question_in_cache = latest_question and len(latest_question) > 5 and latest_question.lower()[:40] in user_p.lower()
+                if user_p and question_in_cache:
+                    context_prompt_data = prompt_data.get("system_prompt", "")
+                    base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
+                    sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
+                    if prompt_type == "coding":
+                        user_p = user_p.replace(
+                            "Provide your verbal guidance or response based on the candidate's context.",
+                            "Provide the fully implemented optimized code block inside the response as specified in the coding round prompt."
+                        )
+                    context_prompt = user_p
+                    logger.info(f"Loaded matching prepared prompt from cache for session {payload.session_id}")
+                else:
+                    logger.info(f"Prepared prompt is stale/mismatched — rebuilding from DB for: {latest_question[:60]}")
         except Exception as e:
             logger.warning(f"Error loading prepared prompt from Redis: {e}")
 
@@ -570,37 +620,32 @@ async def generate_answer_stream(
             logger.info("Found stored introduction for question: " + latest_question)
 
     if stored_introduction:
-        base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
+        # Stream endpoint: use plain text output (no JSON) to avoid contradictory instructions
         sys_prompt = (
-            f"{base_prompt}\n\n"
-            "You are a grammar and spoken flow polisher. You will receive a pre-written candidate introduction. "
-            "Your job is to polish the grammar, readability, and natural spoken flow of this introduction to make it sound perfect and professional for an interview, while adhering strictly to the role and tone guidelines above. "
-            "The polished introduction MUST be based strictly and exclusively on the pre-written introduction from the candidate's resume. Do NOT adapt the introduction to match the job role, job description, or company name from the interview context. Focus solely on what is documented in the resume. "
-            "Keep all original facts, dates, technologies, and achievements exactly as they are. "
-            "Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or add any AI-like preambles or greetings. "
-            "Do NOT copy or repeat any leading greetings, preambles, or conversational prefixes from the input introduction text (e.g., if the input text starts with 'Certainly.', 'Sure.', or 'Of course.', you must remove them and start directly). "
-            "Replace any placeholders like '[Your Name]' or '[Company]' with actual details if known from context, or rewrite/omit them to start naturally (e.g., 'I am a software engineer...'). "
-            "You MUST respond with a valid JSON object matching this schema:\n"
-            "{\n"
-            "  \"question\": \"The cleaned up latest question\",\n"
-            "  \"answer\": \"Your polished introduction text only\"\n"
-            "}"
+            "SPECIAL TASK — Introduction Polisher.\n"
+            "You will receive a pre-written candidate introduction.\n"
+            "Your ONLY job: polish the grammar, readability, and natural spoken flow so it sounds perfect and highly professional for a 3-minute verbal interview delivery.\n\n"
+            "STRICT RULES:\n"
+            "- Keep ALL original facts, dates, technologies, company names, and achievements exactly as-is.\n"
+            "- Do NOT add, invent, or remove any facts.\n"
+            "- Do NOT reference the job role, company, or JD context — only use what is in the introduction.\n"
+            "- Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or any AI filler.\n"
+            "- Start directly with 'I am...' or 'My name is...' — no greeting, no preamble.\n"
+            "- Write in a warm, confident, natural speaking voice — like a real person, not a report.\n\n"
+            "OUTPUT: Return ONLY the polished spoken introduction as plain text. No JSON. No markdown. No labels."
         )
-        context_prompt = f"Pre-written Introduction:\n{stored_introduction}"
+        context_prompt = f"Pre-written Introduction to polish:\n\n{stored_introduction}"
 
     # 2. Return StreamingResponse
     # --- DEBUG: log what we actually send to the model ---
-    if payload.source_type != "screenshot":
-        # Modify the prompt to return plain text directly (not wrapped in JSON) for extreme speed/latency
-        sys_prompt = sys_prompt.replace(
-            "OUTPUT FORMAT:\nReturn ONLY valid JSON with exactly two keys.\n{\n  \"question\": \"<the interviewer's question, cleaned up>\",\n  \"answer\": \"<your spoken answer — plain text, no markdown, no bullets, no asterisks>\"\n}",
-            "OUTPUT FORMAT:\nOutput ONLY the candidate's spoken response directly as plain text. Do NOT wrap it in JSON, markdown, or any formatting."
-        ).replace(
-            "Return ONLY valid JSON with exactly two keys.",
-            "Output ONLY the candidate's spoken response directly as plain text. Do NOT wrap it in JSON, markdown, or any formatting."
-        ).replace(
-            "Return ONLY valid JSON.",
-            "Output ONLY the candidate's spoken response directly as plain text. Do NOT wrap it in JSON, markdown, or any formatting."
+    if payload.source_type != "screenshot" and not stored_introduction:
+        import re as _re
+        # Strip any remaining JSON output instruction (fragile string matching replaced by regex)
+        sys_prompt = _re.sub(
+            r'OUTPUT FORMAT:.*',
+            'OUTPUT FORMAT:\nOutput ONLY the candidate\'s spoken response directly as plain text. Do NOT wrap it in JSON, markdown, or any other formatting. Just speak.',
+            sys_prompt,
+            flags=_re.DOTALL
         )
 
     _source_stream = payload.source_type if payload.source_type in ("manual", "transcript", "screenshot") else ("manual" if payload.question else "transcript")
@@ -668,10 +713,12 @@ async def generate_answer_stream(
                         cached_session = await redis_cache.get_session_state(str(payload.session_id))
                         if cached_session:
                             prev_ctx = cached_session.get("previous_context", "")
-                            new_entry = f"Q: {question}\nA: {answer}"
+                            # Truncate answer to 150 chars so stale long answers don't pollute future context
+                            answer_snippet = answer[:150] + "..." if len(answer) > 150 else answer
+                            new_entry = f"Q: {question}\nA: {answer_snippet}"
                             if prev_ctx and prev_ctx != "None.":
                                 parts = [p.strip() for p in prev_ctx.split("Q: ") if p.strip()]
-                                parts.append(f"{question}\nA: {answer}")
+                                parts.append(f"{question}\nA: {answer_snippet}")
                                 cached_session["previous_context"] = "\n".join([f"Q: {p}" for p in parts[-2:]])
                             else:
                                 cached_session["previous_context"] = new_entry
@@ -731,13 +778,16 @@ async def score_resume_transcript(payload: ScoreResumeRequest):
 
         prompt = f"""
 Analyze the candidate's Resume against the Target Job/Role details.
-Rate the suitability and match strength from 0 to 100.
+Rate the suitability and match strength from 0 to 100 based on specific criteria.
 
 Rules for Scoring:
-- The current date is {current_date_str} (Year: {current_year}). Calculate all years of experience relative to this date. All experiences and dates listed on the resume up to and including the current date are fully valid and acceptable as professional experience.
+- Compare the technical stack, programming languages, frameworks, databases, and tools in the candidate's resume to the job description.
+- Calculate the percentage of required skills and years of experience that the candidate possesses.
+- Award points based on role relevancy and past projects matching the target job description.
+- The current date is {current_date_str} (Year: {current_year}). Calculate all years of experience relative to this date.
 - Do NOT penalize the candidate or lower the score because a job has ended in the past, or because its dates are below the current date/month/year. All historical experience listed counts fully towards their experience match.
 - If the candidate meets the core technical requirements (e.g., Java, Spring Boot, etc. for a Java Developer role), grade them highly.
-- You must respond with ONLY a single integer score between 0 and 100 (e.g. '85'). Do NOT include any other text, reasoning, markdown or explanation.
+- You must respond with ONLY a single integer score between 0 and 100 based on your calculation. Do NOT include any other text, reasoning, markdown or explanation.
 
 {jd_info}
 

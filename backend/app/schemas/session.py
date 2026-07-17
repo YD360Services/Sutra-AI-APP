@@ -16,6 +16,9 @@ class SessionUpdate(BaseModel):
     session_name: Optional[str] = None
     summary: Optional[str] = None
     duration_seconds: Optional[int] = None
+    company_name: Optional[str] = None
+    role_name: Optional[str] = None
+    job_description_id: Optional[uuid.UUID] = None
 
 class SessionResponse(BaseModel):
     id: uuid.UUID

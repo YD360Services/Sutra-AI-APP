@@ -17,18 +17,20 @@ except ImportError:
 from app.db.database import get_db
 from app.db.repositories import ResumeRepository
 from app.schemas.resume import ResumeCreate, ResumeResponse
+from app.core.user_utils import normalize_user_id
 
 router = APIRouter()
 
 @router.post("/resumes", response_model=ResumeResponse)
 async def upload_resume(
     payload: ResumeCreate,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = ResumeRepository(db)
     resume = await repo.create(
-        user_id=user_id,
+        user_id=normalized_user_id,
         file_name=payload.file_name,
         parsed_content=payload.parsed_content
     )
@@ -55,9 +57,10 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 @router.post("/resumes/upload", response_model=ResumeResponse)
 async def upload_resume_file(
     file: UploadFile = File(...),
-    user_id: Optional[uuid.UUID] = Form(None),
+    user_id: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     file_bytes = await file.read()
     file_name = file.filename or "resume.pdf"
     
@@ -87,7 +90,7 @@ async def upload_resume_file(
 
     repo = ResumeRepository(db)
     resume = await repo.create(
-        user_id=user_id,
+        user_id=normalized_user_id,
         file_name=file_name,
         parsed_content=parsed_content
     )
@@ -103,17 +106,18 @@ async def upload_resume_file(
 
 @router.get("/resumes", response_model=List[ResumeResponse])
 async def list_resumes(
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = ResumeRepository(db)
-    resumes = await repo.list_by_user(user_id=user_id)
+    resumes = await repo.list_by_user(user_id=normalized_user_id)
     return resumes
 
 @router.patch("/resumes/{resume_id}/activate", response_model=ResumeResponse)
 async def activate_resume(
     resume_id: uuid.UUID,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     repo = ResumeRepository(db)

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -170,7 +170,14 @@ function loadSavedBounds() {
     try {
       const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       if (data && typeof data.x === 'number' && typeof data.y === 'number') {
-        const rect = { x: data.x, y: data.y, width: data.width || 850, height: data.height || 56 };
+        let width = data.width || 600;
+        let height = data.height || 56;
+        
+        // Sanitize bounds to prevent vertical stick glitches
+        if (width < 300) width = 600;
+        if (height < 40) height = 56;
+        
+        const rect = { x: data.x, y: data.y, width, height };
         const displays = screen.getAllDisplays();
         const isVisible = displays.some(display => {
           const bounds = display.bounds;
@@ -221,10 +228,11 @@ function createWindow() {
   }
 
   // Always boot directly in setup wizard configuration dimensions
-  const winWidth = 500;
-  const winHeight = 530;
+  const winWidth = 600;
+  const winHeight = 580;
 
   mainWindow = new BrowserWindow({
+    title: "Brazilian Space",
     width: winWidth,
     height: winHeight,
     frame: false,
@@ -232,6 +240,7 @@ function createWindow() {
     alwaysOnTop: true,
     resizable: true,
     skipTaskbar: true,
+    type: 'toolbar',
     minWidth: 0,
     minHeight: 0,
     webPreferences: {
@@ -610,10 +619,11 @@ function createWindow() {
         } catch (e) { }
       }
 
+      const newTranscript = (full_transcript && typeof last_offset === 'number') ? full_transcript.slice(last_offset).trim() : (full_transcript || '');
       const payload = {
         session_id: token || null,
         question: manual_question || null,
-        transcript: full_transcript || null,
+        transcript: newTranscript || null,
         source_type: manual_question ? 'manual' : 'transcript',
         resume_content: resume || null,
         knowledge_content: jd || null,
@@ -666,10 +676,11 @@ function createWindow() {
         knowledgeContent = jd || '';
       }
 
+      const newTranscript = (full_transcript && typeof last_offset === 'number') ? full_transcript.slice(last_offset).trim() : (full_transcript || '');
       const payload = {
         session_id: token || null,
         question: manual_question || null,
-        transcript: full_transcript || null,
+        transcript: newTranscript || null,
         source_type: manual_question ? 'manual' : 'transcript',
         resume_content: resume_id || resume || null,
         knowledge_content: knowledgeContent || null,
@@ -802,14 +813,14 @@ function createWindow() {
       let x = bounds.x;
       let y = bounds.y;
       
-      if (height === 530) {
+      if (height === 580) {
         isToolbarMode = false;
       } else {
         isToolbarMode = true;
       }
 
       if (reposition) {
-        if (height !== 530) {
+        if (height !== 580) {
           const savedBounds = loadSavedBounds();
           if (savedBounds) {
             win.setBounds({
@@ -840,7 +851,15 @@ function createWindow() {
         }
       } else {
         if (position === 'bottom') {
+          x = bounds.x + Math.round((bounds.width - width) / 2);
           y = bounds.y + (bounds.height - height);
+        } else if (position === 'top') {
+          x = bounds.x + Math.round((bounds.width - width) / 2);
+        } else if (position === 'left') {
+          y = bounds.y + Math.round((bounds.height - height) / 2);
+        } else if (position === 'right') {
+          x = bounds.x + (bounds.width - width);
+          y = bounds.y + Math.round((bounds.height - height) / 2);
         }
       }
 
@@ -910,26 +929,18 @@ function createWindow() {
 
   // Handle app minimize / close
   ipcMain.on('close-app', async () => {
-    await autoSaveActiveSession();
     try {
-      exec('taskkill /f /im electron.exe', () => {
-        app.quit();
-      });
-    } catch (e) {
-      app.quit();
-    }
+      await autoSaveActiveSession();
+    } catch (e) {}
+    app.exit(0);
   });
 
   // Kill entire Electron process (used by setup-view close button)
   ipcMain.on('quit-app', async () => {
-    await autoSaveActiveSession();
     try {
-      exec('taskkill /f /im electron.exe', () => {
-        app.exit(0);
-      });
-    } catch (e) {
-      app.exit(0);
-    }
+      await autoSaveActiveSession();
+    } catch (e) {}
+    app.exit(0);
   });
 
   ipcMain.on('minimize-app', () => {
@@ -984,7 +995,7 @@ function triggerLaunchToolbar() {
     } else {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
-      const winWidth = 850;
+      const winWidth = 600;
       const winHeight = 56;
       const x = Math.round((screenWidth - winWidth) / 2) + screenX;
       mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
@@ -1021,10 +1032,10 @@ const server = http.createServer((req, res) => {
   const parsedUrl = require('url').parse(req.url, true);
 
   if (parsedUrl.pathname === '/auth-callback') {
-    const { email, token } = parsedUrl.query;
+    const { email, token, user_id } = parsedUrl.query;
     if (email && token) {
       if (mainWindow) {
-        mainWindow.webContents.send('sync-credentials', { email, token });
+        mainWindow.webContents.send('sync-credentials', { email, token, user_id });
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true }));

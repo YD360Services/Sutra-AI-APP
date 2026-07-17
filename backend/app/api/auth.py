@@ -92,14 +92,17 @@ async def google_auth(
             # Commit handled by the async session dependency or save manually
             await db.commit()
     
-    # Generate a new unique login token for this session
-    login_token = str(uuid.uuid4())
+    # Check if a valid token is already active in Redis to support simultaneous desktop/web logins on the same device
     user_key = f"active_login:{str(user.id)}"
+    existing_token = await redis_cache.get_cached_item(user_key)
     
-    # Store in local fallback AND redis — overwrites any previous login token
-    await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)  # 24 h
-    
-    logger.info(f"New login token issued for user {user.email}: {login_token}")
+    if existing_token:
+        login_token = existing_token
+        logger.info(f"Reusing existing login token for user {user.email}: {login_token}")
+    else:
+        login_token = str(uuid.uuid4())
+        await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)  # 24 h
+        logger.info(f"New login token issued for user {user.email}: {login_token}")
     
     return {
         "id": user.id,

@@ -7,6 +7,7 @@ import json
 from app.db.database import get_db
 from app.db.repositories import KnowledgeRepository
 from app.schemas.knowledge import KnowledgeCreate, KnowledgeResponse
+from app.core.user_utils import normalize_user_id
 
 router = APIRouter()
 
@@ -14,12 +15,13 @@ router = APIRouter()
 @router.post("/knowledge", response_model=KnowledgeResponse)
 async def create_knowledge(
     payload: KnowledgeCreate,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = KnowledgeRepository(db)
     doc = await repo.create(
-        user_id=user_id,
+        user_id=normalized_user_id,
         name=payload.document_name,
         doc_type=payload.document_type,
         content=payload.content
@@ -38,11 +40,12 @@ async def create_knowledge(
 
 @router.get("/knowledge", response_model=List[KnowledgeResponse])
 async def list_knowledge(
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = KnowledgeRepository(db)
-    docs = await repo.list_by_user(user_id=user_id)
+    docs = await repo.list_by_user(user_id=normalized_user_id)
     return docs
 
 @router.delete("/knowledge/{document_id}")
@@ -63,9 +66,10 @@ async def delete_knowledge(
 async def upload_knowledge_file(
     file: UploadFile = File(...),
     document_type: str = Form("document"),  # "document" or "prompt"
-    user_id: Optional[uuid.UUID] = Form(None),
+    user_id: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     file_bytes = await file.read()
     file_name = file.filename or "document.txt"
     
@@ -97,7 +101,7 @@ async def upload_knowledge_file(
 
     repo = KnowledgeRepository(db)
     doc = await repo.create(
-        user_id=user_id,
+        user_id=normalized_user_id,
         name=file_name,
         doc_type=document_type,
         content=parsed_content

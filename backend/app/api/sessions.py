@@ -63,6 +63,58 @@ async def update_session(
 ):
     repo = SessionRepository(db)
     update_data = payload.dict(exclude_unset=True)
+    
+    # Generate summary & save transcripts if completing the session
+    if payload.status == "completed":
+        try:
+            from app.cache.redis import redis_cache
+            from app.db.repositories import TranscriptRepository
+            
+            # 1. Retrieve full transcript text from Redis cache
+            redis_transcript = await redis_cache.get_transcript(str(session_id))
+            if redis_transcript and redis_transcript.strip():
+                # 2. Save the transcript as a block in the PostgreSQL database
+                t_repo = TranscriptRepository(db)
+                await t_repo.create(
+                    session_id=session_id,
+                    speaker="interview",
+                    content=redis_transcript,
+                    source="websocket"
+                )
+                
+                # 3. Generate a session summary with the LLM API
+                try:
+                    from app.services.ai_service import call_llm
+                    db_session = await repo.get_by_id(session_id)
+                    company = db_session.company_name if db_session else "Unknown"
+                    role = db_session.role_name if db_session else "Unknown"
+                    
+                    summary_prompt = f"""
+Analyze the following transcript of an interview prep session for a {role} position at {company}.
+Create a professional, highly readable summary of the session.
+Focus on:
+- Key questions and topics discussed (e.g. databases, system design, coding questions).
+- Technologies mentioned.
+- Areas of strength and areas needing improvement.
+
+Transcript:
+{redis_transcript}
+"""
+                    system_prompt = "You are an expert technical interviewer. Generate a concise, clear, bulleted summary of the interview prep session."
+                    summary_text = await call_llm(
+                        prompt=summary_prompt,
+                        system_prompt=system_prompt,
+                        temperature=0.3
+                    )
+                    if summary_text:
+                        update_data["summary"] = summary_text
+                except Exception as ai_err:
+                    import logging
+                    logging.getLogger("copilotx.sessions").warning(f"Failed to generate AI session summary: {ai_err}")
+        except Exception as e:
+            import logging
+            logging.getLogger("copilotx.sessions").error(f"Failed during session completion pipeline: {e}")
+
     session = await repo.update(session_id, **update_data)
     if not session:
       raise HTTPException(
