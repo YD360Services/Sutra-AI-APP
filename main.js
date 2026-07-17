@@ -851,15 +851,13 @@ function createWindow() {
         }
       } else {
         if (position === 'bottom') {
-          x = bounds.x + Math.round((bounds.width - width) / 2);
           y = bounds.y + (bounds.height - height);
         } else if (position === 'top') {
-          x = bounds.x + Math.round((bounds.width - width) / 2);
+          // X and Y stay locked to bounds.x and bounds.y
         } else if (position === 'left') {
-          y = bounds.y + Math.round((bounds.height - height) / 2);
+          // X and Y stay locked to bounds.x and bounds.y
         } else if (position === 'right') {
           x = bounds.x + (bounds.width - width);
-          y = bounds.y + Math.round((bounds.height - height) / 2);
         }
       }
 

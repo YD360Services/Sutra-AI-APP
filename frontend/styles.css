@@ -57,9 +57,14 @@ body {
 
 /* Glass Toolbar Styling */
 .toolbar-wrapper {
-  position: relative;
-  width: 600px !important;
-  max-width: 600px !important;
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  margin-left: auto;
+  margin-right: auto;
+  width: 620px !important;
+  max-width: 620px !important;
   box-sizing: border-box;
   height: 48px;
   background: var(--bg-toolbar);
@@ -67,15 +72,14 @@ body {
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  margin-top: 4px;
-  margin-bottom: 4px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 16px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  padding: 0 6px 0 12px;
   z-index: 100;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.05);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
   -webkit-app-region: no-drag;
   cursor: default;
 }
@@ -231,7 +235,7 @@ body {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  margin-top: 6px;
+  margin-top: 56px;
   display: none; /* Controlled by JS resizing */
   flex-direction: column;
   background: var(--bg-panel);

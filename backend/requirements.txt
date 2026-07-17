@@ -5,6 +5,7 @@ python-multipart
 websockets
 python-dotenv
 pydantic
+email-validator
 google-genai
 pydantic-settings
 sqlalchemy>=2.0.0

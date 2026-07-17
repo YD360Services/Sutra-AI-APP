@@ -27,7 +27,7 @@ const copyCodeBtn = document.getElementById('copy-code-btn');
 const codeScreenshotBtn = document.getElementById('code-screenshot-btn');
 
 // Size Definitions
-const WIDTH = 600;
+const WIDTH = 640;
 const COLLAPSED_HEIGHT = 56;
 const EXPANDED_HEIGHT = 664; // Toolbar 48px + margin 8px + panels 600px + padding/buffer = 664px
 const MAX_HEIGHT = 1500; // Hard cap — never exceeded
@@ -39,8 +39,6 @@ let currentHeight = EXPANDED_HEIGHT;
 // resizes don't accidentally clear each other's guards.
 let pendingProgrammaticResizes = 0;
 let isDraggingWindow = false;
-
-
 
 // Active state tracking
 let activeTab = null; // 'ai', 'code', or null
@@ -1531,7 +1529,7 @@ window.addEventListener('pointermove', (e) => {
       dxSigned = -dx;
     }
 
-    const newWidth = Math.max(400, Math.min(1200, startWidth + dxSigned));
+    const newWidth = Math.max(640, Math.min(1200, startWidth + dxSigned));
     const newHeight = Math.max(300, Math.min(MAX_HEIGHT, startHeight + dySigned));
 
     currentWidth = newWidth;
@@ -3261,7 +3259,11 @@ async function loadAllSettings() {
     const val = parseFloat(savedZoom);
     if (zoomSlider) zoomSlider.value = savedZoom;
     if (zoomDisplay) zoomDisplay.textContent = Math.round(val * 100) + '%';
-    document.body.style.zoom = val;
+    document.body.style.zoom = '1.0';
+  }
+  
+  if (window.electronAPI && window.electronAPI.setZoomFactor) {
+    window.electronAPI.setZoomFactor(1.0);
   }
 }
 
@@ -3747,6 +3749,34 @@ function toggleStealthTooltips(stealthActive) {
 
 // Key listener to temporarily toggle/disable stealth hover-hide behavior
 window.addEventListener('keydown', (e) => {
+  // Intercept Chromium native zoom and map to custom stealth_font_size
+  if (e.ctrlKey) {
+    if (e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      if (window.electronAPI && window.electronAPI.setZoomFactor) window.electronAPI.setZoomFactor(1.0);
+      document.body.style.zoom = '1.0'; // reset any remaining zoom
+      let currentFont = parseFloat(safeGetItem('stealth_font_size') || '12.5');
+      applyFontSize(currentFont - 1.0);
+      if (typeof updateWindowSize === 'function') updateWindowSize();
+      return;
+    } else if (e.key === '=' || e.key === '+') {
+      e.preventDefault();
+      if (window.electronAPI && window.electronAPI.setZoomFactor) window.electronAPI.setZoomFactor(1.0);
+      document.body.style.zoom = '1.0';
+      let currentFont = parseFloat(safeGetItem('stealth_font_size') || '12.5');
+      applyFontSize(currentFont + 1.0);
+      if (typeof updateWindowSize === 'function') updateWindowSize();
+      return;
+    } else if (e.key === '0') {
+      e.preventDefault();
+      if (window.electronAPI && window.electronAPI.setZoomFactor) window.electronAPI.setZoomFactor(1.0);
+      document.body.style.zoom = '1.0';
+      applyFontSize(12.5); // Default font size
+      if (typeof updateWindowSize === 'function') updateWindowSize();
+      return;
+    }
+  }
+
   // Load and process dynamic shortcuts
   const checkShortcut = (action, e) => {
     const config = window.appShortcuts && window.appShortcuts[action];
