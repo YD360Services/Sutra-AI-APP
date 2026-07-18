@@ -514,7 +514,11 @@ async function loadRecentSessions() {
           const rawText = timeline.map(b => {
             const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
             if (b.type === 'audio') {
-              const speakerLabel = b.speaker === 'interviewer' ? 'Interviewer' : 'You';
+              let speakerLabel;
+              if (b.speaker === 'interviewer') speakerLabel = 'Interviewer';
+              else if (b.speaker === 'you') speakerLabel = 'You';
+              else if (b.speaker === 'full_session') speakerLabel = 'Full Session Transcript';
+              else speakerLabel = 'Audio'; // 'system', 'mixed_audio', etc.
               return `[${timeStr}] ${speakerLabel}\n${b.content}`;
             } else {
               return `[${timeStr}] AI\n💬 **Question**: ${b.question}\n\n---\n\n⭐️ **Answer**:  \n${b.answer}`;
@@ -1205,17 +1209,21 @@ const sessionTimerElement = document.getElementById('session-timer');
 function startSessionTimer() {
   if (sessionTimerInterval) clearInterval(sessionTimerInterval);
   sessionSecondsElapsed = 0;
+  const stopBtnTimer = document.getElementById('stop-btn-timer');
   if (sessionTimerElement) {
     sessionTimerElement.textContent = '00:00';
-    sessionTimerElement.style.display = 'inline-block';
+    // kept hidden — stop button shows the time now
   }
+  if (stopBtnTimer) stopBtnTimer.textContent = '00:00';
+
   sessionTimerInterval = setInterval(() => {
     sessionSecondsElapsed++;
     const m = Math.floor(sessionSecondsElapsed / 60).toString().padStart(2, '0');
     const s = (sessionSecondsElapsed % 60).toString().padStart(2, '0');
-    if (sessionTimerElement) {
-      sessionTimerElement.textContent = `${m}:${s}`;
-    }
+    const timeStr = `${m}:${s}`;
+    if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
+    const stopBtnTimer = document.getElementById('stop-btn-timer');
+    if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
   }, 1000);
 }
 
@@ -1225,9 +1233,9 @@ function stopSessionTimer() {
     sessionTimerInterval = null;
   }
   sessionSecondsElapsed = 0;
-  if (sessionTimerElement) {
-    sessionTimerElement.style.display = 'none';
-  }
+  if (sessionTimerElement) sessionTimerElement.style.display = 'none';
+  const stopBtnTimer = document.getElementById('stop-btn-timer');
+  if (stopBtnTimer) stopBtnTimer.textContent = '00:00';
 }
 
 // Start session button event handler
@@ -1437,6 +1445,13 @@ stopSessionBtn.addEventListener('click', async () => {
   // Clear live transcript state
   accumulatedTranscript = '';
   lastAnswerOffset = 0;
+
+  // Clear transcript chunk buffer and cancel any pending flush timer
+  if (transcriptFlushTimer) {
+    clearTimeout(transcriptFlushTimer);
+    transcriptFlushTimer = null;
+  }
+  transcriptChunkBuffer = '';
 
   // Reset step wizard back to Step 1
   currentStep = 1;
@@ -1816,6 +1831,31 @@ let systemSourceNode = null;
 let audioCtx = null;
 let audioDestNode = null;
 
+// ── Transcript Buffering ─────────────────────────────────────────────────────
+// Accumulate is_final chunks and only flush to the backend as a meaningful block
+// after a silence gap (TRANSCRIPT_FLUSH_SILENCE_MS) or when enough words pile up.
+const TRANSCRIPT_FLUSH_SILENCE_MS = 8000; // 8 s of no new speech → flush
+const TRANSCRIPT_FLUSH_WORD_THRESHOLD = 80; // flush early if buffer hits this many words
+let transcriptChunkBuffer = '';           // pending text not yet saved to backend
+let transcriptFlushTimer = null;          // setTimeout handle for silence-based flush
+
+// Flush the current buffer to the backend as one coherent block, then reset.
+function flushTranscriptBuffer() {
+  if (transcriptFlushTimer) {
+    clearTimeout(transcriptFlushTimer);
+    transcriptFlushTimer = null;
+  }
+  const content = transcriptChunkBuffer.trim();
+  transcriptChunkBuffer = '';
+  if (!content || !sessionToken || !shouldSaveTranscript) return;
+  window.electronAPI.saveTranscriptBlock(sessionToken, {
+    speaker: 'system',
+    content: content,
+    source: 'mixed_audio'
+  }).catch(e => console.warn('[Save Transcript] Buffered backend save failed:', e.message));
+  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words to backend.`);
+}
+
 // New Mic Button elements
 const micBtnAi = document.getElementById('mic-btn-ai');
 const micText = document.getElementById('mic-text');
@@ -1911,13 +1951,19 @@ async function toggleSource(source) {
                 const updatedBuffer = existingBuffer ? existingBuffer + ' ' + transcript : transcript;
                 safeSetItem('stealth_transcript_buffer', updatedBuffer);
 
-                // Also save to backend if connected
+                // Accumulate in the backend buffer (do NOT save individual tiny chunks)
                 if (sessionToken) {
-                  window.electronAPI.saveTranscriptBlock(sessionToken, {
-                    speaker: 'system',
-                    content: transcript,
-                    source: 'mixed_audio'
-                  }).catch(e => console.warn('[Save Transcript] Backend save failed (buffered locally):', e.message));
+                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + transcript;
+
+                  // Reset the silence timer on every new final chunk
+                  if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
+                  transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+
+                  // If buffer is already large enough, flush immediately
+                  const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
+                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) {
+                    flushTranscriptBuffer();
+                  }
                 }
               }
 
@@ -3503,11 +3549,17 @@ const settingsLogoutBtn = document.getElementById('settings-logout-btn');
 if (settingsLogoutBtn) {
   settingsLogoutBtn.addEventListener('click', () => {
     const popup = document.getElementById('settings-popup');
-    if (popup) {
-      popup.style.display = 'none';
-    }
+    if (popup) popup.style.display = 'none';
     updateWindowSize();
-    logoutLocalUser();
+
+    const sessionActive = document.body.classList.contains('stealth-active');
+    if (sessionActive) {
+      // During a live session → behave exactly like End Session button
+      if (stopSessionBtn) stopSessionBtn.click();
+    } else {
+      // Outside a session → normal logout
+      logoutLocalUser();
+    }
   });
 }
 

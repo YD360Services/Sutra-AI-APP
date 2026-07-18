@@ -230,6 +230,89 @@ body {
   transform: scale(1.15);
 }
 
+/* ── Ctrl-btn hover chip labels — float BELOW each icon button ─────────────── */
+/* Requires toolbar-wrapper overflow:visible so chips can escape the bar */
+.ctrl-btn {
+  position: relative; /* anchor for the ::after chip */
+}
+
+.ctrl-btn[data-label]::after {
+  content: attr(data-label);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: rgba(15, 15, 25, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border-radius: 5px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 99999;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.ctrl-btn[data-label]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Allow the chips to escape the toolbar boundary */
+.toolbar-wrapper {
+  overflow: visible;
+}
+
+/* ── End Session — red pill that shows the live timer ──────────────────────── */
+.ctrl-btn-stop {
+  width: auto !important;
+  min-width: 24px;
+  padding: 0 10px !important;
+  gap: 6px;
+  height: 28px;
+}
+
+.ctrl-btn-danger {
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.55) !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.15);
+}
+
+.ctrl-btn-danger:hover {
+  color: #fff !important;
+  background: rgba(239, 68, 68, 0.3) !important;
+  border-color: rgba(239, 68, 68, 0.9) !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.45);
+  transform: scale(1.03);
+}
+
+/* Subtle pulse on the danger stop button while a session is live */
+@keyframes danger-pulse {
+  0%   { box-shadow: 0 0 4px rgba(239, 68, 68, 0.15); }
+  50%  { box-shadow: 0 0 10px rgba(239, 68, 68, 0.45); }
+  100% { box-shadow: 0 0 4px rgba(239, 68, 68, 0.15); }
+}
+
+body.stealth-active .ctrl-btn-danger {
+  animation: danger-pulse 2.5s infinite ease-in-out;
+}
+
+/* Danger chip label is wider — give it a red tint */
+.ctrl-btn-danger[data-label]::after {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.35);
+  background: rgba(40, 8, 8, 0.92);
+}
+
 /* Panels Panel Styling */
 .panels-container {
   width: 100%;
