@@ -79,9 +79,9 @@ class TranscriptBlock(Base):
     
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
-    speaker: Mapped[str] = mapped_column(String(100), nullable=False)  # 'interviewer' or 'you'
+    speaker: Mapped[str] = mapped_column(String(100), nullable=False)  # 'interviewer', 'you', 'system', 'full_session'
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    source: Mapped[str] = mapped_column(String(100), default="browser_audio")  # 'browser_audio', 'system_audio', 'manual'
+    source: Mapped[str] = mapped_column(String(100), default="browser_audio")  # 'browser_audio', 'system_audio', 'mixed_audio', 'manual', 'session_end_flush'
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     session: Mapped["Session"] = relationship("Session", back_populates="transcript_blocks")

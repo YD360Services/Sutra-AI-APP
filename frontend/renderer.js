@@ -55,7 +55,8 @@ let isStealthHoverEnabled = true;
 
 // ── Backend Session State ──────────────────────────────────────────────────────
 let backendUrl = '';       // set at startup — empty = offline mode
-let sessionToken = '';     // JWT from backend
+let sessionToken = '';     // session UUID (also used as token)
+let activeSessionId = '';  // session UUID — same as sessionToken, stored separately for clarity
 let lastAnswerOffset = 0;  // transcript cursor: char offset of last answered position
 
 // Cache storage for loaded resources
@@ -468,16 +469,26 @@ async function loadRecentSessions() {
             const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
 
             if (b.type === 'audio') {
-              const speakerLabel = b.speaker === 'interviewer' ? 'Interviewer' : 'You';
-              const speakerColor = b.speaker === 'interviewer' ? '#5eead4' : '#4ade80';
+              // Handle all speaker types
+              let speakerLabel, speakerColor, borderColor;
+              if (b.speaker === 'interviewer') {
+                speakerLabel = 'Interviewer'; speakerColor = '#5eead4'; borderColor = 'rgba(94,234,212,0.4)';
+              } else if (b.speaker === 'you') {
+                speakerLabel = 'You'; speakerColor = '#4ade80'; borderColor = 'rgba(74,222,128,0.4)';
+              } else if (b.speaker === 'full_session') {
+                speakerLabel = 'Full Session Transcript'; speakerColor = '#a78bfa'; borderColor = 'rgba(167,139,250,0.4)';
+              } else {
+                speakerLabel = 'Audio'; speakerColor = '#9ca3af'; borderColor = 'rgba(156,163,175,0.3)';
+              }
               return `
-                <div style="margin-bottom: 12px; padding: 6px 10px; background: rgba(255,255,255,0.02); border-left: 2px solid rgba(255,255,255,0.15); border-radius: 0 6px 6px 0;">
+                <div style="margin-bottom: 12px; padding: 6px 10px; background: rgba(255,255,255,0.02); border-left: 2px solid ${borderColor}; border-radius: 0 6px 6px 0;">
                   <div style="font-size: 9px; font-weight: 700; color: ${speakerColor}; margin-bottom: 2px;">
                     [${timeStr}] ${speakerLabel}
                   </div>
                   <div style="font-size: 10.5px; color: #e4e4e7; white-space: pre-wrap; line-height: 1.4;">${b.content}</div>
                 </div>
               `;
+
             } else {
               return `
                 <div style="margin-bottom: 16px; padding: 10px 12px; background: rgba(20, 184, 166, 0.05); border-left: 2px solid #14b8a6; border-radius: 0 8px 8px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
@@ -1280,7 +1291,11 @@ startSessionBtn.addEventListener('click', async () => {
       });
       if (session && session.token) {
         sessionToken = session.token;
-        console.log(`[Backend] Session created: ${session.session_id}`);
+        activeSessionId = session.session_id || session.token;
+        console.log(`[Backend] Session created: ${activeSessionId}`);
+        // Clear any stale localStorage transcript for this session
+        safeSetItem('stealth_transcript_buffer', '');
+        safeSetItem('stealth_transcript_session', activeSessionId);
       } else {
         console.warn('[Backend] Session creation failed — falling back to offline mode.');
         backendUrl = '';
@@ -1381,19 +1396,47 @@ stopSessionBtn.addEventListener('click', async () => {
   // Reset session & save ending duration/status to backend (non-blocking)
   if (sessionToken) {
     const tokenToReset = sessionToken;
+    const sessionToReset = activeSessionId;
     const seconds = sessionSecondsElapsed;
-    sessionToken = ''; // clear immediately
+    const finalTranscript = accumulatedTranscript.trim();
+    sessionToken = '';      // clear immediately
+    activeSessionId = '';   // clear immediately
 
     // Fire-and-forget backend updates so they don't block the UI transition
-    window.electronAPI.updateBackendSession(tokenToReset, {
-      status: 'completed',
-      duration_seconds: seconds
-    }).then(() => {
-      return window.electronAPI.resetSessionMemory(tokenToReset);
-    }).catch(e => {
-      console.error('[Stealth] Failed to complete session on backend:', e.message);
-    });
+    Promise.resolve()
+      .then(async () => {
+        // Flush the full accumulated transcript as one final block if we have content
+        if (finalTranscript && shouldSaveTranscript && sessionToReset) {
+          try {
+            await window.electronAPI.saveTranscriptBlock(sessionToReset, {
+              speaker: 'full_session',
+              content: finalTranscript,
+              source: 'session_end_flush'
+            });
+            console.log('[Transcript] Full session transcript flushed to backend.');
+          } catch (e) {
+            console.warn('[Transcript] Flush failed — transcript saved in localStorage:', e.message);
+          }
+        }
+        // Clear localStorage buffer after successful flush
+        safeSetItem('stealth_transcript_buffer', '');
+        safeSetItem('stealth_transcript_session', '');
+        return window.electronAPI.updateBackendSession(tokenToReset, {
+          status: 'completed',
+          duration_seconds: seconds
+        });
+      })
+      .then(() => window.electronAPI.resetSessionMemory(tokenToReset))
+      .catch(e => console.error('[Stealth] Failed to complete session on backend:', e.message));
+  } else {
+    // Even offline, clear localStorage buffer
+    safeSetItem('stealth_transcript_buffer', '');
+    safeSetItem('stealth_transcript_session', '');
   }
+
+  // Clear live transcript state
+  accumulatedTranscript = '';
+  lastAnswerOffset = 0;
 
   // Reset step wizard back to Step 1
   currentStep = 1;
@@ -1861,13 +1904,21 @@ async function toggleSource(source) {
               accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + transcript;
               transcriptBlock.textContent = accumulatedTranscript;
 
-              // Save transcript block to backend history database
-              if (sessionToken && shouldSaveTranscript) {
-                window.electronAPI.saveTranscriptBlock(sessionToken, {
-                  speaker: 'dialogue',
-                  content: transcript,
-                  source: 'mixed_audio'
-                }).catch(e => console.error('[Save Transcript] Failed:', e.message));
+              // Save transcript block to backend and localStorage
+              if (shouldSaveTranscript) {
+                // Always persist to localStorage as rolling buffer
+                const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
+                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + transcript : transcript;
+                safeSetItem('stealth_transcript_buffer', updatedBuffer);
+
+                // Also save to backend if connected
+                if (sessionToken) {
+                  window.electronAPI.saveTranscriptBlock(sessionToken, {
+                    speaker: 'system',
+                    content: transcript,
+                    source: 'mixed_audio'
+                  }).catch(e => console.warn('[Save Transcript] Backend save failed (buffered locally):', e.message));
+                }
               }
 
               // --- AUTO ANSWER LOGIC ---
