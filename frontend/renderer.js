@@ -1518,8 +1518,53 @@ let _lastClientY = 0;
  * @param {number} [clientY] - cursor Y in client coords (uses last known if omitted)
  */
 function updateClickThrough(clientX, clientY) {
-  // Always keep the window interactive and click-accepting
-  window.electronAPI.setIgnoreMouseEvents(false);
+  if (isDraggingWindow) return;
+  if (justExpanded) {
+    window.electronAPI.setIgnoreMouseEvents(false);
+    return;
+  }
+
+  const x = clientX !== undefined ? clientX : _lastClientX;
+  const y = clientY !== undefined ? clientY : _lastClientY;
+
+  // Check if over any explicit drag region using bounding client rect,
+  // since elements with -webkit-app-region: drag are ignored by elementFromPoint.
+  const dragHandles = [
+    document.getElementById('position-btn'),
+    document.getElementById('setup-position-btn'),
+    document.getElementById('recent-position-btn'),
+    document.getElementById('diamond-btn')
+  ];
+
+  let isOverDragHandle = false;
+  for (const btn of dragHandles) {
+    if (btn && btn.style.display !== 'none' && btn.offsetParent !== null) {
+      const rect = btn.getBoundingClientRect();
+      if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+        isOverDragHandle = true;
+        break;
+      }
+    }
+  }
+
+  const el = document.elementFromPoint(x, y);
+  const isInteractive = isOverDragHandle || (el && (
+    el.closest('.interactive') ||
+    el.closest('.setup-view-container') ||
+    el.closest('#settings-popup') ||
+    el.closest('.panels-container') ||
+    el.tagName === 'BUTTON' ||
+    el.tagName === 'INPUT' ||
+    el.tagName === 'TEXTAREA' ||
+    el.tagName === 'SELECT'
+  ));
+
+  if (isInteractive) {
+    window.electronAPI.setIgnoreMouseEvents(false);
+  } else {
+    // Pass clicks through gaps
+    window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
+  }
 
   const appCont = document.querySelector('.app-container');
   if (appCont) {
