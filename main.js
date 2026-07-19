@@ -269,6 +269,10 @@ function createWindow() {
     },
   });
 
+  // Keep window visible on top of full-screen applications and across workspaces/virtual desktops
+  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
   // Position centered at the top of the display
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
@@ -1021,7 +1025,8 @@ function triggerLaunchToolbar() {
 
     // 3. Configure skip taskbar and high level always-on-top
     mainWindow.setSkipTaskbar(true);
-    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
     // 4. Force screen capture protection
     mainWindow.setContentProtection(true);

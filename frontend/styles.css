@@ -34,7 +34,7 @@
 }
 
 body {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.002);
   color: var(--text-primary);
   overflow: hidden;
   user-select: none;
@@ -1063,4 +1063,13 @@ a,
   border-color: #2dd4bf;
   box-shadow: 0 0 6px rgba(45, 212, 191, 0.3);
   color: #fff;
+}
+
+/* Contenteditable transcript placeholder */
+#transcript-block:empty::before,
+#transcript-block[data-placeholder="true"]::before {
+  content: 'Paste or type a question here, or start recording...';
+  color: var(--text-muted);
+  font-style: italic;
+  pointer-events: none;
 }

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     DEEPGRAM_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
+    SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
     GEMINI_MODEL: str = "gemini-2.5-flash"
     DEEPGRAM_MODEL: str = "nova-3"
     OPENAI_MODEL: str = "gpt-4o"
@@ -66,6 +67,8 @@ class Settings(BaseSettings):
                                                     self.OPENAI_API_KEY = v
                                                 if k in ("groq", "GROQ_API_KEY") and not self.GROQ_API_KEY:
                                                     self.GROQ_API_KEY = v
+                                                if k in ("SPEECHMATICS_API_KEY", "speechmatics_key") and (not self.SPEECHMATICS_API_KEY or self.SPEECHMATICS_API_KEY == "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"):
+                                                    self.SPEECHMATICS_API_KEY = v
                             except Exception:
                                 continue
             except Exception:

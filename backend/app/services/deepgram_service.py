@@ -10,7 +10,7 @@ class DeepgramService:
             f"&smart_format=true"
             f"&interim_results=true"
             f"&punctuate=true"
-            f"&endpointing=200"
+            f"&endpointing=100"
         )
 
     @staticmethod

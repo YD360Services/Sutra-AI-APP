@@ -178,7 +178,7 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
     if use_speechmatics:
         sm_url = "wss://eu.rt.speechmatics.com/v2"
         headers = {
-            "Authorization": "Bearer 8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
+            "Authorization": f"Bearer {settings.SPEECHMATICS_API_KEY}"
         }
         await client_ws.send_json({"type": "status", "message": "Connecting to Speechmatics"})
         try:

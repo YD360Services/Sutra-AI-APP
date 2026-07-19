@@ -1317,6 +1317,11 @@ startSessionBtn.addEventListener('click', async () => {
   // 3. Switch views and collapse window to toolbar size
   setupView.style.display = 'none';
   toolbarView.style.display = 'flex';
+  // Initialize transcript block placeholder state
+  if (transcriptBlock) {
+    transcriptBlock.textContent = '';
+    transcriptBlock.dataset.placeholder = 'true';
+  }
   const logoutTextSpan = document.getElementById('settings-logout-text');
   if (logoutTextSpan) logoutTextSpan.textContent = 'Exit';
 
@@ -1510,6 +1515,7 @@ let startMouseX, startMouseY;
 // even without a fresh mouse move (e.g. after OS native drag or state changes)
 let _lastClientX = 0;
 let _lastClientY = 0;
+let isMouseInsideWindow = false;
 
 /**
  * Central function to evaluate and set the correct click-through state.
@@ -1569,7 +1575,7 @@ function updateClickThrough(clientX, clientY) {
   const appCont = document.querySelector('.app-container');
   if (appCont) {
     if (document.body.classList.contains('stealth-active')) {
-      appCont.style.opacity = Math.min(1.0, userOpacity);
+      appCont.style.opacity = isMouseInsideWindow ? '1' : Math.min(1.0, userOpacity);
     } else {
       appCont.style.opacity = '1';
     }
@@ -1577,12 +1583,16 @@ function updateClickThrough(clientX, clientY) {
 }
 
 window.addEventListener('mouseleave', () => {
-  // Removed auto-hiding behavior on mouseleave
+  isMouseInsideWindow = false;
+  updateClickThrough();
+  updateWindowSize();
 });
 
 window.addEventListener('mouseenter', () => {
   isDraggingWindow = false;
+  isMouseInsideWindow = true;
   updateClickThrough();
+  updateWindowSize();
 });
 
 window.addEventListener('pointerup', (e) => {
@@ -1702,7 +1712,12 @@ function updateWindowSize(reposition = false) {
   if (!activeTab) {
     const settingsPopupEl = document.getElementById('settings-popup');
     const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
-    const targetHeight = settingsOpen ? 280 : COLLAPSED_HEIGHT;
+    let targetHeight = COLLAPSED_HEIGHT;
+    if (settingsOpen) {
+      targetHeight = 480;
+    } else if (isMouseInsideWindow) {
+      targetHeight = 100;
+    }
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(WIDTH, targetHeight, toolbarPosition, reposition);
   } else {
@@ -1933,10 +1948,17 @@ async function toggleSource(source) {
     return;
   }
 
-  // Case 2: First source starts → Initialize Deepgram Socket and Audio Context
+  // Case 2: First source starts → Initialize Speech-to-Text Socket and Audio Context
   if (!isCurrentlyRecordingAny) {
     try {
-      // 1. Get Deepgram key
+      // Check if this is a live interview session
+      const isLiveSession = (selectedSessionType === 'Interview+Coding');
+
+      // Initialize Web Audio API nodes
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioDestNode = audioCtx.createMediaStreamDestination();
+
+      // Direct Deepgram WebSocket — no backend hop for minimum latency during live sessions
       const dgKey = await window.electronAPI.getDeepgramKey();
       if (!dgKey || dgKey.startsWith('your_')) {
         showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
@@ -1946,16 +1968,11 @@ async function toggleSource(source) {
         isRecording = false;
         return;
       }
-
-      // Initialize Web Audio API nodes
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      audioDestNode = audioCtx.createMediaStreamDestination();
-
-      // Connect to Deepgram live transcription WebSocket
-      dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=300', ['token', dgKey]);
+      dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
+      console.log('[Stealth] Connecting direct to Deepgram for live session...');
 
       dgSocket.onopen = async () => {
-        console.log('[Deepgram Socket] Connected successfully.');
+        console.log('[Deepgram Live] Connected successfully.');
         if (audioCtx && audioCtx.state === 'suspended') {
           try { await audioCtx.resume(); } catch (e) { }
         }
@@ -1963,8 +1980,13 @@ async function toggleSource(source) {
         recordBtn.style.pointerEvents = 'auto';
         if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
 
-        if (transcriptBlock.textContent.startsWith('Transcription will appear')) {
+        const existingText = transcriptBlock.textContent.trim();
+        if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
           transcriptBlock.textContent = '';
+          transcriptBlock.dataset.placeholder = 'false';
+        } else {
+          // User has typed something manually — keep it
+          accumulatedTranscript = existingText;
         }
 
         // Initialize MediaRecorder from mixed destination node
@@ -1984,31 +2006,26 @@ async function toggleSource(source) {
         try {
           const data = JSON.parse(message.data);
           const transcript = data.channel?.alternatives?.[0]?.transcript;
-          if (transcript) {
+          if (transcript && transcript.trim()) {
+            const cleanTranscript = transcript.trim();
             if (data.is_final) {
-              accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + transcript;
+              // Confirmed text: update accumulatedTranscript and show in white
+              accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
               transcriptBlock.textContent = accumulatedTranscript;
+              transcriptBlock.dataset.placeholder = 'false';
 
               // Save transcript block to backend and localStorage
               if (shouldSaveTranscript) {
-                // Always persist to localStorage as rolling buffer
                 const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
-                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + transcript : transcript;
+                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
                 safeSetItem('stealth_transcript_buffer', updatedBuffer);
 
-                // Accumulate in the backend buffer (do NOT save individual tiny chunks)
                 if (sessionToken) {
-                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + transcript;
-
-                  // Reset the silence timer on every new final chunk
+                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
                   if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
                   transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-
-                  // If buffer is already large enough, flush immediately
                   const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
-                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) {
-                    flushTranscriptBuffer();
-                  }
+                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
                 }
               }
 
@@ -2017,19 +2034,16 @@ async function toggleSource(source) {
               const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
 
               if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-                const score = questionScore(transcript.trim());
+                const score = questionScore(cleanTranscript);
                 if (score > 0) {
-                  console.log(`[Auto-Answer] Question end detected inside transcript chunk: "${transcript}". Querying AI...`);
-                  if (autoAnswerTimeoutId) {
-                    clearTimeout(autoAnswerTimeoutId);
-                    autoAnswerTimeoutId = null;
-                  }
+                  console.log(`[Auto-Answer] Question detected: "${cleanTranscript}". Querying AI...`);
+                  if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
                   queryAssistant(null, false);
                 } else {
                   if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
                   autoAnswerTimeoutId = setTimeout(() => {
                     if (!answerBlock.classList.contains('loading')) {
-                      console.log('[Auto-Answer] 1-second transcript gap detected. Querying AI...');
+                      console.log('[Auto-Answer] 1-second gap detected. Querying AI...');
                       queryAssistant(null, false);
                     }
                     autoAnswerTimeoutId = null;
@@ -2037,24 +2051,26 @@ async function toggleSource(source) {
                 }
               }
             } else {
-              transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-secondary); font-style: italic;">${transcript}</span>`;
+              // Interim text: gray preview — does NOT update accumulatedTranscript
+              transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
             }
             transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
           }
         } catch (e) {
-          console.error('[Deepgram Socket] Error parsing message:', e);
+          console.error('[Deepgram Live] Error parsing message:', e);
         }
       };
 
       dgSocket.onerror = (err) => {
-        console.error('[Deepgram Socket] Connection error:', err);
+        console.error('[Deepgram Live] Connection error:', err);
         stopRecording();
       };
 
       dgSocket.onclose = () => {
-        console.log('[Deepgram Socket] Closed connection.');
+        console.log('[Deepgram Live] Connection closed.');
         if (isRecordingSystem || isRecordingMic) stopRecording();
       };
+
 
     } catch (err) {
       console.error('[Audio Capture] Failed to initialize:', err);
@@ -2252,13 +2268,29 @@ function resetRecordButton() {
 // Clear Transcript
 clearTranscriptBtn.addEventListener('click', () => {
   accumulatedTranscript = '';
-  transcriptBlock.textContent = 'Transcription will appear here in real-time as system audio is captured...';
+  lastAnswerOffset = 0;
+  transcriptBlock.textContent = '';
+  transcriptBlock.dataset.placeholder = 'true';
+});
+
+// Sync user-typed/pasted text in the contenteditable transcript box → accumulatedTranscript
+transcriptBlock.addEventListener('input', () => {
+  const typed = transcriptBlock.textContent.trim();
+  accumulatedTranscript = typed;
+  transcriptBlock.dataset.placeholder = typed ? 'false' : 'true';
+});
+
+// Prevent newlines/formatting on paste — keep as plain text
+transcriptBlock.addEventListener('paste', (e) => {
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData('text/plain');
+  document.execCommand('insertText', false, text);
 });
 
 // Copy Transcript
 copyTranscriptBtn.addEventListener('click', () => {
-  const text = transcriptBlock.textContent.trim();
-  if (text && !text.startsWith('Transcription will appear')) {
+  const text = accumulatedTranscript.trim() || transcriptBlock.textContent.trim();
+  if (text) {
     navigator.clipboard.writeText(text);
     copyTranscriptBtn.textContent = 'Copied!';
     setTimeout(() => { copyTranscriptBtn.textContent = 'Copy'; }, 1500);
@@ -2645,10 +2677,20 @@ if (nextAnswerBtn) {
 
 // Answer Button: detect latest question in transcript → backend or offline
 aiAnswerBtn.addEventListener('click', () => {
+  // Only sync from the contenteditable DOM when NOT recording (i.e. manual paste/type mode).
+  // When Deepgram is active, accumulatedTranscript is the authoritative confirmed-only source.
+  // Reading textContent during live recording would mix in unconfirmed interim (gray) text.
+  if (!isRecording) {
+    const typedText = transcriptBlock.textContent.trim();
+    if (typedText && transcriptBlock.dataset.placeholder !== 'true') {
+      accumulatedTranscript = typedText;
+    }
+  }
+
   const currentText = accumulatedTranscript.trim();
-  if (!currentText || currentText.startsWith('Transcription will appear')) {
+  if (!currentText) {
     // Stealth mode only — show inline red banner in the answer block
-    showInlineError('No transcript yet — start recording to capture audio first.', answerBlock);
+    showInlineError('No transcript yet — type/paste a question or start recording to capture audio.', answerBlock);
     return;
   }
 
