@@ -1554,7 +1554,17 @@ function updateClickThrough(clientX, clientY) {
   }
 
   const el = document.elementFromPoint(x, y);
-  const isInteractive = isOverDragHandle || (el && (
+  const toolbarWrapper = document.querySelector('.toolbar-wrapper');
+  let isOverTooltipArea = false;
+  if (toolbarWrapper && !activeTab) {
+    const rect = toolbarWrapper.getBoundingClientRect();
+    // Keep window interactive when cursor is over the tooltips rendering below the toolbar wrapper (extending 85px down)
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= (rect.bottom + 85)) {
+      isOverTooltipArea = true;
+    }
+  }
+
+  const isInteractive = isOverDragHandle || isOverTooltipArea || (el && (
     el.closest('.interactive') ||
     el.closest('.setup-view-container') ||
     el.closest('#settings-popup') ||
@@ -1716,7 +1726,7 @@ function updateWindowSize(reposition = false) {
     if (settingsOpen) {
       targetHeight = 480;
     } else if (isMouseInsideWindow) {
-      targetHeight = 100;
+      targetHeight = 140;
     }
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(WIDTH, targetHeight, toolbarPosition, reposition);
