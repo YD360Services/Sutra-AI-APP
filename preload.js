@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   quitApp: () => ipcRenderer.send('quit-app'),
   moveWindow: (x, y) => ipcRenderer.send('move-window', x, y),
   moveWindowDelta: (dx, dy) => ipcRenderer.send('move-window', dx, dy),
+  moveWindowAbsolute: (x, y) => ipcRenderer.send('move-window-absolute', x, y),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
   launchToolbar: (config) => ipcRenderer.send('launch-toolbar', config),
 

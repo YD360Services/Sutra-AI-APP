@@ -209,7 +209,7 @@ body {
 
 /* Move / drag handle button — always visible */
 .ctrl-btn.position {
-  cursor: move !important;
+  cursor: default !important;
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.35);
@@ -957,7 +957,7 @@ a,
 
 /* Preserve the drag crosshair cursor on the position movement button */
 .ctrl-btn.position {
-  cursor: move !important;
+  cursor: default !important;
 }
 
 #stealth-tooltip {

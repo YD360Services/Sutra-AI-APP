@@ -1120,10 +1120,12 @@ function openEditSessionModal() {
 
   editSessionModal.style.display = 'flex';
   window.electronAPI.setIgnoreMouseEvents(false);
+  updateWindowSize();
 }
 
 function closeEditSessionModal() {
   if (editSessionModal) editSessionModal.style.display = 'none';
+  updateWindowSize();
 }
 
 if (editSessionBtn) {
@@ -1577,9 +1579,17 @@ function updateClickThrough(clientX, clientY) {
 
   if (isInteractive) {
     window.electronAPI.setIgnoreMouseEvents(false);
+    if (!isMouseInsideWindow) {
+      isMouseInsideWindow = true;
+      updateWindowSize();
+    }
   } else {
     // Pass clicks through gaps
     window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
+    if (isMouseInsideWindow) {
+      isMouseInsideWindow = false;
+      updateWindowSize();
+    }
   }
 
   const appCont = document.querySelector('.app-container');
@@ -1722,8 +1732,11 @@ function updateWindowSize(reposition = false) {
   if (!activeTab) {
     const settingsPopupEl = document.getElementById('settings-popup');
     const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
+    const editModalEl = document.getElementById('edit-session-modal');
+    const editModalOpen = editModalEl && editModalEl.style.display === 'flex';
+
     let targetHeight = COLLAPSED_HEIGHT;
-    if (settingsOpen) {
+    if (settingsOpen || editModalOpen) {
       targetHeight = 480;
     } else if (isMouseInsideWindow) {
       targetHeight = 140;
@@ -1853,9 +1866,7 @@ aiBtn.addEventListener('click', () => toggleTab('ai'));
 
 
 // ── Drag-to-Move: hold position-btn and drag to move the window ──────────────
-// Now using native OS-level dragging via CSS `-webkit-app-region: drag` to prevent
-// DPI-scaling related sub-pixel rounding errors that caused the window to slowly expand.
-// The custom javascript `setPosition` loop was removed.
+// Using pointer capture to drag the window smoothly via IPC delta movements
 const dragButtons = [
   document.getElementById('setup-position-btn'),
   document.getElementById('recent-position-btn'),
@@ -3814,33 +3825,33 @@ if (diamondBtn) {
   let _diamondDragging = false;
   let _diamondStartX = 0;
   let _diamondStartY = 0;
-  let _diamondLastX = 0;
-  let _diamondLastY = 0;
+  let _diamondInitialWinX = 0;
+  let _diamondInitialWinY = 0;
   const DRAG_THRESHOLD = 4; // px — below this = click, above = drag
 
   diamondBtn.addEventListener('pointerdown', (e) => {
     _diamondDragging = false;
     _diamondStartX = e.screenX;
     _diamondStartY = e.screenY;
-    _diamondLastX = e.screenX;
-    _diamondLastY = e.screenY;
+    _diamondInitialWinX = window.screenX;
+    _diamondInitialWinY = window.screenY;
     diamondBtn.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
 
   diamondBtn.addEventListener('pointermove', (e) => {
     if (!diamondBtn.hasPointerCapture(e.pointerId)) return;
-    const dx = e.screenX - _diamondLastX;
-    const dy = e.screenY - _diamondLastY;
     const totalMoved = Math.abs(e.screenX - _diamondStartX) + Math.abs(e.screenY - _diamondStartY);
     if (totalMoved > DRAG_THRESHOLD) {
       _diamondDragging = true;
       diamondBtn.style.cursor = 'grabbing';
     }
-    if (_diamondDragging && (dx !== 0 || dy !== 0)) {
-      window.electronAPI.moveWindowDelta(dx, dy);
-      _diamondLastX = e.screenX;
-      _diamondLastY = e.screenY;
+    if (_diamondDragging) {
+      const dx = e.screenX - _diamondStartX;
+      const dy = e.screenY - _diamondStartY;
+      const targetX = _diamondInitialWinX + dx;
+      const targetY = _diamondInitialWinY + dy;
+      window.electronAPI.moveWindowAbsolute(targetX, targetY);
     }
     e.preventDefault();
   });

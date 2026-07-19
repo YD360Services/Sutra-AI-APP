@@ -895,8 +895,39 @@ function createWindow() {
   ipcMain.on('move-window', (event, dx, dy) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
-      const [curX, curY] = win.getPosition();
-      win.setPosition(Math.round(curX + dx), Math.round(curY + dy));
+      const bounds = win.getBounds();
+      const cursorPoint = screen.getCursorScreenPoint();
+      const activeDisplay = screen.getDisplayNearestPoint(cursorPoint);
+      const { x: screenX, y: screenY, width: screenWidth, height: screenHeight } = activeDisplay.workArea;
+
+      let newX = Math.round(bounds.x + dx);
+      let newY = Math.round(bounds.y + dy);
+
+      // Clamp window bounds to ensure it stays fully inside the screen workArea
+      newX = Math.max(screenX, Math.min(newX, screenX + screenWidth - bounds.width));
+      newY = Math.max(screenY, Math.min(newY, screenY + screenHeight - bounds.height));
+
+      win.setPosition(newX, newY);
+    }
+  });
+
+  // Handle absolute window positioning dragging (to prevent cumulative sync lag)
+  ipcMain.on('move-window-absolute', (event, x, y) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      const bounds = win.getBounds();
+      const cursorPoint = screen.getCursorScreenPoint();
+      const activeDisplay = screen.getDisplayNearestPoint(cursorPoint);
+      const { x: screenX, y: screenY, width: screenWidth, height: screenHeight } = activeDisplay.workArea;
+
+      let newX = Math.round(x);
+      let newY = Math.round(y);
+
+      // Clamp coordinates to screen work area
+      newX = Math.max(screenX, Math.min(newX, screenX + screenWidth - bounds.width));
+      newY = Math.max(screenY, Math.min(newY, screenY + screenHeight - bounds.height));
+
+      win.setPosition(newX, newY);
     }
   });
 
