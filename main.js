@@ -4,6 +4,20 @@ const fs = require('fs');
 const https = require('https');
 const { exec } = require('child_process');
 
+// Helper to keep window bounds fully inside the screen workspace
+function clampBoundsToScreen(x, y, width, height) {
+  try {
+    const activeDisplay = screen.getDisplayMatching({ x, y, width, height });
+    const { x: screenX, y: screenY, width: screenWidth, height: screenHeight } = activeDisplay.workArea;
+
+    const clampedX = Math.max(screenX, Math.min(x, screenX + screenWidth - width));
+    const clampedY = Math.max(screenY, Math.min(y, screenY + screenHeight - height));
+    return { x: clampedX, y: clampedY, width, height };
+  } catch (e) {
+    return { x, y, width, height };
+  }
+}
+
 let mainWindow;
 let activeSessionId = null;
 let activeSessionStartTime = null;
@@ -209,7 +223,7 @@ function saveSavedBounds(bounds) {
     if (fs.existsSync(filePath)) {
       try {
         existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const dataToSave = {
@@ -288,6 +302,18 @@ function createWindow() {
   mainWindow.show();
   mainWindow.setResizable(false);
   mainWindow.focus();
+
+  // Prevent accidental reloads (Ctrl+R / F5) in production unless devtools are open
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    const isDev = !app.isPackaged;
+    const isDevToolsOpen = mainWindow.webContents.isDevToolsOpened();
+    if (!isDev && !isDevToolsOpen) {
+      if ((input.control && input.key.toLowerCase() === 'r') || input.key === 'F5') {
+        event.preventDefault();
+      }
+    }
+  });
+
   // mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   // Handle click-through toggle
@@ -328,12 +354,12 @@ function createWindow() {
       isToolbarMode = true;
       const bounds = loadSavedBounds();
       if (bounds) {
-        mainWindow.setBounds({
-          x: Math.round(bounds.x),
-          y: Math.round(bounds.y),
-          width: Math.round(bounds.width),
-          height: Math.round(bounds.height)
-        });
+        mainWindow.setBounds(clampBoundsToScreen(
+          Math.round(bounds.x),
+          Math.round(bounds.y),
+          Math.round(bounds.width),
+          Math.round(bounds.height)
+        ));
         return true;
       }
     }
@@ -827,7 +853,7 @@ function createWindow() {
   });
 
   // Handle resizing window dynamically based on open/close panels
-  ipcMain.on('resize-window', (event, width, height, position, reposition = false) => {
+  ipcMain.on('resize-window', (event, width, height, position, reposition = false, targetX = null, targetY = null) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
       win.setResizable(true);
@@ -846,12 +872,12 @@ function createWindow() {
         if (height !== 580) {
           const savedBounds = loadSavedBounds();
           if (savedBounds) {
-            win.setBounds({
-              x: Math.round(savedBounds.x),
-              y: Math.round(savedBounds.y),
-              width: Math.round(savedBounds.width),
-              height: Math.round(savedBounds.height)
-            });
+            win.setBounds(clampBoundsToScreen(
+              Math.round(savedBounds.x),
+              Math.round(savedBounds.y),
+              Math.round(savedBounds.width),
+              Math.round(savedBounds.height)
+            ));
             win.setResizable(false);
             return;
           }
@@ -873,10 +899,17 @@ function createWindow() {
           y = Math.round((activeScreenHeight - height) / 2) + screenY;
         }
       } else {
-        if (position === 'bottom') {
+        if (targetX !== null) {
+          x = targetX;
+        } else if (position === 'top' || position === 'bottom') {
+          // Grow/shrink symmetrically around the horizontal center
+          x = bounds.x - Math.round((width - bounds.width) / 2);
+        }
+
+        if (targetY !== null) {
+          y = targetY;
+        } else if (position === 'bottom') {
           y = bounds.y + (bounds.height - height);
-        } else if (position === 'top') {
-          // X and Y stay locked to bounds.x and bounds.y
         } else if (position === 'left') {
           // X and Y stay locked to bounds.x and bounds.y
         } else if (position === 'right') {
@@ -884,7 +917,7 @@ function createWindow() {
         }
       }
 
-      win.setBounds({ x, y, width, height });
+      win.setBounds(clampBoundsToScreen(x, y, width, height));
       win.setResizable(false);
     }
   });
@@ -1038,19 +1071,19 @@ function triggerLaunchToolbar() {
     // 2. Resize and reposition
     const savedBounds = loadSavedBounds();
     if (savedBounds) {
-      mainWindow.setBounds({
-        x: Math.round(savedBounds.x),
-        y: Math.round(savedBounds.y),
-        width: Math.round(savedBounds.width),
-        height: Math.round(savedBounds.height)
-      });
+      mainWindow.setBounds(clampBoundsToScreen(
+        Math.round(savedBounds.x),
+        Math.round(savedBounds.y),
+        Math.round(savedBounds.width),
+        Math.round(savedBounds.height)
+      ));
     } else {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
       const winWidth = 600;
       const winHeight = 56;
       const x = Math.round((screenWidth - winWidth) / 2) + screenX;
-      mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
+      mainWindow.setBounds(clampBoundsToScreen(x, screenY, winWidth, winHeight));
     }
 
 

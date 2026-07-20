@@ -15,3 +15,5 @@ python-jose[cryptography]
 passlib[bcrypt]
 redis>=5.0.0
 aiosqlite
+pypdf
+python-docx
