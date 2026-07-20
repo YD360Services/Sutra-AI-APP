@@ -43,6 +43,23 @@ let isDraggingWindow = false;
 // Active state tracking
 let activeTab = null; // 'ai', 'code', or null
 let toolbarPosition = 'top'; // 'top' or 'bottom'
+
+function updateDynamicToolbarPosition() {
+  const screenHeight = window.screen.availHeight || 1080;
+  const windowY = window.screenY;
+  
+  if (windowY > screenHeight / 2) {
+    toolbarPosition = 'bottom';
+  } else {
+    toolbarPosition = 'top';
+  }
+
+  const appContainer = document.querySelector('.app-container');
+  if (appContainer) {
+    appContainer.classList.toggle('position-bottom', toolbarPosition === 'bottom');
+  }
+}
+
 let hasActiveAnswer = false;
 let shouldSaveTranscript = true;
 let autoAnswerTimeoutId = null;
@@ -288,6 +305,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load dropdown options
   await loadDropdowns();
   updateResumeJdScore();
+
+  // Reset window size to setup dimensions so it's fully visible and centered on load/reload
+  try {
+    window.electronAPI.resizeWindow(600, 580, 'top', true);
+  } catch (e) {
+    console.error('[Stealth] Failed to resize window on load:', e.message);
+  }
+
+  // Set the panel width CSS variable from localStorage on startup
+  const savedPanelWidth = safeGetItem('stealth_panelWidth') || '620';
+  document.documentElement.style.setProperty('--panel-width', savedPanelWidth + 'px');
 
   // Initially show setup form in index.html
   setupView.style.display = 'flex';
@@ -1511,7 +1539,10 @@ let isDraggingSlider = false;
 let justExpanded = false;
 let justExpandedTimeout;
 let startWidth, startHeight;
+let startPanelWidth;
+let startX, startY;
 let startMouseX, startMouseY;
+let lastResizeTime = 0;
 
 // Track last known cursor position so we can re-evaluate click-through
 // even without a fresh mouse move (e.g. after OS native drag or state changes)
@@ -1618,8 +1649,26 @@ window.addEventListener('mouseenter', () => {
 window.addEventListener('pointerup', (e) => {
   if (isResizingPanel) {
     isResizingPanel = false;
-    safeSetItem('stealth_panelWidth', currentWidth);
+    document.body.classList.remove('resizing');
+
+    // Save panel width from CSS variable
+    const panelWidthStr = document.documentElement.style.getPropertyValue('--panel-width');
+    let finalPanelWidth = 620;
+    if (panelWidthStr) {
+      finalPanelWidth = parseFloat(panelWidthStr);
+      safeSetItem('stealth_panelWidth', finalPanelWidth);
+    }
+
     safeSetItem('stealth_panelHeight', currentHeight);
+
+    // Perform final, unthrottled resize to align the window boundaries exactly
+    const finalWinWidth = Math.max(WIDTH, finalPanelWidth + 20);
+    const startWinWidth = Math.max(WIDTH, startPanelWidth + 20);
+    const targetX = startX - Math.round((finalWinWidth - startWinWidth) / 2);
+    const targetY = startY;
+
+    pendingProgrammaticResizes++;
+    window.electronAPI.resizeWindow(finalWinWidth, currentHeight, toolbarPosition, false, targetX, targetY);
 
     // Release pointer capture
     const expandAnswerBtn = document.getElementById('expand-answer-btn');
@@ -1662,10 +1711,16 @@ window.addEventListener('pointermove', (e) => {
       dxSigned = -dx;
     }
 
-    const newWidth = Math.max(640, Math.min(1200, startWidth + dxSigned));
-    const newHeight = Math.max(300, Math.min(MAX_HEIGHT, startHeight + dySigned));
+    // Scale the panel width centered under the toolbar. Dragging the right handle
+    // by dxSigned increases the panel width by 2 * dxSigned symmetrically.
+    const screenWidth = window.screen.availWidth || 1920;
+    const screenHeight = window.screen.availHeight || 1080;
+    const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
+    const newPanelWidth = Math.max(300, Math.min(screenWidth - 40, startPanelWidth + 2 * dxSigned));
+    const newHeight = Math.max(300, Math.min(maxWinHeight, startHeight + dySigned));
 
-    currentWidth = newWidth;
+    // Update the panel width CSS variable dynamically
+    document.documentElement.style.setProperty('--panel-width', newPanelWidth + 'px');
     currentHeight = newHeight;
 
     const panelsContainer = document.getElementById('panels');
@@ -1684,8 +1739,19 @@ window.addEventListener('pointermove', (e) => {
       answerBlock.style.maxHeight = 'none';
     }
 
-    pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(newWidth, newHeight, toolbarPosition, false);
+    // Throttle the native OS window resizing IPC calls to prevent DWM thread blocks
+    const now = Date.now();
+    if (now - lastResizeTime > 30) {
+      lastResizeTime = now;
+      // Dynamic window width and position tracking to ensure toolbar remains static on screen
+      const startWinWidth = Math.max(WIDTH, startPanelWidth + 20);
+      const newWinWidth = Math.max(WIDTH, newPanelWidth + 20);
+      const targetX = startX - Math.round((newWinWidth - startWinWidth) / 2);
+      const targetY = startY;
+
+      pendingProgrammaticResizes++;
+      window.electronAPI.resizeWindow(newWinWidth, newHeight, toolbarPosition, false, targetX, targetY);
+    }
     return;
   }
 
@@ -1724,10 +1790,16 @@ function updateWindowSize(reposition = false) {
   // NEVER resize while user is dragging — it causes the window to expand
   if (isDraggingWindow) return;
 
+  // If minimized (shrunk), do not let updateWindowSize override the small 48x48 bounds
+  if (isShrunk) return;
+
   // If in setup wizard view, do not resize the window (keep 600x580 bounds)
   if (setupView && setupView.style.display !== 'none') {
     return;
   }
+
+  // Detect and update the toolbar position dynamically based on window location
+  updateDynamicToolbarPosition();
 
   if (!activeTab) {
     const settingsPopupEl = document.getElementById('settings-popup');
@@ -1747,10 +1819,14 @@ function updateWindowSize(reposition = false) {
     const answerBlock = document.getElementById('answer-block');
     const codeDisplayPre = document.getElementById('code-display');
 
+    const screenHeight = window.screen.availHeight || 1080;
+    const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
+    const maxAnswerHeight = Math.max(150, screenHeight - 250);
+
     if (isAnswerExpanded) {
       if (answerBlock) {
         answerBlock.style.height = 'auto';
-        answerBlock.style.maxHeight = '1350px';
+        answerBlock.style.maxHeight = maxAnswerHeight + 'px';
         answerBlock.style.overflowY = 'auto';
       }
       if (codeDisplayPre) {
@@ -1794,10 +1870,13 @@ function updateWindowSize(reposition = false) {
 
       // Use scrollHeight to capture the full unclipped content height
       const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
-      const targetHeight = Math.min(MAX_HEIGHT, contentHeight + 12 + settingsBuffer);
+      const targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
+
+      const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
+      const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
 
       pendingProgrammaticResizes++;
-      window.electronAPI.resizeWindow(currentWidth, targetHeight, toolbarPosition, reposition);
+      window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition);
     }, 30);
   }
 }
@@ -3768,11 +3847,11 @@ async function toggleShrunk(shrunk) {
     if (diamondBtn) {
       diamondBtn.style.display = 'flex';
       diamondBtn.style.position = 'absolute';
-      diamondBtn.style.top = '4px';
-      diamondBtn.style.left = '4px';
+      diamondBtn.style.top = '6px';
+      diamondBtn.style.left = '6px';
     }
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(44, 44, toolbarPosition, false);
+    window.electronAPI.resizeWindow(48, 48, toolbarPosition, false);
     updateClickThrough(); // always interactive in diamond mode
   } else {
     isDraggingWindow = false; // Reset drag flag immediately on expand
@@ -3786,18 +3865,10 @@ async function toggleShrunk(shrunk) {
     if (diamondBtn) {
       diamondBtn.style.display = 'none';
     }
+
+    // Keep appContainer completely invisible during window size transition to prevent visual flash
+    appContainer.style.opacity = '0';
     appContainer.style.display = 'flex';
-
-    // Immediately re-enable mouse events — window is fully interactive again
-    updateClickThrough();
-
-    // When expanding, make sure it fades in smoothly if stealth is active
-    if (document.body.classList.contains('stealth-active')) {
-      appContainer.style.opacity = userOpacity;
-      document.body.classList.add('hover-active');
-    } else {
-      appContainer.style.opacity = 1.0;
-    }
 
     if (setupView && setupView.style.display !== 'none') {
       pendingProgrammaticResizes++;
@@ -3805,6 +3876,17 @@ async function toggleShrunk(shrunk) {
     } else {
       updateWindowSize();
     }
+
+    // Smoothly fade in content once the OS has completed window bounds expansion
+    setTimeout(() => {
+      if (document.body.classList.contains('stealth-active')) {
+        appContainer.style.opacity = userOpacity;
+        document.body.classList.add('hover-active');
+      } else {
+        appContainer.style.opacity = '1.0';
+      }
+      updateClickThrough();
+    }, 100);
   }
 }
 
@@ -3876,10 +3958,14 @@ let isDragClick = false;
 if (expandAnswerBtn) {
   expandAnswerBtn.addEventListener('pointerdown', (e) => {
     isResizingPanel = true;
-    startWidth = currentWidth;
+    document.body.classList.add('resizing');
+    updateDynamicToolbarPosition();
+    startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
     startHeight = currentHeight;
     startMouseX = e.screenX;
     startMouseY = e.screenY;
+    startX = window.screenX;
+    startY = window.screenY;
     isDragClick = false;
     e.preventDefault();
 
@@ -3902,7 +3988,7 @@ if (expandAnswerBtn) {
       expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.08)';
 
       // Default large dimensions
-      currentWidth = Math.max(currentWidth, 600);
+      currentWidth = Math.max(currentWidth, WIDTH);
       currentHeight = Math.max(currentHeight, 664);
     } else {
       expandAnswerBtn.style.color = 'var(--text-secondary)';
@@ -3910,7 +3996,7 @@ if (expandAnswerBtn) {
       expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
 
       // Default collapsed dimensions
-      currentWidth = 600;
+      currentWidth = WIDTH;
       currentHeight = 664;
 
       const panelsContainer = document.getElementById('panels');
