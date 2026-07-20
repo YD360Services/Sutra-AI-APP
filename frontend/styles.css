@@ -62,6 +62,14 @@ body {
   animation: none !important;
 }
 
+/* Applied during panel drag-resize — prevents CSS transitions fighting live resize */
+body.resizing *,
+body.resizing {
+  transition: none !important;
+  animation: none !important;
+  cursor: ew-resize !important;
+}
+
 /* Glass Toolbar Styling */
 .toolbar-wrapper {
   position: absolute;

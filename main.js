@@ -856,8 +856,9 @@ function createWindow() {
   ipcMain.on('resize-window', (event, width, height, position, reposition = false, targetX = null, targetY = null) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
-      win.setResizable(true);
-      win.setMinimumSize(1, 1);
+      // NOTE: do NOT call setResizable(true/false) or setMinimumSize here —
+      // toggling DWM window attributes on every frame causes visible jank/lag.
+      // setBounds() works fine regardless of the resizable state.
       const bounds = win.getBounds();
       let x = bounds.x;
       let y = bounds.y;
@@ -878,7 +879,6 @@ function createWindow() {
               Math.round(savedBounds.width),
               Math.round(savedBounds.height)
             ));
-            win.setResizable(false);
             return;
           }
         }
@@ -918,7 +918,6 @@ function createWindow() {
       }
 
       win.setBounds(clampBoundsToScreen(x, y, width, height));
-      win.setResizable(false);
     }
   });
 

@@ -1663,12 +1663,9 @@ window.addEventListener('pointerup', (e) => {
 
     // Perform final, unthrottled resize to align the window boundaries exactly
     const finalWinWidth = Math.max(WIDTH, finalPanelWidth + 20);
-    const startWinWidth = Math.max(WIDTH, startPanelWidth + 20);
-    const targetX = startX - Math.round((finalWinWidth - startWinWidth) / 2);
-    const targetY = startY;
-
+    // Lock X to startX — toolbar never shifts
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(finalWinWidth, currentHeight, toolbarPosition, false, targetX, targetY);
+    window.electronAPI.resizeWindow(finalWinWidth, currentHeight, toolbarPosition, false, startX, startY);
 
     // Release pointer capture
     const expandAnswerBtn = document.getElementById('expand-answer-btn');
@@ -1711,12 +1708,11 @@ window.addEventListener('pointermove', (e) => {
       dxSigned = -dx;
     }
 
-    // Scale the panel width centered under the toolbar. Dragging the right handle
-    // by dxSigned increases the panel width by 2 * dxSigned symmetrically.
+    // Resize only height during drag; panel width grows to the right from startX (toolbar stays static)
     const screenWidth = window.screen.availWidth || 1920;
     const screenHeight = window.screen.availHeight || 1080;
     const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
-    const newPanelWidth = Math.max(300, Math.min(screenWidth - 40, startPanelWidth + 2 * dxSigned));
+    const newPanelWidth = Math.max(300, Math.min(screenWidth - 40, startPanelWidth + dxSigned));
     const newHeight = Math.max(300, Math.min(maxWinHeight, startHeight + dySigned));
 
     // Update the panel width CSS variable dynamically
@@ -1743,14 +1739,10 @@ window.addEventListener('pointermove', (e) => {
     const now = Date.now();
     if (now - lastResizeTime > 30) {
       lastResizeTime = now;
-      // Dynamic window width and position tracking to ensure toolbar remains static on screen
-      const startWinWidth = Math.max(WIDTH, startPanelWidth + 20);
       const newWinWidth = Math.max(WIDTH, newPanelWidth + 20);
-      const targetX = startX - Math.round((newWinWidth - startWinWidth) / 2);
-      const targetY = startY;
-
+      // Lock X to startX — toolbar position never shifts during resize
       pendingProgrammaticResizes++;
-      window.electronAPI.resizeWindow(newWinWidth, newHeight, toolbarPosition, false, targetX, targetY);
+      window.electronAPI.resizeWindow(newWinWidth, newHeight, toolbarPosition, false, startX, startY);
     }
     return;
   }
