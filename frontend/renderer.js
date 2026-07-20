@@ -1626,7 +1626,11 @@ function updateClickThrough(clientX, clientY) {
   const appCont = document.querySelector('.app-container');
   if (appCont) {
     if (document.body.classList.contains('stealth-active')) {
-      appCont.style.opacity = isMouseInsideWindow ? '1' : Math.min(1.0, userOpacity);
+      if (isDraggingSlider || window._isPreviewingOpacity) {
+        appCont.style.opacity = Math.min(1.0, userOpacity);
+      } else {
+        appCont.style.opacity = isMouseInsideWindow ? '1' : Math.min(1.0, userOpacity);
+      }
     } else {
       appCont.style.opacity = '1';
     }
@@ -1779,8 +1783,8 @@ window.addEventListener('keydown', (e) => {
 // 3. TAB / PANEL TOGGLING & RESIZING
 // -------------------------------------------------------------
 function updateWindowSize(reposition = false) {
-  // NEVER resize while user is dragging — it causes the window to expand
-  if (isDraggingWindow) return;
+  // NEVER resize while user is dragging
+  if (isDraggingWindow || isResizingPanel) return;
 
   // If minimized (shrunk), do not let updateWindowSize override the small 48x48 bounds
   if (isShrunk) return;
@@ -1815,41 +1819,63 @@ function updateWindowSize(reposition = false) {
     const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
     const maxAnswerHeight = Math.max(150, screenHeight - 250);
 
-    if (isAnswerExpanded) {
+    if (window.isCustomResized) {
+      const headerHeight = 45;
+      const navHeight = 35;
+      const inputHeight = 55;
+      const computedAnswerHeight = currentHeight - COLLAPSED_HEIGHT - 12 - headerHeight - navHeight - inputHeight;
       if (answerBlock) {
-        answerBlock.style.height = 'auto';
-        answerBlock.style.maxHeight = maxAnswerHeight + 'px';
+        answerBlock.style.height = Math.max(100, computedAnswerHeight) + 'px';
+        answerBlock.style.maxHeight = 'none';
         answerBlock.style.overflowY = 'auto';
       }
       if (codeDisplayPre) {
-        codeDisplayPre.style.height = 'auto';
-        codeDisplayPre.style.maxHeight = '350px';
+        codeDisplayPre.style.height = Math.max(100, computedAnswerHeight) + 'px';
+        codeDisplayPre.style.maxHeight = 'none';
         codeDisplayPre.style.overflowY = 'auto';
       }
-      if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
-    } else if (hasActiveAnswer) {
-      if (answerBlock) {
-        answerBlock.style.height = 'auto';
-        answerBlock.style.maxHeight = '250px';
-        answerBlock.style.overflowY = 'auto';
+      const panelsContainer = document.getElementById('panels');
+      if (panelsContainer) {
+        panelsContainer.style.height = (currentHeight - COLLAPSED_HEIGHT - 12) + 'px';
+        panelsContainer.style.maxHeight = 'none';
       }
-      if (codeDisplayPre) {
-        codeDisplayPre.style.height = 'auto';
-        codeDisplayPre.style.maxHeight = '350px';
-        codeDisplayPre.style.overflowY = 'auto';
-      }
-      // Show the sticky copy-all button
       if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
     } else {
-      if (answerBlock) {
-        answerBlock.style.height = '110px';
-        answerBlock.style.maxHeight = '250px';
-        answerBlock.style.overflowY = 'auto';
-      }
-      if (codeDisplayPre) {
-        codeDisplayPre.style.height = '310px';
-        codeDisplayPre.style.maxHeight = '350px';
-        codeDisplayPre.style.overflowY = 'auto';
+      if (isAnswerExpanded) {
+        if (answerBlock) {
+          answerBlock.style.height = 'auto';
+          answerBlock.style.maxHeight = maxAnswerHeight + 'px';
+          answerBlock.style.overflowY = 'auto';
+        }
+        if (codeDisplayPre) {
+          codeDisplayPre.style.height = 'auto';
+          codeDisplayPre.style.maxHeight = '350px';
+          codeDisplayPre.style.overflowY = 'auto';
+        }
+        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
+      } else if (hasActiveAnswer) {
+        if (answerBlock) {
+          answerBlock.style.height = 'auto';
+          answerBlock.style.maxHeight = '250px';
+          answerBlock.style.overflowY = 'auto';
+        }
+        if (codeDisplayPre) {
+          codeDisplayPre.style.height = 'auto';
+          codeDisplayPre.style.maxHeight = '350px';
+          codeDisplayPre.style.overflowY = 'auto';
+        }
+        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
+      } else {
+        if (answerBlock) {
+          answerBlock.style.height = '110px';
+          answerBlock.style.maxHeight = '250px';
+          answerBlock.style.overflowY = 'auto';
+        }
+        if (codeDisplayPre) {
+          codeDisplayPre.style.height = '310px';
+          codeDisplayPre.style.maxHeight = '350px';
+          codeDisplayPre.style.overflowY = 'auto';
+        }
       }
     }
 
@@ -1861,8 +1887,13 @@ function updateWindowSize(reposition = false) {
       const settingsBuffer = settingsOpen ? 180 : 0;
 
       // Use scrollHeight to capture the full unclipped content height
-      const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
-      const targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
+      let targetHeight;
+      if (window.isCustomResized) {
+        targetHeight = currentHeight;
+      } else {
+        const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
+        targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
+      }
 
       const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
       const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
@@ -3752,6 +3783,9 @@ if (settingsDashboardBtn) {
 const opacityMinus = document.getElementById('opacity-minus');
 const opacityPlus = document.getElementById('opacity-plus');
 
+window._opacityPreviewTimeout = null;
+window._isPreviewingOpacity = false;
+
 function applyOpacity(val) {
   userOpacity = Math.max(0.20, Math.min(2.0, parseFloat(val)));
   if (opacitySlider) opacitySlider.value = userOpacity;
@@ -3761,7 +3795,14 @@ function applyOpacity(val) {
   const appCont = document.querySelector('.app-container');
   if (appCont) {
     if (document.body.classList.contains('stealth-active')) {
+      window._isPreviewingOpacity = true;
       appCont.style.opacity = Math.min(1.0, userOpacity);
+      
+      clearTimeout(window._opacityPreviewTimeout);
+      window._opacityPreviewTimeout = setTimeout(() => {
+        window._isPreviewingOpacity = false;
+        updateClickThrough();
+      }, 1500);
     } else {
       appCont.style.opacity = '1';
     }
@@ -3832,8 +3873,15 @@ const shrinkBtn = document.getElementById('shrink-btn');
 const diamondBtn = document.getElementById('diamond-btn');
 const appContainer = document.querySelector('.app-container');
 
-async function toggleShrunk(shrunk) {
-  isShrunk = shrunk;
+async function toggleShrunk(forceShrink = null) {
+  window.isCustomResized = false;
+  if (forceShrink !== null) {
+    if (isShrunk === forceShrink) return;
+    isShrunk = forceShrink;
+  } else {
+    isShrunk = !isShrunk;
+  }
+
   if (isShrunk) {
     // Add instant-hide class to kill all CSS transitions/animations immediately
     appContainer.classList.add('instant-hide');
@@ -3957,6 +4005,7 @@ let isDragClick = false;
 if (expandAnswerBtn) {
   expandAnswerBtn.addEventListener('pointerdown', (e) => {
     isResizingPanel = true;
+    window.isCustomResized = true;
     document.body.classList.add('resizing');
     updateDynamicToolbarPosition();
     startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
@@ -3979,6 +4028,7 @@ if (expandAnswerBtn) {
       isDragClick = false;
       return;
     }
+    window.isCustomResized = false;
     isAnswerExpanded = !isAnswerExpanded;
     expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
     if (isAnswerExpanded) {

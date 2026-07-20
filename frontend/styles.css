@@ -74,10 +74,10 @@ body.resizing {
 .toolbar-wrapper {
   position: absolute;
   top: 4px;
-  left: 0;
-  right: 0;
-  margin-left: auto;
-  margin-right: auto;
+  left: 10px;
+  right: auto;
+  margin-left: 0;
+  margin-right: 0;
   width: calc(100% - 20px) !important;
   max-width: 620px !important;
   box-sizing: border-box;
@@ -1067,16 +1067,19 @@ a,
 /* Shortcut Badges */
 .shortcut-badge {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 8.5px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 9px;
+  background: #334155;
+  border: 1px solid #64748b;
+  border-bottom: 2px solid #1e293b;
   border-radius: 4px;
-  padding: 1px 4px;
+  padding: 2px 5px;
   margin-left: 6px;
-  color: #2dd4bf;
+  color: #f8fafc;
   pointer-events: none;
-  font-weight: 600;
+  font-weight: 700;
   vertical-align: middle;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  text-shadow: 0 1px 1px rgba(0,0,0,0.8);
 }
 
 /* Settings Shortcut Recorder */
