@@ -209,7 +209,7 @@ function saveSavedBounds(bounds) {
     if (fs.existsSync(filePath)) {
       try {
         existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const dataToSave = {

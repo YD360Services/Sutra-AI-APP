@@ -1,8 +1,11 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import uuid
 import io
+
+logger = logging.getLogger("copilotx.resumes")
 
 try:
     import pypdf
