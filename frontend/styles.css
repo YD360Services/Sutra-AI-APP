@@ -55,6 +55,13 @@ body {
   transition: opacity 0.2s ease-in-out;
 }
 
+/* Applied during minimize — kills ALL transitions/animations instantly */
+.instant-hide,
+.instant-hide * {
+  transition: none !important;
+  animation: none !important;
+}
+
 /* Glass Toolbar Styling */
 .toolbar-wrapper {
   position: absolute;

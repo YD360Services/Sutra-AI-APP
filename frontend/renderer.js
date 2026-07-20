@@ -3764,10 +3764,14 @@ const appContainer = document.querySelector('.app-container');
 async function toggleShrunk(shrunk) {
   isShrunk = shrunk;
   if (isShrunk) {
-    appContainer.style.display = 'none';
+    // Add instant-hide class to kill all CSS transitions/animations immediately
+    appContainer.classList.add('instant-hide');
+    appContainer.style.visibility = 'hidden';
+    appContainer.style.pointerEvents = 'none';
+    appContainer.style.opacity = '0';
     if (diamondBtn) {
       diamondBtn.style.display = 'flex';
-      diamondBtn.style.position = 'absolute';
+      diamondBtn.style.position = 'fixed';
       diamondBtn.style.top = '4px';
       diamondBtn.style.left = '4px';
     }
@@ -3786,6 +3790,12 @@ async function toggleShrunk(shrunk) {
     if (diamondBtn) {
       diamondBtn.style.display = 'none';
     }
+    // Restore appContainer visibility
+    appContainer.style.transition = ''; // restore CSS transition for smooth expand
+    appContainer.classList.remove('instant-hide');
+    appContainer.style.visibility = '';
+    appContainer.style.pointerEvents = '';
+    appContainer.style.opacity = '';
     appContainer.style.display = 'flex';
 
     // Immediately re-enable mouse events — window is fully interactive again

@@ -1,0 +1,124 @@
+@startuml Stealth AI — High-Level Architecture
+
+!theme plain
+skinparam backgroundColor #0F172A
+skinparam DefaultFontColor #F8FAFC
+skinparam ArrowColor #818CF8
+skinparam ArrowFontColor #94A3B8
+skinparam NoteBackgroundColor #1E293B
+skinparam NoteBorderColor #475569
+
+skinparam package {
+  BackgroundColor #0F172A
+  BorderColor #64748B
+  FontColor #CBD5E1
+}
+skinparam component {
+  BackgroundColor #1E293B
+  BorderColor #38BDF8
+  FontColor #F8FAFC
+}
+skinparam database {
+  BackgroundColor #1E293B
+  BorderColor #C084FC
+  FontColor #F8FAFC
+}
+skinparam cloud {
+  BackgroundColor #0F172A
+  BorderColor #F472B6
+  FontColor #FBCFE8
+}
+skinparam actor {
+  BackgroundColor #818CF8
+  BorderColor #4F46E5
+  FontColor #FFFFFF
+}
+
+' ── Actors ──
+actor "User" as User
+actor "Web Browser" as Browser
+
+' ── Electron App ──
+package "Electron Desktop App" as App {
+
+  package "Main Process  (main.js)" as Main {
+    component "BrowserWindow\n(frameless, always-on-top)" as Win
+    component "IPC Handlers\n(session, AI, window,\ncontext, screenshot)" as IPC
+    component "Local HTTP Server\n:48999" as HTTP
+  }
+
+  component "Preload  (preload.js)\ncontextBridge → electronAPI" as Preload
+
+  package "Renderer  (frontend/)" as UI {
+    component "Setup Wizard\n(3-step session config)" as Setup
+    component "Toolbar + AI Panel\n(transcript, answers)" as Toolbar
+    component "Audio Capture\n(Deepgram STT — mic + screen)" as Audio
+    component "renderer.js\n(session flow, auto-answer,\nhistory, settings)" as Renderer
+  }
+}
+
+' ── FastAPI Backend ──
+package "FastAPI Backend  (Python)" as Backend {
+
+  component "REST API Routes\n/api/sessions  /api/answer\n/api/transcripts  /api/screenshots\n/api/resumes  /api/knowledge\n/ws/..." as Routes
+
+  package "Service Layer" as Svc {
+    component "4-Layer Memory\nContextOrchestrator\n(L1 transcript → L2 Q&A\n→ L3 knowledge → L4 user)" as Memory
+    component "AI Service\n(GPT / Gemini / Llama)" as AISvc
+    component "Screenshot Service\n(vision + OCR)" as ImgSvc
+    component "Transcript Intelligence\n(question detection)" as TxSvc
+  }
+
+  database "DB\n(SQLite / PostgreSQL)\nUser · Session · Transcript\nAnswer · Resume · Knowledge" as DB
+}
+
+' ── Local Files ──
+package "Local Filesystem" as FS {
+  database "stealth_context.json\n(resume, JD, model, role)" as Ctx
+  database "stealth_window_state.json\n(saved bounds)" as Bounds
+  database ".env  (API keys)" as Env
+}
+
+' ── External ──
+cloud "Google Gemini API" as Gemini
+cloud "Deepgram STT" as Deepgram
+cloud "OpenAI API" as OpenAI
+cloud "Llama / Groq" as Llama
+
+' ── Connections ──
+User --> UI : Interacts
+Browser --> HTTP : /auth-callback · /launch
+HTTP --> Win : trigger launch / sync credentials
+
+Win --> Preload : injects
+Preload --> Renderer : window.electronAPI
+Renderer --> Setup : drives wizard
+Renderer --> Toolbar : updates answers
+Renderer --> Audio : start / stop STT
+Audio --> Deepgram : audio stream (online)
+Renderer --> IPC : all API calls via IPC
+
+IPC --> Ctx : read / write context
+IPC --> Bounds : persist window pos
+IPC --> Env : read API keys
+IPC -right-> Gemini : offline direct\nGemini call
+IPC --> Backend : HTTP/HTTPS\n(online mode)
+
+Routes --> Memory : orchestrate answer
+Routes --> TxSvc : detect question
+Routes --> ImgSvc : solve screenshot
+Memory --> AISvc : call LLM
+AISvc --> Gemini : Gemini models
+AISvc --> OpenAI : GPT-5.5 / o3
+AISvc --> Llama : Llama 3.x
+Routes --> DB : ORM queries
+Env --> IPC : keys loaded at startup
+
+note bottom of Memory
+  L1 — Rolling transcript
+  L2 — Recent Q&A pairs
+  L3 — Session knowledge / JD doc
+  L4 — User resume + context
+end note
+
+@enduml

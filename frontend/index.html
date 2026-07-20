@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Stealth AI Assistant</title>
+  <title>Sutra AI</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -329,8 +329,9 @@
     <div id="toolbar-view" style="display: none; flex-direction: column; width: 100%; align-items: center;">
       <!-- Slim Toolbar at Top -->
       <div class="toolbar-wrapper">
-        <div class="brand-zone">
-          <img src="logo.png" style="width: 20px; height: 20px; object-fit: contain; flex-shrink: 0;" alt="Logo" />
+        <div class="brand-zone" style="-webkit-app-region: drag;">
+          <img src="logo.png" style="width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; border-radius: 5px;" alt="Sutra AI Logo" />
+          <span style="font-size: 13px; font-weight: 700; color: #ffffff; letter-spacing: 0.04em; white-space: nowrap; user-select: none;">Sutra <span style="color: #2dd4bf;">AI</span></span>
           <!-- session-timer hidden; stop-session-btn now shows the timer -->
           <div id="session-timer" style="display: none;">00:00</div>
         </div>
@@ -577,7 +578,7 @@
     </div>
   </div>
     
-    <button id="diamond-btn" class="interactive" style="display: none; position: absolute; top: 4px; left: 4px; width: 36px; height: 36px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; align-items: center; justify-content: center; z-index: 99999; cursor: grab; box-shadow: 0 2px 10px rgba(0,0,0,0.5); -webkit-app-region: no-drag; user-select: none;">
+    <button id="diamond-btn" class="interactive" style="display: none; position: fixed; top: 4px; left: 4px; width: 36px; height: 36px; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; align-items: center; justify-content: center; z-index: 99999; cursor: grab; box-shadow: 0 2px 10px rgba(0,0,0,0.5); -webkit-app-region: no-drag; user-select: none; padding: 0;">
       <img src="logo.png" style="width: 20px; height: 20px; object-fit: contain;" alt="Logo" />
     </button>
 
