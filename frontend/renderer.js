@@ -1067,6 +1067,10 @@ setupNextBtn.addEventListener('click', () => {
       showInlineError('Please enter a target role.', document.getElementById('setup-step-1'));
       return;
     }
+    if (!setupJd.value.trim()) {
+      showInlineError('Please paste the target job description (required).', document.getElementById('setup-step-1'));
+      return;
+    }
   }
   if (currentStep === 2) {
     if (!setupResumeSelect.value) {
@@ -1171,6 +1175,17 @@ if (editSessionSaveBtn) {
     const newJd = (editJdInput?.value || '').trim();
     const newResumeId = editResumeSelect?.value || '';
     const newDocId = editDocSelect?.value || '';
+
+    if (!newJd) {
+      if (editSessionStatus) {
+        editSessionStatus.style.display = 'block';
+        editSessionStatus.style.background = 'rgba(239,68,68,0.12)';
+        editSessionStatus.style.border = '1px solid rgba(239,68,68,0.3)';
+        editSessionStatus.style.color = '#fca5a5';
+        editSessionStatus.textContent = '⚠️ Job Description is required.';
+      }
+      return;
+    }
 
     editSessionSaveBtn.disabled = true;
     editSessionSaveBtn.textContent = 'Updating...';
@@ -1504,7 +1519,7 @@ stopSessionBtn.addEventListener('click', async () => {
   document.body.classList.remove('stealth-active');
   toggleStealthTooltips(false);
   document.body.classList.remove('hover-active');
-  document.querySelector('.app-container').style.opacity = 1.0;
+  document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
 
   // Stop live session ticking timer
   stopSessionTimer();
@@ -1625,14 +1640,10 @@ function updateClickThrough(clientX, clientY) {
 
   const appCont = document.querySelector('.app-container');
   if (appCont) {
-    if (document.body.classList.contains('stealth-active')) {
-      if (isDraggingSlider || window._isPreviewingOpacity) {
-        appCont.style.opacity = Math.min(1.0, userOpacity);
-      } else {
-        appCont.style.opacity = isMouseInsideWindow ? '1' : Math.min(1.0, userOpacity);
-      }
+    if (isDraggingSlider || window._isPreviewingOpacity) {
+      appCont.style.opacity = Math.min(1.0, userOpacity);
     } else {
-      appCont.style.opacity = '1';
+      appCont.style.opacity = isMouseInsideWindow ? '1' : Math.min(1.0, userOpacity);
     }
   }
 }
@@ -3532,18 +3543,12 @@ async function loadAllSettings() {
 
   const savedOpacity = safeGetItem('stealth_opacity');
   if (savedOpacity !== null) {
-    userOpacity = Math.max(0.20, Math.min(2.0, parseFloat(savedOpacity)));
+    userOpacity = Math.max(0.20, Math.min(1.0, parseFloat(savedOpacity)));
     if (opacitySlider) opacitySlider.value = userOpacity;
     if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
-    // Apply opacity only when in an active stealth session — not on the setup screen
-    if (document.body.classList.contains('stealth-active')) {
-      const appCont = document.querySelector('.app-container');
-      if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
-    } else {
-      // Always keep setup view at full opacity
-      const appCont = document.querySelector('.app-container');
-      if (appCont) appCont.style.opacity = '1';
-    }
+    // Apply user opacity to the app container (both steps wizard and active session)
+    const appCont = document.querySelector('.app-container');
+    if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
   } else {
     userOpacity = 1.0;
     if (opacityDisplay && opacitySlider) {
@@ -3787,25 +3792,21 @@ window._opacityPreviewTimeout = null;
 window._isPreviewingOpacity = false;
 
 function applyOpacity(val) {
-  userOpacity = Math.max(0.20, Math.min(2.0, parseFloat(val)));
+  userOpacity = Math.max(0.20, Math.min(1.0, parseFloat(val)));
   if (opacitySlider) opacitySlider.value = userOpacity;
   safeSetItem('stealth_opacity', userOpacity.toString());
   if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
 
   const appCont = document.querySelector('.app-container');
   if (appCont) {
-    if (document.body.classList.contains('stealth-active')) {
-      window._isPreviewingOpacity = true;
-      appCont.style.opacity = Math.min(1.0, userOpacity);
-      
-      clearTimeout(window._opacityPreviewTimeout);
-      window._opacityPreviewTimeout = setTimeout(() => {
-        window._isPreviewingOpacity = false;
-        updateClickThrough();
-      }, 1500);
-    } else {
-      appCont.style.opacity = '1';
-    }
+    window._isPreviewingOpacity = true;
+    appCont.style.opacity = Math.min(1.0, userOpacity);
+    
+    clearTimeout(window._opacityPreviewTimeout);
+    window._opacityPreviewTimeout = setTimeout(() => {
+      window._isPreviewingOpacity = false;
+      updateClickThrough();
+    }, 1500);
   }
 }
 
