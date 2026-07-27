@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveWindowDelta: (dx, dy) => ipcRenderer.send('move-window', dx, dy),
   moveWindowAbsolute: (x, y) => ipcRenderer.send('move-window-absolute', x, y),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
+  setStealthMode: (enabled) => ipcRenderer.send('set-stealth-mode', enabled),
   launchToolbar: (config) => ipcRenderer.send('launch-toolbar', config),
 
   // ── Device / Media ────────────────────────────────────────────────

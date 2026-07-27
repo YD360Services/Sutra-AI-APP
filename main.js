@@ -26,11 +26,14 @@ let isToolbarMode = false;
 
 // Load environment variables manually to avoid external dependency issues
 function loadEnv() {
-  const envPath = path.join(__dirname, '.env');
+  const rootEnvPath = path.join(__dirname, '.env');
+  const backendEnvPath = path.join(__dirname, 'backend', '.env');
   const env = {};
-  if (fs.existsSync(envPath)) {
+
+  const parseFile = (filePath) => {
+    if (!fs.existsSync(filePath)) return;
     try {
-      const content = fs.readFileSync(envPath, 'utf8');
+      const content = fs.readFileSync(filePath, 'utf8');
       const lines = content.split(/\r?\n/);
       for (const line of lines) {
         const trimmed = line.trim();
@@ -39,13 +42,18 @@ function loadEnv() {
         if (index > -1) {
           const key = trimmed.substring(0, index).trim();
           const value = trimmed.substring(index + 1).trim();
-          env[key] = value.replace(/^['"]|['"]$/g, '');
+          if (!env[key]) {
+            env[key] = value.replace(/^['"]|['"]$/g, '');
+          }
         }
       }
     } catch (e) {
-      console.error('Failed to read .env file:', e.message);
+      console.error('Failed to read env file:', filePath, e.message);
     }
-  }
+  };
+
+  parseFile(rootEnvPath);
+  parseFile(backendEnvPath);
   return env;
 }
 
@@ -321,6 +329,14 @@ function createWindow() {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
       win.setIgnoreMouseEvents(ignore, options);
+    }
+  });
+
+  // Handle developer stealth mode toggle (enable/disable OS screen capture protection)
+  ipcMain.on('set-stealth-mode', (event, enabled) => {
+    if (mainWindow) {
+      mainWindow.setContentProtection(Boolean(enabled));
+      console.log(`[Developer Mode] Content protection set to: ${enabled}`);
     }
   });
 

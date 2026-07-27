@@ -266,6 +266,8 @@ async function loadDropdowns() {
       setupResumeSelect.appendChild(resumeUploadOpt);
     }
 
+
+
     if (resumeError || docError) {
       const parts = [];
       if (resumeError) parts.push('resumes');
@@ -296,8 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    if (offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
-    console.log('[Stealth] Populated setup form from local context successfully');
+    console.log('[Stealth] Loaded local L4 context successfully');
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
@@ -440,9 +441,21 @@ async function loadRecentSessions() {
       row.addEventListener('mouseleave', () => row.style.background = '');
 
       // Helper to pre-fill wizard
-      const prefillWizard = () => {
+      const prefillWizard = async () => {
         if (s.company_name && setupCompany) setupCompany.value = s.company_name;
         if (s.role_name && setupRole) setupRole.value = s.role_name;
+
+        // Auto-fill Job Description from session object or context
+        if (setupJd) {
+          if (s.job_description && typeof s.job_description === 'object' && s.job_description.description) {
+            setupJd.value = s.job_description.description;
+          } else if (typeof s.job_description === 'string' && s.job_description.trim()) {
+            setupJd.value = s.job_description.trim();
+          } else if (offlineUserContext && offlineUserContext.job_description) {
+            setupJd.value = offlineUserContext.job_description;
+          }
+        }
+
         // Match session type badge
         document.querySelectorAll('.type-badge').forEach(b => {
           b.classList.remove('active');
@@ -1625,17 +1638,9 @@ function updateClickThrough(clientX, clientY) {
 
   if (isInteractive) {
     window.electronAPI.setIgnoreMouseEvents(false);
-    if (!isMouseInsideWindow) {
-      isMouseInsideWindow = true;
-      updateWindowSize();
-    }
   } else {
     // Pass clicks through gaps
     window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
-    if (isMouseInsideWindow) {
-      isMouseInsideWindow = false;
-      updateWindowSize();
-    }
   }
 
   const appCont = document.querySelector('.app-container');
@@ -1650,6 +1655,10 @@ function updateClickThrough(clientX, clientY) {
 
 window.addEventListener('mouseleave', () => {
   isMouseInsideWindow = false;
+  const appCont = document.querySelector('.app-container');
+  if (appCont && !isDraggingSlider && !window._isPreviewingOpacity) {
+    appCont.style.opacity = Math.min(1.0, userOpacity);
+  }
   updateClickThrough();
   updateWindowSize();
 });
@@ -1657,6 +1666,10 @@ window.addEventListener('mouseleave', () => {
 window.addEventListener('mouseenter', () => {
   isDraggingWindow = false;
   isMouseInsideWindow = true;
+  const appCont = document.querySelector('.app-container');
+  if (appCont && !isDraggingSlider && !window._isPreviewingOpacity) {
+    appCont.style.opacity = '1';
+  }
   updateClickThrough();
   updateWindowSize();
 });
@@ -1699,13 +1712,22 @@ window.addEventListener('pointerup', (e) => {
   requestAnimationFrame(() => updateClickThrough());
 });
 
+window.addEventListener('pointercancel', () => {
+  isResizingPanel = false;
+  isDraggingWindow = false;
+  isDraggingSlider = false;
+  document.body.classList.remove('resizing');
+  updateClickThrough();
+});
+
 window.addEventListener('pointermove', (e) => {
   // Always track cursor position for state-change re-evaluations
   _lastClientX = e.clientX;
   _lastClientY = e.clientY;
 
-  // Handle panel resizing
+  // Handle panel resizing — apply double arrow cursor strictly while actively expanding
   if (isResizingPanel) {
+    document.body.classList.add('resizing');
     const dx = e.screenX - startMouseX;
     const dy = e.screenY - startMouseY;
 
@@ -1814,11 +1836,11 @@ function updateWindowSize(reposition = false) {
     const editModalEl = document.getElementById('edit-session-modal');
     const editModalOpen = editModalEl && editModalEl.style.display === 'flex';
 
-    let targetHeight = COLLAPSED_HEIGHT;
+    let targetHeight = 120;
     if (settingsOpen || editModalOpen) {
       targetHeight = 480;
-    } else if (isMouseInsideWindow) {
-      targetHeight = 140;
+    } else {
+      targetHeight = 120; // 120px allows hover tooltips below toolbar to render 100% complete without clipping
     }
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(WIDTH, targetHeight, toolbarPosition, reposition);
@@ -3557,6 +3579,13 @@ async function loadAllSettings() {
     }
   }
 
+  const savedDevStealth = safeGetItem('stealth_dev_mode_enabled');
+  if (savedDevStealth !== null) {
+    updateDevStealthUI(savedDevStealth === 'true');
+  } else {
+    updateDevStealthUI(true);
+  }
+
   const savedFontSize = safeGetItem('stealth_font_size');
   if (savedFontSize !== null) {
     if (fontSizeInput) fontSizeInput.value = savedFontSize;
@@ -3763,18 +3792,8 @@ function logoutLocalUser() {
 const settingsLogoutBtn = document.getElementById('settings-logout-btn');
 if (settingsLogoutBtn) {
   settingsLogoutBtn.addEventListener('click', () => {
-    const popup = document.getElementById('settings-popup');
-    if (popup) popup.style.display = 'none';
-    updateWindowSize();
-
-    const sessionActive = document.body.classList.contains('stealth-active');
-    if (sessionActive) {
-      // During a live session → behave exactly like End Session button
-      if (stopSessionBtn) stopSessionBtn.click();
-    } else {
-      // Outside a session → normal logout
-      logoutLocalUser();
-    }
+    console.log('[Stealth] Exit button clicked — directly killing application process.');
+    window.electronAPI.quitApp();
   });
 }
 
@@ -3831,6 +3850,38 @@ if (opacitySlider) {
   });
   opacitySlider.addEventListener('input', (e) => {
     applyOpacity(e.target.value);
+  });
+}
+
+// ── Developer Stealth Mode Toggle ─────────────────────────────────────────────
+let isDevStealthModeEnabled = true;
+const devStealthToggleBtn = document.getElementById('dev-stealth-toggle-btn');
+const stealthModeLabel = document.getElementById('stealth-mode-label');
+
+function updateDevStealthUI(enabled) {
+  isDevStealthModeEnabled = Boolean(enabled);
+  safeSetItem('stealth_dev_mode_enabled', isDevStealthModeEnabled ? 'true' : 'false');
+
+  if (window.electronAPI && window.electronAPI.setStealthMode) {
+    window.electronAPI.setStealthMode(isDevStealthModeEnabled);
+  }
+
+  if (devStealthToggleBtn) {
+    devStealthToggleBtn.textContent = isDevStealthModeEnabled ? 'ON' : 'OFF';
+    devStealthToggleBtn.style.background = isDevStealthModeEnabled ? 'rgba(20, 184, 166, 0.15)' : 'rgba(255, 255, 255, 0.06)';
+    devStealthToggleBtn.style.borderColor = isDevStealthModeEnabled ? 'rgba(20, 184, 166, 0.4)' : 'rgba(255, 255, 255, 0.15)';
+    devStealthToggleBtn.style.color = isDevStealthModeEnabled ? '#2dd4bf' : 'var(--text-secondary)';
+  }
+
+  if (stealthModeLabel) {
+    stealthModeLabel.textContent = isDevStealthModeEnabled ? 'ON (Protected)' : 'OFF (Normal)';
+    stealthModeLabel.style.color = isDevStealthModeEnabled ? '#2dd4bf' : 'var(--text-secondary)';
+  }
+}
+
+if (devStealthToggleBtn) {
+  devStealthToggleBtn.addEventListener('click', () => {
+    updateDevStealthUI(!isDevStealthModeEnabled);
   });
 }
 
@@ -4314,4 +4365,29 @@ setTimeout(() => {
   setupRecorder('set-shortcut-scrollUp', 'scrollUp');
   setupRecorder('set-shortcut-scrollDown', 'scrollDown');
 }, 500);
+
+// ── Inactivity Auto-Kill / Session Safety Manager ─────────────────────────────
+let lastUserActivityTime = Date.now();
+
+function registerUserActivity() {
+  lastUserActivityTime = Date.now();
+}
+
+['mousemove', 'mousedown', 'keydown', 'pointerdown', 'touchstart'].forEach(evt => {
+  window.addEventListener(evt, registerUserActivity, { passive: true });
+});
+
+// Check inactivity every 30 seconds
+setInterval(() => {
+  const idleMs = Date.now() - lastUserActivityTime;
+  const isSessionActive = document.body.classList.contains('stealth-active');
+
+  if (isSessionActive && idleMs >= 15 * 60 * 1000) {
+    console.warn('[Inactivity Manager] Session idle for 15+ minutes — auto-ending active session...');
+    if (typeof stopSessionBtn !== 'undefined' && stopSessionBtn) stopSessionBtn.click();
+  } else if (!isSessionActive && idleMs >= 30 * 60 * 1000) {
+    console.warn('[Inactivity Manager] App idle for 30+ minutes — auto-closing application...');
+    if (window.electronAPI && window.electronAPI.quitApp) window.electronAPI.quitApp();
+  }
+}, 30000);
 

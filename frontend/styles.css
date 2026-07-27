@@ -74,10 +74,8 @@ body.resizing {
 .toolbar-wrapper {
   position: absolute;
   top: 4px;
-  left: 10px;
-  right: auto;
-  margin-left: 0;
-  margin-right: 0;
+  left: 50%;
+  transform: translateX(-50%);
   width: calc(100% - 20px) !important;
   max-width: 620px !important;
   box-sizing: border-box;
@@ -153,7 +151,7 @@ body.resizing, body.resizing * {
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: rgba(255, 255, 255, 0.95);
-  padding: 6px 14px;
+  padding: 5px 12px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
@@ -161,7 +159,24 @@ body.resizing, body.resizing * {
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Toolbar Capture Shortcut Badge — high visibility glowing pill styling */
+.nav-btn .shortcut-badge {
+  background: rgba(20, 184, 166, 0.28) !important;
+  border: 1px solid #2dd4bf !important;
+  color: #ffffff !important;
+  font-size: 9.5px !important;
+  font-weight: 800 !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  margin-left: 4px !important;
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.4) !important;
+  display: inline-block !important;
+  line-height: 1 !important;
 }
 
 /* Buttons Hover Hues & Active Indicators */
@@ -230,8 +245,23 @@ body.resizing, body.resizing * {
 }
 
 /* Move / drag handle button — always visible */
-.ctrl-btn.position {
+#position-btn,
+#setup-position-btn,
+#recent-position-btn,
+.ctrl-btn.position,
+#position-btn:hover,
+#setup-position-btn:hover,
+#recent-position-btn:hover,
+.ctrl-btn.position:hover,
+#position-btn:active,
+#setup-position-btn:active,
+#recent-position-btn:active,
+.ctrl-btn.position:active,
+.ctrl-btn.position.dragging {
   cursor: default !important;
+}
+
+.ctrl-btn.position {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.35);
@@ -286,6 +316,21 @@ body.resizing, body.resizing * {
 .ctrl-btn[data-label]:hover::after {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* Right-align tooltip chips for elements near the right edge of window/popup to prevent horizontal clipping */
+.ctrl-btn.close[data-label]::after,
+.ctrl-btn:last-child[data-label]::after,
+#settings-close-btn[data-tooltip]::after,
+[data-tooltip-pos="right"]::after {
+  left: auto !important;
+  right: 0 !important;
+  transform: translateY(4px) !important;
+}
+.ctrl-btn.close[data-label]:hover::after,
+.ctrl-btn:last-child[data-label]:hover::after,
+#settings-close-btn[data-tooltip]:hover::after {
+  transform: translateY(0) !important;
 }
 
 /* Allow the chips to escape the toolbar boundary */
@@ -474,12 +519,32 @@ body.stealth-active .ctrl-btn-danger {
   font-weight: 600;
   font-size: 12px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
   transition: all 0.2s ease;
 }
 
 .btn-send:hover {
   background: #fff;
   transform: scale(1.02);
+}
+
+/* High contrast shortcut badge inside Ask and Answer action buttons */
+.btn-send .shortcut-badge,
+#ai-answer-btn .shortcut-badge {
+  background: rgba(0, 0, 0, 0.85) !important;
+  border: 1px solid rgba(0, 0, 0, 0.4) !important;
+  color: #ffffff !important;
+  font-size: 9.5px !important;
+  font-weight: 800 !important;
+  padding: 2px 6px !important;
+  border-radius: 4px !important;
+  margin-left: 6px !important;
+  display: inline-block !important;
+  line-height: 1 !important;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important;
 }
 
 /* Quick Action Badges */
@@ -759,7 +824,9 @@ code {
 .setup-view-container {
   width: 100%;
   max-width: 580px;
-  height: 580px;
+  height: 550px;
+  max-height: calc(100vh - 20px);
+  box-sizing: border-box;
   background: var(--bg-panel);
   backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
@@ -767,7 +834,7 @@ code {
   border-radius: 20px;
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 18px 22px;
   box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.05);
   animation: slide-in-down 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   margin-top: 10px;
@@ -1066,45 +1133,61 @@ a,
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* Shortcut Badges */
-.shortcut-badge {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  background: #334155;
-  border: 1px solid #64748b;
-  border-bottom: 2px solid #1e293b;
-  border-radius: 4px;
-  padding: 2px 5px;
-  margin-left: 6px;
-  color: #f8fafc;
-  pointer-events: none;
-  font-weight: 700;
-  vertical-align: middle;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
-  text-shadow: 0 1px 1px rgba(0,0,0,0.8);
+/* Unified Shortcut Badges Design System across the entire Application */
+.shortcut-badge,
+.nav-btn .shortcut-badge,
+.btn-send .shortcut-badge,
+#ai-answer-btn .shortcut-badge,
+#prev-answer-btn .shortcut-badge,
+#next-answer-btn .shortcut-badge,
+#badge-scroll {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 9.5px !important;
+  font-weight: 800 !important;
+  background: rgba(20, 184, 166, 0.22) !important;
+  border: 1px solid rgba(45, 212, 191, 0.5) !important;
+  color: #ffffff !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  margin-left: 4px !important;
+  display: inline-block !important;
+  line-height: 1 !important;
+  pointer-events: none !important;
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.35) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
+  vertical-align: middle !important;
 }
 
-/* Settings Shortcut Recorder */
+/* Settings Shortcut Recorder Buttons — Matching Theme */
 .shortcut-recorder {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.15);
-  color: #2dd4bf;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 10px;
+  background: rgba(20, 184, 166, 0.22) !important;
+  border: 1px solid rgba(45, 212, 191, 0.5) !important;
+  color: #ffffff !important;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 800;
   font-family: 'JetBrains Mono', monospace;
   cursor: pointer;
   text-align: center;
   outline: none;
-  width: 90px;
+  width: 105px;
   transition: all 0.2s;
+  box-shadow: 0 0 8px rgba(45, 212, 191, 0.35);
+}
+
+.shortcut-recorder:hover {
+  background: rgba(20, 184, 166, 0.35) !important;
+  border-color: #2dd4bf !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.5) !important;
 }
 
 .shortcut-recorder.recording {
-  background: rgba(20, 184, 166, 0.15);
-  border-color: #2dd4bf;
-  box-shadow: 0 0 6px rgba(45, 212, 191, 0.3);
-  color: #fff;
+  background: rgba(45, 212, 191, 0.45) !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 14px rgba(45, 212, 191, 0.7) !important;
+  color: #ffffff !important;
 }
 
 /* Contenteditable transcript placeholder */
