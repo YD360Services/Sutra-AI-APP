@@ -1564,6 +1564,7 @@ stopSessionBtn.addEventListener('click', async () => {
 // Resizing state
 let isResizingPanel = false;
 let isDraggingSlider = false;
+let isResizingViaExpandBtn = false;
 let justExpanded = false;
 let justExpandedTimeout;
 let startWidth, startHeight;
@@ -1585,7 +1586,10 @@ let isMouseInsideWindow = false;
  * @param {number} [clientY] - cursor Y in client coords (uses last known if omitted)
  */
 function updateClickThrough(clientX, clientY) {
-  if (isDraggingWindow) return;
+  if (isDraggingWindow || isResizingPanel || isDraggingSlider || isResizingViaExpandBtn) {
+    window.electronAPI.setIgnoreMouseEvents(false);
+    return;
+  }
   if (justExpanded) {
     window.electronAPI.setIgnoreMouseEvents(false);
     return;
@@ -1860,15 +1864,14 @@ function updateWindowSize(reposition = false) {
     // So: compact(transcript visible) answer = 390-286 = 104px → use 100px
     //     expanded(transcript hidden) answer = 390-216 = 174px → use 170px
     const COMPACT_ANSWER_H = 100;
-    const EXPANDED_ANSWER_H = 170;
+    const EXPANDED_ANSWER_H = 280;
 
     const transcriptSection = document.querySelector('.block-container:first-child');
+    if (transcriptSection) transcriptSection.style.display = '';
 
     if (window.isCustomResized) {
-      // During drag: keep transcript hidden in expanded mode
-      if (transcriptSection) transcriptSection.style.display = isAnswerExpanded ? 'none' : '';
-      const overheadH = isAnswerExpanded ? 216 : 286;
-      const computedAnswerHeight = Math.min(EXPANDED_ANSWER_H, Math.max(60, currentHeight - overheadH));
+      const overheadH = 286;
+      const computedAnswerHeight = Math.max(100, currentHeight - overheadH);
       if (answerBlock) {
         answerBlock.style.height = computedAnswerHeight + 'px';
         answerBlock.style.maxHeight = computedAnswerHeight + 'px';
@@ -1897,8 +1900,11 @@ function updateWindowSize(reposition = false) {
       }
 
       if (isAnswerExpanded) {
-        // Hide transcript section to give answer block more vertical space
-        if (transcriptSection) transcriptSection.style.display = 'none';
+        const savedExpWidth = parseFloat(safeGetItem('stealth_expandedPanelWidth') || '780');
+        const targetExpWidth = Math.max(780, savedExpWidth);
+        if (panelsContainer) {
+          panelsContainer.style.width = (targetExpWidth - 20) + 'px';
+        }
         if (answerBlock) {
           answerBlock.style.height = EXPANDED_ANSWER_H + 'px';
           answerBlock.style.maxHeight = EXPANDED_ANSWER_H + 'px';
@@ -1911,8 +1917,6 @@ function updateWindowSize(reposition = false) {
         }
         if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
       } else {
-        // Show transcript section in compact mode
-        if (transcriptSection) transcriptSection.style.display = '';
         if (answerBlock) {
           answerBlock.style.height = COMPACT_ANSWER_H + 'px';
           answerBlock.style.maxHeight = COMPACT_ANSWER_H + 'px';
@@ -4099,6 +4103,8 @@ if (expandAnswerBtn) {
 
   expandAnswerBtn.addEventListener('pointerdown', (e) => {
     isBtnDragging = false;
+    isResizingViaExpandBtn = true;
+    window.electronAPI.setIgnoreMouseEvents(false);
     startScreenX = e.screenX;
     startScreenY = e.screenY;
     startWinX = window.screenX;
@@ -4164,10 +4170,10 @@ if (expandAnswerBtn) {
 
     // ── Answer block: fill available vertical space
     const transcriptSectionDrag = document.querySelector('.block-container:first-child');
-    const overhead = isAnswerExpanded ? OVERHEAD_NO_TRANSCRIPT : OVERHEAD_WITH_TRANSCRIPT;
-    if (isAnswerExpanded && transcriptSectionDrag) transcriptSectionDrag.style.display = 'none';
+    if (transcriptSectionDrag) transcriptSectionDrag.style.display = '';
+    const overhead = OVERHEAD_WITH_TRANSCRIPT;
 
-    const newAnswerH = Math.max(60, newH - overhead);
+    const newAnswerH = Math.max(100, newH - overhead);
     const answerBlock = document.getElementById('answer-block');
     if (answerBlock) {
       answerBlock.style.height = newAnswerH + 'px';
@@ -4199,9 +4205,10 @@ if (expandAnswerBtn) {
     e.preventDefault();
   });
 
-  expandAnswerBtn.addEventListener('pointerup', (e) => {
+  const stopExpandBtnDrag = (e) => {
+    isResizingViaExpandBtn = false;
     if (expandAnswerBtn.hasPointerCapture(e.pointerId)) {
-      expandAnswerBtn.releasePointerCapture(e.pointerId);
+      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) {}
     }
     if (!isBtnDragging) {
       // ── Tap/click: toggle compact ↔ expanded
@@ -4233,7 +4240,7 @@ if (expandAnswerBtn) {
         expandAnswerBtn.style.color = 'var(--accent-ai)';
         expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
         expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.12)';
-        if (answerBlock) { answerBlock.style.height = '170px'; answerBlock.style.maxHeight = '170px'; }
+        if (answerBlock) { answerBlock.style.height = '280px'; answerBlock.style.maxHeight = '280px'; }
       } else {
         expandAnswerBtn.style.color = 'var(--text-secondary)';
         expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
@@ -4244,7 +4251,10 @@ if (expandAnswerBtn) {
     }
     isBtnDragging = false;
     e.preventDefault();
-  });
+  };
+
+  expandAnswerBtn.addEventListener('pointerup', stopExpandBtnDrag);
+  expandAnswerBtn.addEventListener('pointercancel', stopExpandBtnDrag);
 }
 
 
