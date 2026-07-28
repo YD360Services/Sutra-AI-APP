@@ -1852,63 +1852,78 @@ function updateWindowSize(reposition = false) {
     const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
     const maxAnswerHeight = Math.max(150, screenHeight - 250);
 
+    // ACTUAL LAYOUT HEIGHTS (measured from DOM/CSS):
+    // panels margin-top=56 + panelHeader(pad12x2+content20)=44 + panelContent(pad16top)=16
+    // + transcriptRow(label18+gap4+input38)=60 + gap10 + answerNavRow=28 + answer-block + pad16bot=16 + inputArea(pad12x2+input32)=56
+    // Fixed overhead WITH transcript = 56+44+16+60+10+28+16+56 = 286px
+    // Fixed overhead WITHOUT transcript = 286 - 60 - 10 = 216px
+    // So: compact(transcript visible) answer = 390-286 = 104px → use 100px
+    //     expanded(transcript hidden) answer = 390-216 = 174px → use 170px
+    const COMPACT_ANSWER_H = 100;
+    const EXPANDED_ANSWER_H = 170;
+
+    const transcriptSection = document.querySelector('.block-container:first-child');
+
     if (window.isCustomResized) {
-      const headerHeight = 45;
-      const navHeight = 35;
-      const inputHeight = 55;
-      const computedAnswerHeight = currentHeight - COLLAPSED_HEIGHT - 12 - headerHeight - navHeight - inputHeight;
+      // During drag: keep transcript hidden in expanded mode
+      if (transcriptSection) transcriptSection.style.display = isAnswerExpanded ? 'none' : '';
+      const overheadH = isAnswerExpanded ? 216 : 286;
+      const computedAnswerHeight = Math.min(EXPANDED_ANSWER_H, Math.max(60, currentHeight - overheadH));
       if (answerBlock) {
-        answerBlock.style.height = Math.max(100, computedAnswerHeight) + 'px';
-        answerBlock.style.maxHeight = 'none';
+        answerBlock.style.height = computedAnswerHeight + 'px';
+        answerBlock.style.maxHeight = computedAnswerHeight + 'px';
         answerBlock.style.overflowY = 'auto';
       }
       if (codeDisplayPre) {
-        codeDisplayPre.style.height = Math.max(100, computedAnswerHeight) + 'px';
-        codeDisplayPre.style.maxHeight = 'none';
+        codeDisplayPre.style.height = computedAnswerHeight + 'px';
+        codeDisplayPre.style.maxHeight = computedAnswerHeight + 'px';
         codeDisplayPre.style.overflowY = 'auto';
       }
       const panelsContainer = document.getElementById('panels');
       if (panelsContainer) {
-        panelsContainer.style.height = (currentHeight - COLLAPSED_HEIGHT - 12) + 'px';
+        panelsContainer.style.height = 'auto';
         panelsContainer.style.maxHeight = 'none';
       }
       if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
     } else {
+      // Reset all drag-imposed styles so CSS defaults take over
+      const panelsContainer = document.getElementById('panels');
+      if (panelsContainer) {
+        panelsContainer.style.height = 'auto';
+        panelsContainer.style.maxHeight = 'none';
+        panelsContainer.style.width = '';        // reset to CSS var(--panel-width)
+        panelsContainer.style.maxWidth = '';     // reset to CSS max-width: 100%
+        panelsContainer.style.overflow = '';     // reset to CSS overflow: visible
+      }
+
       if (isAnswerExpanded) {
+        // Hide transcript section to give answer block more vertical space
+        if (transcriptSection) transcriptSection.style.display = 'none';
         if (answerBlock) {
-          answerBlock.style.height = 'auto';
-          answerBlock.style.maxHeight = maxAnswerHeight + 'px';
+          answerBlock.style.height = EXPANDED_ANSWER_H + 'px';
+          answerBlock.style.maxHeight = EXPANDED_ANSWER_H + 'px';
           answerBlock.style.overflowY = 'auto';
         }
         if (codeDisplayPre) {
-          codeDisplayPre.style.height = 'auto';
-          codeDisplayPre.style.maxHeight = '350px';
-          codeDisplayPre.style.overflowY = 'auto';
-        }
-        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
-      } else if (hasActiveAnswer) {
-        if (answerBlock) {
-          answerBlock.style.height = 'auto';
-          answerBlock.style.maxHeight = '250px';
-          answerBlock.style.overflowY = 'auto';
-        }
-        if (codeDisplayPre) {
-          codeDisplayPre.style.height = 'auto';
-          codeDisplayPre.style.maxHeight = '350px';
+          codeDisplayPre.style.height = EXPANDED_ANSWER_H + 'px';
+          codeDisplayPre.style.maxHeight = EXPANDED_ANSWER_H + 'px';
           codeDisplayPre.style.overflowY = 'auto';
         }
         if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
       } else {
+        // Show transcript section in compact mode
+        if (transcriptSection) transcriptSection.style.display = '';
         if (answerBlock) {
-          answerBlock.style.height = '110px';
-          answerBlock.style.maxHeight = '250px';
+          answerBlock.style.height = COMPACT_ANSWER_H + 'px';
+          answerBlock.style.maxHeight = COMPACT_ANSWER_H + 'px';
           answerBlock.style.overflowY = 'auto';
         }
         if (codeDisplayPre) {
-          codeDisplayPre.style.height = '310px';
-          codeDisplayPre.style.maxHeight = '350px';
+          codeDisplayPre.style.height = COMPACT_ANSWER_H + 'px';
+          codeDisplayPre.style.maxHeight = COMPACT_ANSWER_H + 'px';
           codeDisplayPre.style.overflowY = 'auto';
         }
+        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
       }
     }
 
@@ -1919,17 +1934,27 @@ function updateWindowSize(reposition = false) {
       const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
       const settingsBuffer = settingsOpen ? 180 : 0;
 
-      // Use scrollHeight to capture the full unclipped content height
+      // HEIGHT: when custom resized, trust currentHeight (drag handler already clamped to screen)
       let targetHeight;
       if (window.isCustomResized) {
-        targetHeight = currentHeight;
+        targetHeight = currentHeight; // set by drag handler, already screen-clamped
       } else {
-        const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
-        targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
+        const contentHeight = appContainer ? appContainer.scrollHeight : Math.round(rect.height);
+        const screenH = window.screen.availHeight;
+        targetHeight = Math.min(screenH - 40, contentHeight + 12 + settingsBuffer);
       }
 
-      const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
-      const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
+      // WIDTH: when custom resized use currentWidth, else use saved/default panel width
+      let targetWinWidth;
+      if (window.isCustomResized) {
+        targetWinWidth = currentWidth || WIDTH;
+      } else if (isAnswerExpanded) {
+        const savedExpWidth = parseFloat(safeGetItem('stealth_expandedPanelWidth') || '780');
+        targetWinWidth = Math.max(780, savedExpWidth);
+      } else {
+        const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
+        targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
+      }
 
       pendingProgrammaticResizes++;
       window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition);
@@ -2482,6 +2507,14 @@ async function queryAssistant(manualQuestionText, isManual = false) {
   answerBlock.classList.add('loading');
   updateWindowSize();
 
+  // Always sync latest transcript text from DOM (including gray interim text) for automatic queries
+  if (!isManual && transcriptBlock) {
+    const currentDOMText = transcriptBlock.textContent.trim();
+    if (currentDOMText && transcriptBlock.dataset.placeholder !== 'true') {
+      accumulatedTranscript = currentDOMText;
+    }
+  }
+
   try {
     let answer;
     let currentQuestion = '';
@@ -2550,7 +2583,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
             // Plain text stream
             newEntry.answer = rawBuffer;
             renderAnswerToDOM(answerBlock, rawBuffer, currentQuestion);
-            answerBlock.scrollTop = answerBlock.scrollHeight;
+            answerBlock.scrollTop = 0;
             updateWindowSize();
           } else if (isJsonStream === true) {
             // JSON stream extraction
@@ -2580,7 +2613,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
                 displayText = displayText.replace(/"\s*\}?\s*$/, '');
                 newEntry.answer = displayText;
                 renderAnswerToDOM(answerBlock, displayText, currentQuestion);
-                answerBlock.scrollTop = answerBlock.scrollHeight;
+                answerBlock.scrollTop = 0;
                 updateWindowSize();
               }
             }
@@ -2717,7 +2750,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
         newEntry.answer = answer.substring(0, idx + chunkSize);
         renderAnswerToDOM(answerBlock, newEntry.answer, currentQuestion);
         idx += chunkSize;
-        answerBlock.scrollTop = answerBlock.scrollHeight;
+        answerBlock.scrollTop = 0;
         updateWindowSize();
         setTimeout(typeResponse, 10);
       } else {
@@ -2833,14 +2866,10 @@ if (nextAnswerBtn) {
 
 // Answer Button: detect latest question in transcript → backend or offline
 aiAnswerBtn.addEventListener('click', () => {
-  // Only sync from the contenteditable DOM when NOT recording (i.e. manual paste/type mode).
-  // When Deepgram is active, accumulatedTranscript is the authoritative confirmed-only source.
-  // Reading textContent during live recording would mix in unconfirmed interim (gray) text.
-  if (!isRecording) {
-    const typedText = transcriptBlock.textContent.trim();
-    if (typedText && transcriptBlock.dataset.placeholder !== 'true') {
-      accumulatedTranscript = typedText;
-    }
+  // Sync full text from DOM including both confirmed (white) and interim (gray) text
+  const currentDOMText = transcriptBlock.textContent.trim();
+  if (currentDOMText && transcriptBlock.dataset.placeholder !== 'true') {
+    accumulatedTranscript = currentDOMText;
   }
 
   const currentText = accumulatedTranscript.trim();
@@ -4052,66 +4081,169 @@ if (diamondBtn) {
 }
 
 const expandAnswerBtn = document.getElementById('expand-answer-btn');
-let isDragClick = false;
 
 if (expandAnswerBtn) {
+  let isBtnDragging = false;
+  let startScreenX = 0;
+  let startScreenY = 0;
+  let startWinX = 0;    // window.screenX at drag start
+  let startWinY = 0;    // window.screenY at drag start
+  let startWinW = 0;    // window.innerWidth at drag start
+  let startWinH = 0;    // window.innerHeight at drag start
+  const RESIZE_THRESHOLD = 4;
+
+  // ── Fixed non-answer overhead (px): toolbar-margin(56) + panelHeader(44) + panelContent-padding(32) + transcriptRow(60) + gap(10) + navRow(28) + inputArea(56) = 286
+  // When transcript hidden: 286 - 60 - 10 = 216
+  const OVERHEAD_WITH_TRANSCRIPT = 286;
+  const OVERHEAD_NO_TRANSCRIPT = 216;
+
   expandAnswerBtn.addEventListener('pointerdown', (e) => {
-    isResizingPanel = true;
-    window.isCustomResized = true;
-    document.body.classList.add('resizing');
-    updateDynamicToolbarPosition();
-    startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
-    startHeight = currentHeight;
-    startMouseX = e.screenX;
-    startMouseY = e.screenY;
-    startX = window.screenX;
-    startY = window.screenY;
-    isDragClick = false;
-    e.preventDefault();
-
-    // Capture pointer events globally to allow dragging outside window boundaries
+    isBtnDragging = false;
+    startScreenX = e.screenX;
+    startScreenY = e.screenY;
+    startWinX = window.screenX;
+    startWinY = window.screenY;
+    startWinW = window.innerWidth || currentWidth || 640;
+    startWinH = window.innerHeight || currentHeight || 380;
     expandAnswerBtn.setPointerCapture(e.pointerId);
-
-    window.electronAPI.setIgnoreMouseEvents(false);
+    e.preventDefault();
   });
 
-  expandAnswerBtn.addEventListener('click', (e) => {
-    if (isDragClick) {
-      isDragClick = false;
-      return;
+  expandAnswerBtn.addEventListener('pointermove', (e) => {
+    if (!expandAnswerBtn.hasPointerCapture(e.pointerId)) return;
+    const dx = e.screenX - startScreenX;
+    const dy = e.screenY - startScreenY;
+    if (Math.abs(dx) > RESIZE_THRESHOLD || Math.abs(dy) > RESIZE_THRESHOLD) {
+      isBtnDragging = true;
     }
-    window.isCustomResized = false;
-    isAnswerExpanded = !isAnswerExpanded;
-    expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
-    if (isAnswerExpanded) {
-      expandAnswerBtn.style.color = 'var(--accent-ai)';
-      expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
-      expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.08)';
+    if (!isBtnDragging) { e.preventDefault(); return; }
 
-      // Default large dimensions
-      currentWidth = Math.max(currentWidth, WIDTH);
-      currentHeight = Math.max(currentHeight, 664);
+    // ── Screen limits (no going outside the screen)
+    const screenW = window.screen.availWidth;
+    const screenH = window.screen.availHeight;
+    const screenLeft = 0;
+    const screenTop = 0;
+
+    // ── 4-direction expansion: window grows outward from its initial edges
+    // RIGHT: dx > 0 → right edge moves right
+    // LEFT:  dx < 0 → left edge moves left (x decreases, width increases)
+    // DOWN:  dy > 0 → bottom edge moves down
+    // UP:    dy < 0 → top edge moves up (y decreases, height increases)
+    let newX = startWinX;
+    let newY = startWinY;
+    let newW = startWinW;
+    let newH = startWinH;
+
+    if (dx > 0) {
+      // Expand right
+      newW = startWinW + dx;
     } else {
-      expandAnswerBtn.style.color = 'var(--text-secondary)';
-      expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-      expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
-
-      // Default collapsed dimensions
-      currentWidth = WIDTH;
-      currentHeight = 664;
-
-      const panelsContainer = document.getElementById('panels');
-      if (panelsContainer) {
-        panelsContainer.style.height = 'auto';
-        panelsContainer.style.maxHeight = '1450px';
-      }
-      const answerBlock = document.getElementById('answer-block');
-      if (answerBlock) {
-        answerBlock.style.height = 'auto';
-        answerBlock.style.maxHeight = '250px';
-      }
+      // Expand left
+      newX = startWinX + dx;
+      newW = startWinW - dx; // dx is negative so this grows
     }
-    updateWindowSize();
+
+    if (dy > 0) {
+      // Expand down
+      newH = startWinH + dy;
+    } else {
+      // Expand up
+      newY = startWinY + dy;
+      newH = startWinH - dy; // dy is negative so this grows
+    }
+
+    // ── Clamp to screen bounds — never go outside
+    if (newX < screenLeft) { newW -= (screenLeft - newX); newX = screenLeft; }
+    if (newY < screenTop)  { newH -= (screenTop - newY);  newY = screenTop;  }
+    if (newX + newW > screenLeft + screenW) newW = screenLeft + screenW - newX;
+    if (newY + newH > screenTop + screenH)  newH = screenTop + screenH - newY;
+
+    // ── Enforce minimum size
+    newW = Math.max(360, newW);
+    newH = Math.max(200, newH);
+
+    // ── Answer block: fill available vertical space
+    const transcriptSectionDrag = document.querySelector('.block-container:first-child');
+    const overhead = isAnswerExpanded ? OVERHEAD_NO_TRANSCRIPT : OVERHEAD_WITH_TRANSCRIPT;
+    if (isAnswerExpanded && transcriptSectionDrag) transcriptSectionDrag.style.display = 'none';
+
+    const newAnswerH = Math.max(60, newH - overhead);
+    const answerBlock = document.getElementById('answer-block');
+    if (answerBlock) {
+      answerBlock.style.height = newAnswerH + 'px';
+      answerBlock.style.maxHeight = newAnswerH + 'px';
+      answerBlock.style.overflowY = 'auto';
+    }
+    const codeDisplayPre = document.getElementById('code-display');
+    if (codeDisplayPre) {
+      codeDisplayPre.style.height = newAnswerH + 'px';
+      codeDisplayPre.style.maxHeight = newAnswerH + 'px';
+      codeDisplayPre.style.overflowY = 'auto';
+    }
+
+    // ── Panels container width tracks window width
+    const panelsContainerDrag = document.getElementById('panels');
+    if (panelsContainerDrag) {
+      panelsContainerDrag.style.width = (newW - 20) + 'px';
+      panelsContainerDrag.style.maxWidth = 'none';
+      panelsContainerDrag.style.height = 'auto';
+      panelsContainerDrag.style.maxHeight = 'none';
+    }
+
+    window.isCustomResized = true;
+    currentHeight = Math.round(newH);
+    currentWidth = Math.round(newW);
+
+    // Pass explicit x,y so window repositions correctly (for up/left expansion)
+    window.electronAPI.resizeWindow(Math.round(newW), Math.round(newH), toolbarPosition, false, Math.round(newX), Math.round(newY));
+    e.preventDefault();
+  });
+
+  expandAnswerBtn.addEventListener('pointerup', (e) => {
+    if (expandAnswerBtn.hasPointerCapture(e.pointerId)) {
+      expandAnswerBtn.releasePointerCapture(e.pointerId);
+    }
+    if (!isBtnDragging) {
+      // ── Tap/click: toggle compact ↔ expanded
+      window.isCustomResized = false;
+      currentHeight = 0;  // force updateWindowSize to recalculate
+      currentWidth = 0;
+      isAnswerExpanded = !isAnswerExpanded;
+      expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
+
+      // Reset ALL drag-imposed panel styles so CSS defaults fully restore
+      const panelsContainerReset = document.getElementById('panels');
+      if (panelsContainerReset) {
+        panelsContainerReset.style.width = '';
+        panelsContainerReset.style.maxWidth = '';
+        panelsContainerReset.style.overflow = '';
+        panelsContainerReset.style.height = 'auto';
+        panelsContainerReset.style.maxHeight = 'none';
+      }
+
+      // Restore transcript section visibility
+      const transcriptSectionReset = document.querySelector('.block-container:first-child');
+      if (transcriptSectionReset) transcriptSectionReset.style.display = '';
+
+      const askBadge = document.getElementById('badge-ask');
+      if (askBadge) askBadge.style.display = isAnswerExpanded ? 'inline-block' : 'none';
+
+      const answerBlock = document.getElementById('answer-block');
+      if (isAnswerExpanded) {
+        expandAnswerBtn.style.color = 'var(--accent-ai)';
+        expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
+        expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.12)';
+        if (answerBlock) { answerBlock.style.height = '170px'; answerBlock.style.maxHeight = '170px'; }
+      } else {
+        expandAnswerBtn.style.color = 'var(--text-secondary)';
+        expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+        expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
+        if (answerBlock) { answerBlock.style.height = '100px'; answerBlock.style.maxHeight = '100px'; }
+      }
+      updateWindowSize();
+    }
+    isBtnDragging = false;
+    e.preventDefault();
   });
 }
 
@@ -4207,6 +4339,20 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
+  // Prev Question / Answer Shortcut
+  if (checkShortcut('prevAnswer', e)) {
+    const prevBtn = document.getElementById('prev-answer-btn');
+    if (prevBtn) prevBtn.click();
+    e.preventDefault();
+  }
+
+  // Next Question / Answer Shortcut
+  if (checkShortcut('nextAnswer', e)) {
+    const nextBtn = document.getElementById('next-answer-btn');
+    if (nextBtn) nextBtn.click();
+    e.preventDefault();
+  }
+
   // Answer Shortcut
   if (checkShortcut('answer', e)) {
     const aiSendBtn = document.getElementById('ai-send');
@@ -4258,7 +4404,9 @@ window.appShortcuts = {
   capture: { ctrl: true, shift: false, alt: false, key: 'Space' },
   answer: { ctrl: true, shift: false, alt: false, key: 'Enter' },
   scrollUp: { ctrl: true, shift: false, alt: false, key: 'ArrowUp' },
-  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' }
+  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' },
+  prevAnswer: { ctrl: true, shift: false, alt: false, key: 'ArrowLeft' },
+  nextAnswer: { ctrl: true, shift: false, alt: false, key: 'ArrowRight' }
 };
 
 function formatShortcut(config) {
@@ -4271,7 +4419,9 @@ function formatShortcut(config) {
   if (keyName === 'ArrowDown') keyName = '↓';
   if (keyName === 'ArrowLeft') keyName = '←';
   if (keyName === 'ArrowRight') keyName = '→';
-  keyName = keyName.charAt(0).toUpperCase() + keyName.slice(1);
+  if (!['↑', '↓', '←', '→'].includes(keyName)) {
+    keyName = keyName.charAt(0).toUpperCase() + keyName.slice(1);
+  }
   parts.push(keyName);
   return parts.join('+');
 }
@@ -4282,22 +4432,33 @@ function updateShortcutUI() {
   const answerBadge = document.getElementById('badge-answer');
   const askBadge = document.getElementById('badge-ask');
   const scrollBadge = document.getElementById('badge-scroll');
+  const prevBadge = document.getElementById('badge-prev-answer');
+  const nextBadge = document.getElementById('badge-next-answer');
 
   if (captureBadge) captureBadge.textContent = formatShortcut(window.appShortcuts.capture);
   if (answerBadge) answerBadge.textContent = formatShortcut(window.appShortcuts.answer);
-  if (askBadge) askBadge.textContent = formatShortcut(window.appShortcuts.answer);
-  if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)} / ${formatShortcut(window.appShortcuts.scrollDown)}`;
+  if (askBadge) {
+    askBadge.textContent = formatShortcut(window.appShortcuts.answer);
+    askBadge.style.display = (typeof isAnswerExpanded !== 'undefined' && isAnswerExpanded) ? 'inline-block' : 'none';
+  }
+  if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)}/${formatShortcut(window.appShortcuts.scrollDown)}`;
+  if (prevBadge && window.appShortcuts.prevAnswer) prevBadge.textContent = formatShortcut(window.appShortcuts.prevAnswer);
+  if (nextBadge && window.appShortcuts.nextAnswer) nextBadge.textContent = formatShortcut(window.appShortcuts.nextAnswer);
 
   // Update Recorders in Settings
   const recCapture = document.getElementById('set-shortcut-capture');
   const recAnswer = document.getElementById('set-shortcut-answer');
   const recScrollUp = document.getElementById('set-shortcut-scrollUp');
   const recScrollDown = document.getElementById('set-shortcut-scrollDown');
+  const recPrevAnswer = document.getElementById('set-shortcut-prevAnswer');
+  const recNextAnswer = document.getElementById('set-shortcut-nextAnswer');
 
   if (recCapture && !recCapture.classList.contains('recording')) recCapture.textContent = formatShortcut(window.appShortcuts.capture);
   if (recAnswer && !recAnswer.classList.contains('recording')) recAnswer.textContent = formatShortcut(window.appShortcuts.answer);
   if (recScrollUp && !recScrollUp.classList.contains('recording')) recScrollUp.textContent = formatShortcut(window.appShortcuts.scrollUp);
   if (recScrollDown && !recScrollDown.classList.contains('recording')) recScrollDown.textContent = formatShortcut(window.appShortcuts.scrollDown);
+  if (recPrevAnswer && !recPrevAnswer.classList.contains('recording') && window.appShortcuts.prevAnswer) recPrevAnswer.textContent = formatShortcut(window.appShortcuts.prevAnswer);
+  if (recNextAnswer && !recNextAnswer.classList.contains('recording') && window.appShortcuts.nextAnswer) recNextAnswer.textContent = formatShortcut(window.appShortcuts.nextAnswer);
 }
 
 function loadShortcuts() {
@@ -4364,6 +4525,8 @@ setTimeout(() => {
   setupRecorder('set-shortcut-answer', 'answer');
   setupRecorder('set-shortcut-scrollUp', 'scrollUp');
   setupRecorder('set-shortcut-scrollDown', 'scrollDown');
+  setupRecorder('set-shortcut-prevAnswer', 'prevAnswer');
+  setupRecorder('set-shortcut-nextAnswer', 'nextAnswer');
 }, 500);
 
 // ── Inactivity Auto-Kill / Session Safety Manager ─────────────────────────────

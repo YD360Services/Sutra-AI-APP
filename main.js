@@ -280,6 +280,7 @@ function createWindow() {
     transparent: true,
     alwaysOnTop: true,
     resizable: true,
+    maximizable: false,
     skipTaskbar: true,
     type: 'toolbar',
     minWidth: 0,
@@ -329,6 +330,24 @@ function createWindow() {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) {
       win.setIgnoreMouseEvents(ignore, options);
+    }
+  });
+
+  // Handle IPC window moving (absolute coordinates)
+  ipcMain.on('move-window-absolute', (event, targetX, targetY) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const bounds = mainWindow.getBounds();
+      const clamped = clampBoundsToScreen(Math.round(targetX), Math.round(targetY), bounds.width, bounds.height);
+      mainWindow.setBounds(clamped);
+    }
+  });
+
+  // Handle IPC window moving (delta coordinates)
+  ipcMain.on('move-window', (event, dx, dy) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const bounds = mainWindow.getBounds();
+      const clamped = clampBoundsToScreen(bounds.x + Math.round(dx), bounds.y + Math.round(dy), bounds.width, bounds.height);
+      mainWindow.setBounds(clamped);
     }
   });
 

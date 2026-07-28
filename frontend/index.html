@@ -67,7 +67,7 @@
           </svg>
         </div>
         <!-- Close / Kill Electron button -->
-        <button id="quit-app-btn" class="interactive" data-tooltip="Quit Application"
+        <button id="quit-app-btn" class="interactive" data-tooltip="Quit Application" data-tooltip-pos="right"
           style="display: flex; align-items: center; justify-content: center; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #ef4444; border-radius: 8px; width: 26px; height: 26px;  transition: all 0.2s; outline: none; flex-shrink: 0; -webkit-app-region: no-drag !important;">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
@@ -304,7 +304,7 @@
           </svg>
         </div>
         <!-- Quit button -->
-        <button id="recent-view-quit-btn" class="interactive" data-tooltip="Quit Application"
+        <button id="recent-view-quit-btn" class="interactive" data-tooltip="Quit Application" data-tooltip-pos="right"
           style="display: flex; align-items: center; justify-content: center; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: #ef4444; border-radius: 8px; width: 26px; height: 26px;  transition: all 0.2s; outline: none; flex-shrink: 0;">
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
             <path d="M1 1L9 9M9 1L1 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
@@ -490,30 +490,26 @@
                   style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 3px 6px; font-size: 10.5px;">
                   <button id="prev-answer-btn" class="interactive" title="Previous Answer (Ctrl+Left)"
                     style="background: none; border: none; padding: 0; margin: 0;  outline: none; display: flex; align-items: center;">
-                    <span class="shortcut-badge" style=" pointer-events: auto !important; margin: 0;">Ctrl+&larr;</span>
+                    <span id="badge-prev-answer" class="shortcut-badge" style=" pointer-events: auto !important; margin: 0;">Ctrl+&larr;</span>
                   </button>
                   <span id="answer-nav-label" style="color: #e2e8f0; font-weight: 600; font-size: 10px; padding: 0 2px; white-space: nowrap;">No answers yet</span>
                   <button id="next-answer-btn" class="interactive" title="Next Answer (Ctrl+Right)"
                     style="background: none; border: none; padding: 0; margin: 0;  outline: none; display: flex; align-items: center;">
-                    <span class="shortcut-badge" style=" pointer-events: auto !important; margin: 0;">Ctrl+&rarr;</span>
+                    <span id="badge-next-answer" class="shortcut-badge" style=" pointer-events: auto !important; margin: 0;">Ctrl+&rarr;</span>
                   </button>
                 </div>
 
-                <!-- Pinned to RIGHT: Copy & Clear -->
+                <!-- Pinned to RIGHT: Scroll shortcut, Copy & Clear -->
                 <div style="display: flex; gap: 6px; align-items: center;">
+                  <span id="badge-scroll" class="shortcut-badge" style="margin: 0; opacity: 0.85; font-size: 9px !important; white-space: nowrap !important;">Ctrl+&uarr;/&darr;</span>
                   <button id="copy-answer-btn" class="interactive"
                     style="background: none; border: none; color: #ffffff; font-size: 9.5px;  text-decoration: underline; font-weight: 600; outline: none; padding: 2px 4px;">Copy</button>
                   <button id="clear-answer-btn" class="interactive"
                     style="background: none; border: none; color: #ffffff; font-size: 9.5px;  text-decoration: underline; font-weight: 600; outline: none; padding: 2px 4px;">Clear</button>
                 </div>
               </div>
-              <div style="position: relative;">
-                <div style="position: absolute; top: 12px; right: 18px; pointer-events: none; opacity: 0.7; z-index: 10;">
-                  <span id="badge-scroll" class="shortcut-badge">Ctrl + &uarr; / &darr;</span>
-                </div>
-                <div id="answer-block" class="scrollable-block"
-                  style="height: 110px; max-height: 1000px; background: #0f111a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: var(--text-primary); line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left; padding-right: 28px;">
-                </div>
+              <div id="answer-block" class="scrollable-block"
+                style="height: 110px; max-height: 1000px; background: #0f111a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: var(--text-primary); line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left;">
               </div>
             </div>
           </div>
@@ -522,8 +518,8 @@
             <input type="text" id="ai-input" class="custom-input" placeholder="Type a manual question instead..."
               style="flex: 1;" />
             <button id="ai-send" class="btn-send interactive" data-tooltip="Ask Manual Question">Ask <span
-                id="badge-ask" class="shortcut-badge">Ctrl+Enter</span></button>
-            <button id="expand-answer-btn" class="interactive" data-tooltip="Expand Answer Panel"
+                id="badge-ask" class="shortcut-badge" style="display: none;">Ctrl+Enter</span></button>
+            <button id="expand-answer-btn" class="interactive" data-tooltip="Expand Answer Panel" data-tooltip-pos="right"
               style="display: flex; align-items: center; justify-content: center; width: auto; min-width: 32px; padding: 0 6px; height: 32px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: var(--text-secondary);  transition: all 0.2s; outline: none; flex-shrink: 0; gap: 4px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -545,7 +541,7 @@
         style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 4px; margin-bottom: 2px;">
         <span
           style="font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Preferences</span>
-        <button id="settings-close-btn" class="interactive" data-tooltip="Close Settings"
+        <button id="settings-close-btn" class="interactive" data-tooltip="Close Settings" data-tooltip-pos="right"
           style="background: none; border: none; color: var(--text-muted);  font-size: 11px; display: flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s; padding: 0 2px;"
           onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
       </div>
@@ -600,7 +596,7 @@
           <span style="font-size: 10px; font-weight: 600; color: #fff;">Dev Stealth Mode</span>
           <span id="stealth-mode-label" style="font-size: 9px; color: #2dd4bf;">ON (Protected)</span>
         </div>
-        <button id="dev-stealth-toggle-btn" class="interactive" data-tooltip="Toggle OS Screen Capture Protection"
+        <button id="dev-stealth-toggle-btn" class="interactive" data-tooltip="Toggle OS Screen Capture Protection" data-tooltip-pos="right"
           style="background: rgba(20, 184, 166, 0.15); border: 1px solid rgba(20, 184, 166, 0.4); color: #2dd4bf; border-radius: 6px; padding: 3px 10px; font-size: 10px; font-weight: 700;  outline: none; transition: all 0.2s; -webkit-app-region: no-drag !important;">
           ON
         </button>
@@ -631,6 +627,16 @@
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 10.5px; color: #f1f5f9; font-weight: 600;">Scroll Down</span>
           <button id="set-shortcut-scrollDown" class="shortcut-recorder interactive">Ctrl+ArrowDown</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 10.5px; color: #f1f5f9; font-weight: 600;">Prev Question</span>
+          <button id="set-shortcut-prevAnswer" class="shortcut-recorder interactive">Ctrl+ArrowLeft</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 10.5px; color: #f1f5f9; font-weight: 600;">Next Question</span>
+          <button id="set-shortcut-nextAnswer" class="shortcut-recorder interactive">Ctrl+ArrowRight</button>
         </div>
       </div>
 

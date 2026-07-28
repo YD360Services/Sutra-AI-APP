@@ -322,15 +322,10 @@ body.resizing, body.resizing * {
 .ctrl-btn.close[data-label]::after,
 .ctrl-btn:last-child[data-label]::after,
 #settings-close-btn[data-tooltip]::after,
+#dev-stealth-toggle-btn[data-tooltip]::after,
 [data-tooltip-pos="right"]::after {
   left: auto !important;
   right: 0 !important;
-  transform: translateY(4px) !important;
-}
-.ctrl-btn.close[data-label]:hover::after,
-.ctrl-btn:last-child[data-label]:hover::after,
-#settings-close-btn[data-tooltip]:hover::after {
-  transform: translateY(0) !important;
 }
 
 /* Allow the chips to escape the toolbar boundary */
@@ -396,10 +391,10 @@ body.stealth-active .ctrl-btn-danger {
   outline: none;
   border-radius: 20px;
   box-shadow: none;
-  overflow: hidden;
+  overflow: visible;
   animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   height: auto;
-  max-height: 1450px;
+  max-height: none;
   container-type: inline-size;
 }
 
@@ -411,6 +406,7 @@ body.stealth-active .ctrl-btn-danger {
     padding: 10px 8px !important;
   }
 }
+
 
 .panels-container.active {
   display: flex;
@@ -542,7 +538,7 @@ body.stealth-active .ctrl-btn-danger {
   padding: 2px 6px !important;
   border-radius: 4px !important;
   margin-left: 6px !important;
-  display: inline-block !important;
+  display: inline-block;
   line-height: 1 !important;
   box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important;
 }
@@ -1133,6 +1129,22 @@ a,
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+@keyframes tooltip-fade-right {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+[data-tooltip-pos="right"]:hover::after,
+#settings-close-btn[data-tooltip]:hover::after,
+#dev-stealth-toggle-btn[data-tooltip]:hover::after,
+#quit-app-btn[data-tooltip]:hover::after,
+#recent-view-quit-btn[data-tooltip]:hover::after {
+  left: auto !important;
+  right: 0 !important;
+  transform: none !important;
+  animation: tooltip-fade-right 0.15s ease-out forwards !important;
+}
+
 /* Unified Shortcut Badges Design System across the entire Application */
 .shortcut-badge,
 .nav-btn .shortcut-badge,
@@ -1150,12 +1162,19 @@ a,
   border-radius: 4px !important;
   padding: 2px 6px !important;
   margin-left: 4px !important;
-  display: inline-block !important;
+  display: inline-block;
+  white-space: nowrap !important;
   line-height: 1 !important;
   pointer-events: none !important;
   box-shadow: 0 0 8px rgba(45, 212, 191, 0.35) !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8) !important;
   vertical-align: middle !important;
+}
+
+.shortcut-badge[style*="display: none"],
+.shortcut-badge[style*="display:none"],
+.shortcut-badge.hidden {
+  display: none !important;
 }
 
 /* Settings Shortcut Recorder Buttons — Matching Theme */
