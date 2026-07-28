@@ -74,7 +74,7 @@ let isStealthHoverEnabled = true;
 let backendUrl = '';       // set at startup — empty = offline mode
 let sessionToken = '';     // session UUID (also used as token)
 let activeSessionId = '';  // session UUID — same as sessionToken, stored separately for clarity
-let lastAnswerOffset = 0;  // transcript cursor: char offset of last answered position
+let lastAnswerOffset = 0;  // transcript 
 
 // Cache storage for loaded resources
 let backendResumes = [];
@@ -407,7 +407,7 @@ async function loadRecentSessions() {
       const description = `${s.role_name || ''}${s.company_name ? ` (${s.company_name})` : ''}`;
 
       const row = document.createElement('div');
-      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:6px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.03);transition:background 0.15s;cursor:pointer;';
+      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:6px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.03);transition:background 0.15s;';
       row.innerHTML = `
         <div style="font-size:11px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${title}">${title}</div>
         <div style="font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${description}">${description || '—'}</div>
@@ -418,19 +418,19 @@ async function loadRecentSessions() {
         <div>
           <div style="display: flex; gap: 5px; align-items: center;">
             <!-- Transcript Button -->
-            <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(20, 184, 166,0.12);border:1px solid rgba(20, 184, 166,0.25);color:#2dd4bf;cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(20, 184, 166,0.12);border:1px solid rgba(20, 184, 166,0.25);color:#2dd4bf;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
             </button>
             <!-- Summary Button -->
-            <button class="session-summary-btn interactive" data-id="${s.id}" title="View Summary" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#4ade80;cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-summary-btn interactive" data-id="${s.id}" title="View Summary" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#4ade80;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
             <!-- Edit Button -->
-            <button class="session-edit-btn interactive" data-id="${s.id}" title="Edit Config" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-edit-btn interactive" data-id="${s.id}" title="Edit Config" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </button>
             <!-- Delete Button -->
-            <button class="session-delete-btn interactive" data-id="${s.id}" title="Delete Session" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#ef4444;cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-delete-btn interactive" data-id="${s.id}" title="Delete Session" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#ef4444;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
@@ -570,7 +570,7 @@ async function loadRecentSessions() {
           const wrapperHtml = `
             <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
               <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
-                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600;  outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
                   Copy Raw Timeline
                 </button>
               </div>
@@ -636,8 +636,8 @@ async function loadRecentSessions() {
           <div style="text-align:center;padding:8px 0;">
             <div style="font-size:12px;color:rgba(255,255,255,0.8);margin-bottom:20px;">Are you sure you want to permanently delete <strong>${title}</strong>?</div>
             <div style="display:flex;gap:10px;justify-content:center;">
-              <button id="confirm-delete-yes" style="padding:8px 22px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.5);color:#fca5a5;border-radius:7px;cursor:pointer;font-size:11px;">Delete</button>
-              <button id="confirm-delete-no" style="padding:8px 22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:7px;cursor:pointer;font-size:11px;">Cancel</button>
+              <button id="confirm-delete-yes" style="padding:8px 22px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.5);color:#fca5a5;border-radius:7px;font-size:11px;">Delete</button>
+              <button id="confirm-delete-no" style="padding:8px 22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:7px;font-size:11px;">Cancel</button>
             </div>
           </div>
         `);
@@ -692,7 +692,7 @@ function showInlineError(msg, container) {
     'animation:fadeInDown 0.2s ease', 'position:relative', 'z-index:9'
   ].join(';');
   banner.innerHTML = `<span style="font-size:14px;flex-shrink:0;">⚠️</span><span style="flex:1;">${msg}</span>`
-    + `<button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fca5a5;cursor:pointer;font-size:14px;padding:0 0 0 6px;line-height:1;">✕</button>`;
+    + `<button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fca5a5;font-size:14px;padding:0 0 0 6px;line-height:1;">✕</button>`;
   target.prepend(banner);
   setTimeout(() => { if (banner.parentElement) banner.remove(); }, 5000);
 }
@@ -724,7 +724,7 @@ function showModalOverlay(title, contentHtml) {
   modal.innerHTML = `
     <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0;">
       <h3 style="margin: 0; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">${title}</h3>
-      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: background 0.2s;">
+      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600;  outline: none; transition: background 0.2s;">
         Close
       </button>
     </div>
@@ -3444,7 +3444,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
       copyBtn.style.fontSize = '0.75em';
       copyBtn.style.padding = '2px 8px';
       copyBtn.style.borderRadius = '4px';
-      copyBtn.style.cursor = 'pointer';
+      copyBtn
       copyBtn.onclick = () => {
         navigator.clipboard.writeText(segment.content.trim());
         copyBtn.textContent = 'Copied!';
@@ -4025,7 +4025,7 @@ if (diamondBtn) {
     const totalMoved = Math.abs(e.screenX - _diamondStartX) + Math.abs(e.screenY - _diamondStartY);
     if (totalMoved > DRAG_THRESHOLD) {
       _diamondDragging = true;
-      diamondBtn.style.cursor = 'grabbing';
+      diamondBtn
     }
     if (_diamondDragging) {
       const dx = e.screenX - _diamondStartX;
@@ -4038,7 +4038,7 @@ if (diamondBtn) {
   });
 
   diamondBtn.addEventListener('pointerup', (e) => {
-    diamondBtn.style.cursor = 'pointer';
+    diamondBtn
     if (diamondBtn.hasPointerCapture(e.pointerId)) {
       diamondBtn.releasePointerCapture(e.pointerId);
     }
