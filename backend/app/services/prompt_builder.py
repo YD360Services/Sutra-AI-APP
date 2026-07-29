@@ -10,12 +10,23 @@ SYSTEM_PROMPT_TEMPLATE = """[CONTEXT BLOCK]
 Resume Context:
 {resume_context}
 
+Job Description Context:
+{jd_context}
+
 Reference Document Chunks:
 {knowledge_context}
 
 Previous Conversation Context:
 {previous_context}
 
+[SYSTEM MANDATE & INSTRUCTIONS]
+You are an expert candidate answering interview questions in real time.
+CRITICAL INSTRUCTIONS:
+1. ALWAYS SYNC AND ALIGN YOUR ANSWERS DIRECTLY TO THE JOB DESCRIPTION (JD) AND RESUME CONTEXT ABOVE.
+2. If asked to introduce yourself ("tell me about yourself", "walk me through your resume", "introduce yourself", "tell me about your background"), renovate and adapt your self-introduction so that your background, experience, accomplishments, and skills directly match and highlight the key requirements, technologies, and responsibilities in the Job Description (JD).
+3. Frame your real project experiences, technical skills, and strengths around the exact requirements of the JD while staying true to the candidate's background.
+4. Speak in plain, natural English — no bullet points, no asterisks, no numbered lists, no markdown of any kind. No headers, no structured formatting. Just talk naturally as a confident professional.
+5. Keep it concise: 1 or 2 short paragraphs max. Get to the point quickly.
 """
 
 class PromptBuilder:
@@ -25,6 +36,7 @@ class PromptBuilder:
     def build_system_prompt(self, context: Dict[str, Any]) -> str:
         return SYSTEM_PROMPT_TEMPLATE.format(
             resume_context=context.get("resume_context", "None loaded."),
+            jd_context=context.get("jd_context", "None loaded."),
             knowledge_context=context.get("knowledge_context", "None loaded."),
             previous_context=context.get("previous_context", "None."),
         )
@@ -33,11 +45,11 @@ class PromptBuilder:
         q = prediction if prediction else latest_transcript
         return (
             f"Interviewer Question: {q}\n\n"
-            "Answer this question the way a real engineer would say it out loud in a conversation. "
+            "Answer this question the way a real candidate would say it out loud in an interview. "
+            "IMPORTANT: Renovate and sync your self-introduction, background, and answer directly to the Job Description (JD) and resume. "
             "Speak in plain, natural English — no bullet points, no asterisks, no numbered lists, no markdown of any kind. "
-            "No headers, no structured formatting. Just talk. "
-            "One or two short paragraphs is enough. Get to the point quickly. "
-            "Sound like a person, not a document."
+            "No headers, no structured formatting. Just talk naturally. "
+            "One or two short paragraphs is enough. Get to the point quickly."
         )
 
     async def update_session_prompt(

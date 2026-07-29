@@ -421,6 +421,10 @@ async function loadRecentSessions() {
             <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(20, 184, 166,0.12);border:1px solid rgba(20, 184, 166,0.25);color:#2dd4bf;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
             </button>
+            <!-- Download Button -->
+            <button class="session-download-btn interactive" data-id="${s.id}" title="Download Transcript (.txt)" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);color:#60a5fa;outline:none;transition:all 0.15s;">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
             <!-- Summary Button -->
             <button class="session-summary-btn interactive" data-id="${s.id}" title="View Summary" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#4ade80;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
@@ -475,6 +479,56 @@ async function loadRecentSessions() {
       row.querySelector('.session-edit-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         prefillWizard();
+      });
+
+      // Direct Download Transcript button click on table row
+      row.querySelector('.session-download-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const dlBtn = e.currentTarget;
+        try {
+          const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+          const [tRes, aRes] = await Promise.all([
+            fetch(`${base}/api/sessions/${s.id}/transcripts`),
+            fetch(`${base}/api/sessions/${s.id}/answers`)
+          ]);
+          if (!tRes.ok || !aRes.ok) throw new Error('Fetch failed');
+          const transcripts = await tRes.json();
+          const answers = await aRes.json();
+
+          const timeline = [
+            ...transcripts.map(t => ({ ...t, type: 'audio' })),
+            ...answers.map(a => ({ ...a, type: 'ai' }))
+          ];
+          timeline.sort((x, y) => new Date(x.created_at) - new Date(y.created_at));
+
+          if (!timeline || timeline.length === 0) {
+            alert('No transcript records found for this session.');
+            return;
+          }
+
+          const rawText = timeline.map(b => {
+            const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+            if (b.type === 'audio') {
+              let spk = b.speaker === 'interviewer' ? 'Interviewer' : (b.speaker === 'you' ? 'You' : 'Audio');
+              return `[${timeStr}] ${spk}\n${b.content}`;
+            } else {
+              return `[${timeStr}] AI\n💬 Question: ${b.question}\n\n---\n\n⭐️ Answer:\n${b.answer}`;
+            }
+          }).join('\n\n');
+
+          const safeTitle = (title || 'session').replace(/[^a-z0-9_-]/gi, '_');
+          const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `sutra_transcript_${safeTitle}_${new Date().toISOString().slice(0, 10)}.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          alert('Failed to download transcript: ' + err.message);
+        }
       });
 
       // View Transcript button click
@@ -566,11 +620,14 @@ async function loadRecentSessions() {
             }
           }).join('\n\n');
 
-          // Create container with a Copy Button at the top
+          // Create container with Download & Copy Buttons at the top
           const wrapperHtml = `
             <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
-              <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
-                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600;  outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 4px;">
+                <button id="download-timeline-btn" class="interactive" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #60a5fa; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  📥 Download Transcript (.txt)
+                </button>
+                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
                   Copy Raw Timeline
                 </button>
               </div>
@@ -581,6 +638,30 @@ async function loadRecentSessions() {
           `;
 
           showModalOverlay(`Transcript — ${title}`, wrapperHtml);
+
+          // Add download click listener
+          const downloadBtn = document.getElementById('download-timeline-btn');
+          if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+              const safeTitle = (title || 'session').replace(/[^a-z0-9_-]/gi, '_');
+              const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `sutra_transcript_${safeTitle}_${new Date().toISOString().slice(0, 10)}.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+
+              downloadBtn.textContent = '✓ Downloaded!';
+              downloadBtn.style.color = '#4ade80';
+              setTimeout(() => {
+                downloadBtn.textContent = '📥 Download Transcript (.txt)';
+                downloadBtn.style.color = '#60a5fa';
+              }, 2000);
+            });
+          }
 
           // Add copy click listener
           const copyBtn = document.getElementById('copy-timeline-btn');
@@ -1423,14 +1504,29 @@ startSessionBtn.addEventListener('click', async () => {
   // Clear answerBlock and show Intro message
   const chatBlock = document.getElementById('answer-block');
   const dbIntroduction = resumeObj ? resumeObj.introduction : '';
+  const setupJdEl = document.getElementById('setup-jd');
+  const activeJdText = (setupJdEl && setupJdEl.value.trim()) 
+    ? setupJdEl.value.trim() 
+    : (offlineUserContext && offlineUserContext.job_description ? offlineUserContext.job_description : '');
+  const jdTag = activeJdText ? `\n\nTarget Job Description (JD) & Role Context:\n"${activeJdText}"` : '';
+
   if (chatBlock) {
     chatBlock.innerHTML = '';
     // Trigger an initial query to absorb the first-request latency and generate a polished self-intro
     setTimeout(() => {
-      let introPrompt = "Based on my uploaded resume, can you provide a strong 3-minute self-introduction that I can use for this interview?";
-      if (dbIntroduction && dbIntroduction.trim()) {
-        introPrompt = `Please polish, improve the grammar, and optimize the flow of this self-introduction from my profile to make it sound highly professional, natural, and perfect for a 3-minute verbal delivery:\n\n"${dbIntroduction.trim()}"`;
-      }
+      let introPrompt = `GENERATE 100% ROLE-SYNCED VERBAL SELF-INTRODUCTION:
+
+MANDATORY DIRECTIVE FOR THE AI:
+DO NOT repeat or echo the generic candidate text verbatim. You MUST synthesize a brand-new, 100% role-synced 3-minute verbal self-introduction that explicitly combines:
+1. Candidate Stack: Computer Science degree, Python, Java, FastAPI, SQL, and backend service development at YD360 Services.
+2. Target Role Requirements: Identify key requirements from the Job Description below (Network Support Engineer, TCP/IP, system diagnostics, troubleshooting, API performance, customer experience).
+
+Candidate Base Background:
+"${dbIntroduction.trim() || 'Computer Science graduate with experience in Python, Java, FastAPI, SQL, and backend development at YD360 Services.'}"
+${jdTag}
+
+Generate the final ready-to-speak verbal self-introduction now (spoken English only, fluid paragraphs, zero markdown formatting):`;
+
       queryAssistant(introPrompt, true);
     }, 500);
   }
@@ -1863,15 +1959,15 @@ function updateWindowSize(reposition = false) {
     // Fixed overhead WITHOUT transcript = 286 - 60 - 10 = 216px
     // So: compact(transcript visible) answer = 390-286 = 104px → use 100px
     //     expanded(transcript hidden) answer = 390-216 = 174px → use 170px
-    const COMPACT_ANSWER_H = 100;
+    const COMPACT_ANSWER_H = 130;
     const EXPANDED_ANSWER_H = 280;
 
     const transcriptSection = document.querySelector('.block-container:first-child');
     if (transcriptSection) transcriptSection.style.display = '';
 
     if (window.isCustomResized) {
-      const overheadH = 286;
-      const computedAnswerHeight = Math.max(100, currentHeight - overheadH);
+      const overheadH = 308;
+      const computedAnswerHeight = Math.max(130, currentHeight - overheadH);
       if (answerBlock) {
         answerBlock.style.height = computedAnswerHeight + 'px';
         answerBlock.style.maxHeight = computedAnswerHeight + 'px';
@@ -1936,7 +2032,6 @@ function updateWindowSize(reposition = false) {
       const rect = appContainer ? appContainer.getBoundingClientRect() : { height: 0 };
       const settingsPopupEl = document.getElementById('settings-popup');
       const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
-      const settingsBuffer = settingsOpen ? 180 : 0;
 
       // HEIGHT: when custom resized, trust currentHeight (drag handler already clamped to screen)
       let targetHeight;
@@ -1945,7 +2040,11 @@ function updateWindowSize(reposition = false) {
       } else {
         const contentHeight = appContainer ? appContainer.scrollHeight : Math.round(rect.height);
         const screenH = window.screen.availHeight;
-        targetHeight = Math.min(screenH - 40, contentHeight + 12 + settingsBuffer);
+        targetHeight = Math.max(438, Math.min(screenH - 40, contentHeight + 20));
+      }
+
+      if (settingsOpen) {
+        targetHeight = Math.max(targetHeight, 520);
       }
 
       // WIDTH: when custom resized use currentWidth, else use saved/default panel width
@@ -1954,7 +2053,7 @@ function updateWindowSize(reposition = false) {
         targetWinWidth = currentWidth || WIDTH;
       } else if (isAnswerExpanded) {
         const savedExpWidth = parseFloat(safeGetItem('stealth_expandedPanelWidth') || '780');
-        targetWinWidth = Math.max(780, savedExpWidth);
+        targetWinWidth = Math.max(WIDTH, savedExpWidth);
       } else {
         const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
         targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
@@ -2492,6 +2591,42 @@ copyAnswerBtn.addEventListener('click', () => {
   }
 });
 
+// Download Answer (header button — downloads active Q&A answer as .txt file)
+const downloadAnswerBtn = document.getElementById('download-answer-btn');
+if (downloadAnswerBtn) {
+  downloadAnswerBtn.addEventListener('click', () => {
+    let content = '';
+    if (answerHistory.length > 0 && currentAnswerIndex >= 0 && currentAnswerIndex < answerHistory.length) {
+      const entry = answerHistory[currentAnswerIndex];
+      content = `Q: ${entry.question || 'Question'}\n\nA:\n${entry.answer}`;
+    } else {
+      const rawText = answerBlock.textContent.trim();
+      if (rawText && !rawText.startsWith('Click the "Answer" button')) {
+        content = rawText;
+      }
+    }
+
+    if (!content) {
+      alert('No answer content available to download.');
+      return;
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sutra_answer_${timestamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    downloadAnswerBtn.textContent = 'Downloaded!';
+    setTimeout(() => { downloadAnswerBtn.textContent = 'Download'; }, 1500);
+  });
+}
+
 // Copy All Answer button (sticky inside answer block)
 if (copyAllAnswerBtn) {
   copyAllAnswerBtn.addEventListener('click', () => {
@@ -2897,10 +3032,20 @@ function handleManualAISubmit() {
   queryAssistant(query, true);
 }
 
-aiSend.addEventListener('click', handleManualAISubmit);
-aiInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') handleManualAISubmit();
-});
+if (aiSend) {
+  aiSend.addEventListener('click', (e) => {
+    e.preventDefault();
+    handleManualAISubmit();
+  });
+}
+if (aiInput) {
+  aiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleManualAISubmit();
+    }
+  });
+}
 
 recordBtn.addEventListener('click', toggleRecording);
 if (micBtnAi) {
@@ -3263,29 +3408,25 @@ function buildPrompt({ latestQuestion, recentQA, rollingSummary, userContext, tr
   const parts = [];
 
   parts.push(
-    `You are a real person sitting in a technical interview today. You are the candidate, not an AI.
-Your only job is to answer the interviewer's question the way a real, experienced engineer would naturally say it out loud.
+    `You are a candidate sitting in an interview today answering out loud. You are the real candidate, not an AI.
+Your job is to generate a polished, professional, natural, and persuasive verbal answer.
 
-HOW TO ANSWER:
-- Speak in one or two fluid, conversational paragraphs.
-- NEVER use numbered lists (like 1., 2., 3.), bullet points, dashes, or numbered steps.
-- NEVER use bold text, asterisks (**), or any markdown headings.
-- Talk the way a confident engineer talks in a real conversation.
-- Use casual contractions: I've, I'd, I'm, that's, it's, we've, didn't, don't.
-- Start directly with the point. Do NOT warm up with filler.
-- Keep the response short and clean — under 150 words.
-- Do NOT say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "Here's the answer", "As an AI".
-- Sound like a real person talking, not a document being read.`
+CRITICAL INSTRUCTIONS & JD ALIGNMENT:
+1. FLAWLESS GRAMMAR & FLOW: Ensure impecable English grammar, professional tone, and smooth conversational flow tailored for verbal delivery.
+2. JOB DESCRIPTION SYNC: Always align and sync your background, self-introduction, technical skills, and answers directly to the target Job Description (JD) and Resume provided below.
+3. SELF-INTRODUCTION RENOVATION: If asked to introduce yourself ("tell me about yourself", "walk me through your resume", "introduce yourself", "optimize my self-introduction"), renovate the self-introduction so that technical skills, project experiences, and career accomplishments highlight the exact requirements and technologies of the target JD.
+4. SPOKEN STYLE: Speak in 1-3 fluid, natural paragraphs. NEVER use bullet points, numbered lists (1., 2.), dashes, asterisks (**), or markdown headings.
+5. NO FILLER: Start directly with the answer. Do NOT say "Certainly", "Sure", "Great question", "As an AI", or "Here is the response".`
   );
 
   if (userContext) {
     const { resume, job_description, code_context } = userContext;
     const ctxParts = [];
-    if (resume) ctxParts.push(`RESUME:\n${resume.substring(0, 400)}`);
-    if (job_description) ctxParts.push(`JOB DESCRIPTION:\n${job_description.substring(0, 300)}`);
-    if (code_context) ctxParts.push(`CODE CONTEXT:\n${code_context.substring(0, 400)}`);
+    if (resume) ctxParts.push(`RESUME:\n${resume.substring(0, 1500)}`);
+    if (job_description) ctxParts.push(`JOB DESCRIPTION (JD):\n${job_description.substring(0, 2000)}`);
+    if (code_context) ctxParts.push(`CODE CONTEXT:\n${code_context.substring(0, 1000)}`);
     if (ctxParts.length > 0) {
-      parts.push(`\n[USER CONTEXT]\n${ctxParts.join('\n\n')}`);
+      parts.push(`\n[USER & ROLE CONTEXT]\n${ctxParts.join('\n\n')}`);
     }
   }
 
@@ -3302,8 +3443,13 @@ HOW TO ANSWER:
     parts.push(`\n[RECENT AUDIO TRANSCRIPT]\n${transcriptWindow}`);
   }
 
-  parts.push(`\n[QUESTION TO ANSWER]\n${latestQuestion}`);
-  parts.push(`\nAnswer (plain spoken English only, no formatting):`);
+  // Detect inline JD in prompt and instruct explicit renovation
+  if (latestQuestion && (latestQuestion.toLowerCase().includes('for this jd') || latestQuestion.toLowerCase().includes('interview details:') || latestQuestion.toLowerCase().includes('job description:'))) {
+    parts.push(`\n[INLINE TARGET JOB DESCRIPTION & INTERVIEW CONTEXT DETECTED IN PROMPT]\n${latestQuestion}\n\nCRITICAL MANDATE: The user provided a specific target Job Description and role above. DO NOT echo the candidate's generic self-introduction verbatim. You MUST renovate, polish, and adapt the self-introduction so that it explicitly weaves in the candidate's CS background, backend skills (Python, Java, FastAPI, SQL), AI/ML work at YD360 Services, and directly connects them to the target company, role, technical troubleshooting, network support, and customer experience requirements!`);
+  }
+
+  parts.push(`\n[QUESTION / PROMPT TO ANSWER]\n${latestQuestion}`);
+  parts.push(`\nAnswer (spoken English only, flawless grammar, 100% tailored & synced to the target JD, no markdown formatting):`);
 
   return parts.join('\n');
 }
@@ -4098,9 +4244,10 @@ if (expandAnswerBtn) {
 
   // ── Fixed non-answer overhead (px): toolbar-margin(56) + panelHeader(44) + panelContent-padding(32) + transcriptRow(60) + gap(10) + navRow(28) + inputArea(56) = 286
   // When transcript hidden: 286 - 60 - 10 = 216
-  const OVERHEAD_WITH_TRANSCRIPT = 286;
-  const OVERHEAD_NO_TRANSCRIPT = 216;
+  const OVERHEAD_WITH_TRANSCRIPT = 308;
+  const OVERHEAD_NO_TRANSCRIPT = 238;
 
+  let startPanelW = 0;
   expandAnswerBtn.addEventListener('pointerdown', (e) => {
     isBtnDragging = false;
     isResizingViaExpandBtn = true;
@@ -4111,6 +4258,8 @@ if (expandAnswerBtn) {
     startWinY = window.screenY;
     startWinW = window.innerWidth || currentWidth || 640;
     startWinH = window.innerHeight || currentHeight || 380;
+    const panelsContainer = document.getElementById('panels');
+    startPanelW = panelsContainer ? panelsContainer.getBoundingClientRect().width : 620;
     expandAnswerBtn.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
@@ -4124,56 +4273,30 @@ if (expandAnswerBtn) {
     }
     if (!isBtnDragging) { e.preventDefault(); return; }
 
-    // ── Screen limits (no going outside the screen)
+    // ── Screen limits
     const screenW = window.screen.availWidth;
     const screenH = window.screen.availHeight;
-    const screenLeft = 0;
-    const screenTop = 0;
 
-    // ── 4-direction expansion: window grows outward from its initial edges
-    // RIGHT: dx > 0 → right edge moves right
-    // LEFT:  dx < 0 → left edge moves left (x decreases, width increases)
-    // DOWN:  dy > 0 → bottom edge moves down
-    // UP:    dy < 0 → top edge moves up (y decreases, height increases)
+    // ── Answer panel width can shrink down to 130px minimum width!
+    // Window width is kept at minimum WIDTH (640px) so top toolbar NEVER shrinks or clips!
+    const targetPanelW = Math.max(130, Math.min(screenW - 20, startPanelW + dx));
+    
+    // Window width is the max of WIDTH (640px) and targetPanelW + 20
+    let newW = Math.max(WIDTH, targetPanelW + 20);
+    let newH = Math.max(438, Math.min(screenH, startWinH + dy));
     let newX = startWinX;
     let newY = startWinY;
-    let newW = startWinW;
-    let newH = startWinH;
 
-    if (dx > 0) {
-      // Expand right
-      newW = startWinW + dx;
-    } else {
-      // Expand left
-      newX = startWinX + dx;
-      newW = startWinW - dx; // dx is negative so this grows
-    }
-
-    if (dy > 0) {
-      // Expand down
-      newH = startWinH + dy;
-    } else {
-      // Expand up
-      newY = startWinY + dy;
-      newH = startWinH - dy; // dy is negative so this grows
-    }
-
-    // ── Clamp to screen bounds — never go outside
-    if (newX < screenLeft) { newW -= (screenLeft - newX); newX = screenLeft; }
-    if (newY < screenTop)  { newH -= (screenTop - newY);  newY = screenTop;  }
-    if (newX + newW > screenLeft + screenW) newW = screenLeft + screenW - newX;
-    if (newY + newH > screenTop + screenH)  newH = screenTop + screenH - newY;
-
-    // ── Enforce minimum size
-    newW = Math.max(360, newW);
-    newH = Math.max(200, newH);
+    // ── Clamp to screen bounds
+    if (newX + newW > screenW) newW = screenW - newX;
+    if (newY + newH > screenH) newH = screenH - newY;
 
     // ── Answer block: fill available vertical space
     const transcriptSectionDrag = document.querySelector('.block-container:first-child');
     if (transcriptSectionDrag) transcriptSectionDrag.style.display = '';
     const overhead = OVERHEAD_WITH_TRANSCRIPT;
 
-    const newAnswerH = Math.max(100, newH - overhead);
+    const newAnswerH = Math.max(130, newH - overhead);
     const answerBlock = document.getElementById('answer-block');
     if (answerBlock) {
       answerBlock.style.height = newAnswerH + 'px';
@@ -4187,10 +4310,10 @@ if (expandAnswerBtn) {
       codeDisplayPre.style.overflowY = 'auto';
     }
 
-    // ── Panels container width tracks window width
+    // ── Panels container width tracks targetPanelW (can shrink to 130px!)
     const panelsContainerDrag = document.getElementById('panels');
     if (panelsContainerDrag) {
-      panelsContainerDrag.style.width = (newW - 20) + 'px';
+      panelsContainerDrag.style.width = targetPanelW + 'px';
       panelsContainerDrag.style.maxWidth = 'none';
       panelsContainerDrag.style.height = 'auto';
       panelsContainerDrag.style.maxHeight = 'none';
@@ -4199,9 +4322,9 @@ if (expandAnswerBtn) {
     window.isCustomResized = true;
     currentHeight = Math.round(newH);
     currentWidth = Math.round(newW);
+    safeSetItem('stealth_expandedPanelWidth', Math.round(targetPanelW + 20).toString());
 
-    // Pass explicit x,y so window repositions correctly (for up/left expansion)
-    window.electronAPI.resizeWindow(Math.round(newW), Math.round(newH), toolbarPosition, false, Math.round(newX), Math.round(newY));
+    window.electronAPI.resizeWindow(Math.round(newW), Math.round(newH), toolbarPosition, false);
     e.preventDefault();
   });
 
@@ -4245,7 +4368,7 @@ if (expandAnswerBtn) {
         expandAnswerBtn.style.color = 'var(--text-secondary)';
         expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
         expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
-        if (answerBlock) { answerBlock.style.height = '100px'; answerBlock.style.maxHeight = '100px'; }
+        if (answerBlock) { answerBlock.style.height = '130px'; answerBlock.style.maxHeight = '130px'; }
       }
       updateWindowSize();
     }
@@ -4363,12 +4486,13 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
   }
 
-  // Answer Shortcut
+  // Answer / Ask Shortcut
   if (checkShortcut('answer', e)) {
     const aiSendBtn = document.getElementById('ai-send');
     const aiAnswerBtn = document.getElementById('ai-answer-btn');
-    const aiInput = document.getElementById('ai-input');
-    if (aiInput && document.activeElement === aiInput && aiInput.value.trim() !== '') {
+    const aiInputEl = document.getElementById('ai-input');
+    const queryText = aiInputEl ? aiInputEl.value.trim() : '';
+    if (queryText !== '') {
       if (aiSendBtn) aiSendBtn.click();
     } else {
       if (aiAnswerBtn) aiAnswerBtn.click();

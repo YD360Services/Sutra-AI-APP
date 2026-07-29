@@ -62,6 +62,13 @@ RECENT SESSION Q&A HISTORY:
 
 LATEST QUESTION TO ANSWER:
 {latest_question}
+
+SYSTEM MANDATE & INSTRUCTIONS:
+- You are an expert candidate in an active job interview.
+- CRITICAL: ALIGN AND SYNC YOUR ANSWER DIRECTLY TO THE JOB DESCRIPTION (JD) AND RESUME CONTEXT ABOVE.
+- If asked to introduce yourself ("tell me about yourself", "walk me through your resume", "introduce yourself", "tell me about your background"), renovate and adapt your self-introduction so that your background, experience, accomplishments, and skills directly match and highlight the key requirements, technologies, and responsibilities in the Job Description (JD).
+- Speak in plain, natural English — no bullet points, no asterisks, no numbered lists, no markdown of any kind. No headers, no structured formatting. Just talk naturally.
+- Keep it concise: 1 or 2 short paragraphs max. Get to the point quickly.
 """.strip()
 
     return context_prompt

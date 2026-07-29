@@ -466,15 +466,15 @@
                 style="display: flex; justify-content: flex-end; align-items: center; font-size: 10.5px; font-weight: 600; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em;">
                 <div style="display: flex; gap: 8px;">
                   <button id="copy-transcript-btn" class="interactive"
-                    style="background: none; border: none; color: #ffffff; font-size: 9.5px;  text-decoration: underline; font-weight: 600; outline: none; padding: 2px 6px;">Copy</button>
+                    style="background: none; border: none; color: #ffffff; font-size: 9.5px;  text-decoration: underline; font-weight: 600; outline: none; padding: 2px 4px;">Copy</button>
                   <button id="clear-transcript-btn" class="interactive"
-                    style="background: none; border: none; color: #ffffff; font-size: 9.5px;  text-decoration: underline; font-weight: 600; outline: none; padding: 2px 6px;">Clear</button>
+                    style="background: none; border: none; color: #ffffff; font-size: 9.5px;  text-decoration: underline; font-weight: 600; outline: none; padding: 2px 4px;">Clear</button>
                 </div>
               </div>
               <div style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
-                <div id="transcript-block" class="scrollable-block hide-scrollbar" contenteditable="true"
+                <div id="transcript-block" class="scrollable-block custom-scrollbar" contenteditable="true"
                   spellcheck="false"
-                  style="flex: 1; height: 28px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 4px 10px; overflow-x: auto; overflow-y: hidden; font-size: 11px; color: var(--text-primary); line-height: 18px; word-break: normal; white-space: nowrap; font-weight: 400; text-align: left; outline: none; ">
+                  style="flex: 1; height: 50px; max-height: 90px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px 10px; overflow-y: auto; overflow-x: hidden; font-size: 11px; color: var(--text-primary); line-height: 16px; word-break: break-word; white-space: pre-wrap; font-weight: 400; text-align: left; outline: none;">
                 </div>
                 <button id="ai-answer-btn" class="interactive" data-tooltip="Get AI Answer"
                   style="align-self: flex-start; margin-top: 0; background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255, 255, 255, 0.25); font-weight: 600;  border-radius: 4px; font-size: 10px; height: 38px; padding: 0 16px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);">Answer
@@ -509,7 +509,7 @@
                 </div>
               </div>
               <div id="answer-block" class="scrollable-block"
-                style="height: 110px; max-height: 1000px; background: #0f111a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: #f8fafc; line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left;">
+                style="height: 130px; min-height: 130px; min-width: 130px; max-height: 1000px; background: #0f111a; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: #f8fafc; line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left;">
               </div>
             </div>
           </div>

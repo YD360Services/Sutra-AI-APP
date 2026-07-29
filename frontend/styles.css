@@ -386,27 +386,44 @@ body.stealth-active .ctrl-btn-danger {
   margin-right: auto;
   display: none; /* Controlled by JS resizing */
   flex-direction: column;
-  background: #0a0a0f;
-  border: none;
+  background: rgba(10, 10, 15, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   outline: none;
-  border-radius: 20px;
-  box-shadow: none;
-  overflow: visible;
+  border-radius: 16px;
+  box-shadow: none !important;
+  overflow: hidden;
   animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   height: auto;
   max-height: none;
   container-type: inline-size;
 }
 
-@container (max-width: 450px) {
+@container (max-width: 480px) {
   .shortcut-badge {
     display: none !important;
   }
   .input-area {
-    padding: 10px 8px !important;
+    padding: 6px 8px !important;
+    gap: 4px !important;
+  }
+  .btn-send {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+  }
+  #expand-answer-btn {
+    padding: 0 4px !important;
+    min-width: 28px !important;
+  }
+  .panel-header {
+    padding: 8px 10px !important;
+  }
+  .panel-title {
+    font-size: 12px !important;
+  }
+  .panel-content {
+    padding: 8px 10px !important;
   }
 }
-
 
 .panels-container.active {
   display: flex;
@@ -459,21 +476,31 @@ body.stealth-active .ctrl-btn-danger {
 }
 
 /* Custom Scrollbar for premium dark glass look */
-.panel-content::-webkit-scrollbar {
-  width: 6px;
+.panel-content::-webkit-scrollbar,
+.scrollable-block::-webkit-scrollbar,
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
 }
 
-.panel-content::-webkit-scrollbar-track {
-  background: transparent;
+.panel-content::-webkit-scrollbar-track,
+.scrollable-block::-webkit-scrollbar-track,
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
 }
 
-.panel-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
+.panel-content::-webkit-scrollbar-thumb,
+.scrollable-block::-webkit-scrollbar-thumb,
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
 }
 
-.panel-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+.panel-content::-webkit-scrollbar-thumb:hover,
+.scrollable-block::-webkit-scrollbar-thumb:hover,
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 /* Input Fields and Chat Layouts */
@@ -483,10 +510,17 @@ body.stealth-active .ctrl-btn-danger {
   padding: 12px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   background: rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  width: 100%;
+  overflow: hidden;
 }
 
 .custom-input {
   flex: 1;
+  min-width: 0 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
@@ -507,6 +541,7 @@ body.stealth-active .ctrl-btn-danger {
 }
 
 .btn-send {
+  flex-shrink: 0 !important;
   background: var(--text-primary);
   color: #000;
   border: none;
@@ -514,12 +549,15 @@ body.stealth-active .ctrl-btn-danger {
   border-radius: 8px;
   font-weight: 600;
   font-size: 12px;
-  
   display: flex;
   align-items: center;
   gap: 6px;
   white-space: nowrap;
   transition: all 0.2s ease;
+}
+
+#expand-answer-btn {
+  flex-shrink: 0 !important;
 }
 
 .btn-send:hover {
