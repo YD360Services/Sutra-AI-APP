@@ -2167,7 +2167,11 @@ const aiInput = document.getElementById('ai-input');
 const aiSend = document.getElementById('ai-send');
 
 let mediaRecorder = null;
-let dgSocket = null;
+let dgSocketSystem = null;
+let dgSocketMic = null;
+let systemMediaRecorder = null;
+let micMediaRecorder = null;
+
 let isRecording = false;
 let isRecordingSystem = false;
 let isRecordingMic = false;
@@ -2177,31 +2181,39 @@ let activeSystemStream = null;
 let micSourceNode = null;
 let systemSourceNode = null;
 let audioCtx = null;
-let audioDestNode = null;
 
-// ── Transcript Buffering ─────────────────────────────────────────────────────
-// Accumulate is_final chunks and only flush to the backend as a meaningful block
-// after a silence gap (TRANSCRIPT_FLUSH_SILENCE_MS) or when enough words pile up.
-const TRANSCRIPT_FLUSH_SILENCE_MS = 8000; // 8 s of no new speech → flush
-const TRANSCRIPT_FLUSH_WORD_THRESHOLD = 80; // flush early if buffer hits this many words
-let transcriptChunkBuffer = '';           // pending text not yet saved to backend
-let transcriptFlushTimer = null;          // setTimeout handle for silence-based flush
+// ── Transcript Buffering (Separate Interviewer & You buffers) ─────────────────
+const TRANSCRIPT_FLUSH_SILENCE_MS = 6000; // 6 s silence → flush
+const TRANSCRIPT_FLUSH_WORD_THRESHOLD = 60;
+let systemChunkBuffer = '';
+let micChunkBuffer = '';
+let systemFlushTimer = null;
+let micFlushTimer = null;
 
-// Flush the current buffer to the backend as one coherent block, then reset.
-function flushTranscriptBuffer() {
-  if (transcriptFlushTimer) {
-    clearTimeout(transcriptFlushTimer);
-    transcriptFlushTimer = null;
-  }
-  const content = transcriptChunkBuffer.trim();
-  transcriptChunkBuffer = '';
+function flushSystemBuffer() {
+  if (systemFlushTimer) { clearTimeout(systemFlushTimer); systemFlushTimer = null; }
+  const content = systemChunkBuffer.trim();
+  systemChunkBuffer = '';
   if (!content || !sessionToken || !shouldSaveTranscript) return;
   window.electronAPI.saveTranscriptBlock(sessionToken, {
-    speaker: 'system',
+    speaker: 'interviewer',
     content: content,
-    source: 'mixed_audio'
-  }).catch(e => console.warn('[Save Transcript] Buffered backend save failed:', e.message));
-  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words to backend.`);
+    source: 'speaker_audio'
+  }).catch(e => console.warn('[Save Transcript] Interviewer save failed:', e.message));
+  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words (Interviewer) to backend.`);
+}
+
+function flushMicBuffer() {
+  if (micFlushTimer) { clearTimeout(micFlushTimer); micFlushTimer = null; }
+  const content = micChunkBuffer.trim();
+  micChunkBuffer = '';
+  if (!content || !sessionToken || !shouldSaveTranscript) return;
+  window.electronAPI.saveTranscriptBlock(sessionToken, {
+    speaker: 'you',
+    content: content,
+    source: 'mic_audio'
+  }).catch(e => console.warn('[Save Transcript] You save failed:', e.message));
+  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words (You) to backend.`);
 }
 
 // New Mic Button elements
@@ -2218,10 +2230,113 @@ async function toggleMicRecording() {
   await toggleSource('mic');
 }
 
-// Toggle audio capture for a specific source ('system' or 'mic')
-async function toggleSource(source) {
-  const isCurrentlyRecordingAny = isRecordingSystem || isRecordingMic;
+// Helper to initialize Deepgram WebSocket for a specific audio stream source ('system' = Interviewer, 'mic' = You)
+async function startStreamForSource(source, mediaStream) {
+  const dgKey = await window.electronAPI.getDeepgramKey();
+  if (!dgKey || dgKey.startsWith('your_')) {
+    showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
+    return;
+  }
 
+  const isSystem = (source === 'system');
+  const speakerLabel = isSystem ? 'Interviewer' : 'You';
+  const speakerColor = isSystem ? '#5eead4' : '#4ade80';
+
+  const socket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
+  if (isSystem) dgSocketSystem = socket;
+  else dgSocketMic = socket;
+
+  socket.onopen = () => {
+    console.log(`[Deepgram Live] Connected for ${speakerLabel} (${source}).`);
+
+    const destNode = audioCtx ? audioCtx.createMediaStreamDestination() : null;
+    const mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
+    if (isSystem) systemMediaRecorder = mediaRecorder;
+    else micMediaRecorder = mediaRecorder;
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(event.data);
+      }
+    };
+    mediaRecorder.start(250);
+  };
+
+  socket.onmessage = (message) => {
+    try {
+      const data = JSON.parse(message.data);
+      const transcript = data.channel?.alternatives?.[0]?.transcript;
+      if (transcript && transcript.trim()) {
+        const cleanTranscript = transcript.trim();
+        const formattedLine = `${speakerLabel}: ${cleanTranscript}`;
+
+        if (data.is_final) {
+          // Confirmed text: update accumulatedTranscript with speaker prefix
+          accumulatedTranscript += (accumulatedTranscript ? '\n' : '') + formattedLine;
+          transcriptBlock.textContent = accumulatedTranscript;
+          transcriptBlock.dataset.placeholder = 'false';
+
+          if (shouldSaveTranscript) {
+            const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
+            const updatedBuffer = existingBuffer ? existingBuffer + '\n' + formattedLine : formattedLine;
+            safeSetItem('stealth_transcript_buffer', updatedBuffer);
+
+            if (sessionToken) {
+              if (isSystem) {
+                systemChunkBuffer += (systemChunkBuffer ? ' ' : '') + cleanTranscript;
+                if (systemFlushTimer) clearTimeout(systemFlushTimer);
+                systemFlushTimer = setTimeout(flushSystemBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+                if (systemChunkBuffer.split(/\s+/).filter(Boolean).length >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushSystemBuffer();
+              } else {
+                micChunkBuffer += (micChunkBuffer ? ' ' : '') + cleanTranscript;
+                if (micFlushTimer) clearTimeout(micFlushTimer);
+                micFlushTimer = setTimeout(flushMicBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+                if (micChunkBuffer.split(/\s+/).filter(Boolean).length >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushMicBuffer();
+              }
+            }
+          }
+
+          // --- AUTO ANSWER LOGIC (Triggers when Interviewer finishes asking a question) ---
+          if (isSystem) {
+            const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
+            const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
+
+            if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
+              const score = questionScore(cleanTranscript);
+              if (score > 0) {
+                console.log(`[Auto-Answer] Interviewer question detected: "${cleanTranscript}". Querying AI...`);
+                if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
+                queryAssistant(null, false);
+              } else {
+                if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+                autoAnswerTimeoutId = setTimeout(() => {
+                  if (!answerBlock.classList.contains('loading')) {
+                    console.log('[Auto-Answer] Interviewer silence gap detected. Querying AI...');
+                    queryAssistant(null, false);
+                  }
+                  autoAnswerTimeoutId = null;
+                }, 1000);
+              }
+            }
+          }
+
+        } else {
+          // Interim text: colored preview with speaker label
+          transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? '\n' : '') + `<span style="color: ${speakerColor}; font-style: italic;">[${speakerLabel}] ${cleanTranscript}</span>`;
+        }
+        transcriptBlock.scrollTop = transcriptBlock.scrollHeight;
+      }
+    } catch (e) {
+      console.error(`[Deepgram Live ${speakerLabel}] Error parsing message:`, e);
+    }
+  };
+
+  socket.onerror = (err) => console.error(`[Deepgram Live ${speakerLabel}] Connection error:`, err);
+  socket.onclose = () => console.log(`[Deepgram Live ${speakerLabel}] Socket closed.`);
+}
+
+// Toggle audio capture for a specific source ('system' = Speaker/Interviewer, 'mic' = You)
+async function toggleSource(source) {
   if (source === 'system') {
     isRecordingSystem = !isRecordingSystem;
   } else if (source === 'mic') {
@@ -2230,155 +2345,32 @@ async function toggleSource(source) {
 
   isRecording = isRecordingSystem || isRecordingMic;
 
-  // Case 1: Both are now inactive → Stop recording completely
   if (!isRecording) {
     stopRecording();
     return;
   }
 
-  // Case 2: First source starts → Initialize Speech-to-Text Socket and Audio Context
-  if (!isCurrentlyRecordingAny) {
-    try {
-      // Check if this is a live interview session
-      const isLiveSession = (selectedSessionType === 'Interview+Coding');
-
-      // Initialize Web Audio API nodes
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      audioDestNode = audioCtx.createMediaStreamDestination();
-
-      // Direct Deepgram WebSocket — no backend hop for minimum latency during live sessions
-      const dgKey = await window.electronAPI.getDeepgramKey();
-      if (!dgKey || dgKey.startsWith('your_')) {
-        showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
-        resetRecordButton();
-        isRecordingSystem = false;
-        isRecordingMic = false;
-        isRecording = false;
-        return;
-      }
-      dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
-      console.log('[Stealth] Connecting direct to Deepgram for live session...');
-
-      dgSocket.onopen = async () => {
-        console.log('[Deepgram Live] Connected successfully.');
-        if (audioCtx && audioCtx.state === 'suspended') {
-          try { await audioCtx.resume(); } catch (e) { }
-        }
-
-        recordBtn.style.pointerEvents = 'auto';
-        if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
-
-        const existingText = transcriptBlock.textContent.trim();
-        if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
-          transcriptBlock.textContent = '';
-          transcriptBlock.dataset.placeholder = 'false';
-        } else {
-          // User has typed something manually — keep it
-          accumulatedTranscript = existingText;
-        }
-
-        // Initialize MediaRecorder from mixed destination node
-        mediaRecorder = new MediaRecorder(audioDestNode.stream, { mimeType: 'audio/webm' });
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && dgSocket && dgSocket.readyState === WebSocket.OPEN) {
-            dgSocket.send(event.data);
-          }
-        };
-
-        // Stream audio slices in 250ms intervals
-        mediaRecorder.start(250);
-      };
-
-      dgSocket.onmessage = (message) => {
-        try {
-          const data = JSON.parse(message.data);
-          const transcript = data.channel?.alternatives?.[0]?.transcript;
-          if (transcript && transcript.trim()) {
-            const cleanTranscript = transcript.trim();
-            if (data.is_final) {
-              // Confirmed text: update accumulatedTranscript and show in white
-              accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
-              transcriptBlock.textContent = accumulatedTranscript;
-              transcriptBlock.dataset.placeholder = 'false';
-
-              // Save transcript block to backend and localStorage
-              if (shouldSaveTranscript) {
-                const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
-                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
-                safeSetItem('stealth_transcript_buffer', updatedBuffer);
-
-                if (sessionToken) {
-                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
-                  if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
-                  transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-                  const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
-                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
-                }
-              }
-
-              // --- AUTO ANSWER LOGIC ---
-              const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-              const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
-
-              if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-                const score = questionScore(cleanTranscript);
-                if (score > 0) {
-                  console.log(`[Auto-Answer] Question detected: "${cleanTranscript}". Querying AI...`);
-                  if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-                  queryAssistant(null, false);
-                } else {
-                  if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-                  autoAnswerTimeoutId = setTimeout(() => {
-                    if (!answerBlock.classList.contains('loading')) {
-                      console.log('[Auto-Answer] 1-second gap detected. Querying AI...');
-                      queryAssistant(null, false);
-                    }
-                    autoAnswerTimeoutId = null;
-                  }, 1000);
-                }
-              }
-            } else {
-              // Interim text: gray preview — does NOT update accumulatedTranscript
-              transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
-            }
-            transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
-          }
-        } catch (e) {
-          console.error('[Deepgram Live] Error parsing message:', e);
-        }
-      };
-
-      dgSocket.onerror = (err) => {
-        console.error('[Deepgram Live] Connection error:', err);
-        stopRecording();
-      };
-
-      dgSocket.onclose = () => {
-        console.log('[Deepgram Live] Connection closed.');
-        if (isRecordingSystem || isRecordingMic) stopRecording();
-      };
-
-
-    } catch (err) {
-      console.error('[Audio Capture] Failed to initialize:', err);
-      showInlineError(`Audio capture error: ${err.message}`, answerBlock);
-      resetRecordButton();
-      isRecordingSystem = false;
-      isRecordingMic = false;
-      isRecording = false;
-      return;
-    }
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    try { await audioCtx.resume(); } catch (e) { }
   }
 
-  // Handle stream creation/destruction and UI updates for the active source
+  const existingText = transcriptBlock.textContent.trim();
+  if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
+    transcriptBlock.textContent = '';
+    transcriptBlock.dataset.placeholder = 'false';
+  } else {
+    accumulatedTranscript = existingText;
+  }
+
   if (source === 'system') {
     if (isRecordingSystem) {
-      // Start system loopback
       recordText.textContent = 'Connecting...';
       recordBtn.style.pointerEvents = 'none';
       try {
-        console.log('[Audio Capture] Attempting loopback screen-audio capture...');
+        console.log('[Audio Capture] Attempting loopback screen-audio capture (Interviewer)...');
         const sources = await window.electronAPI.getDesktopSources();
         const screenSource = sources.find(s => s.id.startsWith('screen'));
         if (screenSource) {
@@ -2396,20 +2388,16 @@ async function toggleSource(source) {
               }
             }
           });
-          // Keep video tracks alive to prevent Chromium/Electron from closing the stream
-          console.log('[Audio Capture] Acquired system loopback tracks:', activeSystemStream.getTracks().map(t => `${t.kind}: state=${t.readyState}, enabled=${t.enabled}`));
-
           systemSourceNode = audioCtx.createMediaStreamSource(activeSystemStream);
-          systemSourceNode.connect(audioDestNode);
-          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
 
           recordBtn.style.pointerEvents = 'auto';
           recordBtn.classList.add('recording');
           recordDot.classList.add('recording');
           recordText.textContent = 'Listening';
-          console.log('[Audio Capture] Successfully acquired system loopback stream.');
+
+          await startStreamForSource('system', activeSystemStream);
+          console.log('[Audio Capture] Successfully acquired system loopback stream (Interviewer).');
         } else {
-          console.warn('[Audio Capture] No screen source found for loopback capture.');
           isRecordingSystem = false;
           recordBtn.style.pointerEvents = 'auto';
           recordText.textContent = 'Speaker';
@@ -2421,31 +2409,28 @@ async function toggleSource(source) {
         recordText.textContent = 'Speaker';
       }
     } else {
-      // Stop system loopback
-      if (systemSourceNode) {
-        try { systemSourceNode.disconnect(); } catch (e) { }
-        systemSourceNode = null;
+      if (systemMediaRecorder && systemMediaRecorder.state !== 'inactive') {
+        try { systemMediaRecorder.stop(); } catch (e) { }
       }
-      if (activeSystemStream) {
-        activeSystemStream.getTracks().forEach(track => track.stop());
-        activeSystemStream = null;
+      if (dgSocketSystem) {
+        try { dgSocketSystem.close(); } catch (e) { }
+        dgSocketSystem = null;
       }
+      if (systemSourceNode) { try { systemSourceNode.disconnect(); } catch (e) { } systemSourceNode = null; }
+      if (activeSystemStream) { activeSystemStream.getTracks().forEach(t => t.stop()); activeSystemStream = null; }
       recordBtn.classList.remove('recording');
       recordDot.classList.remove('recording');
       recordText.textContent = 'Speaker';
+      flushSystemBuffer();
     }
   } else if (source === 'mic') {
     if (isRecordingMic) {
-      // Start microphone
       if (micText) micText.textContent = 'Connecting...';
       if (micBtnAi) micBtnAi.style.pointerEvents = 'none';
       try {
-        console.log('[Audio Capture] Attempting hardware microphone capture...');
+        console.log('[Audio Capture] Attempting hardware microphone capture (You)...');
         activeMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
         micSourceNode = audioCtx.createMediaStreamSource(activeMicStream);
-        micSourceNode.connect(audioDestNode);
-        if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
 
         if (micBtnAi) {
           micBtnAi.style.pointerEvents = 'auto';
@@ -2455,7 +2440,8 @@ async function toggleSource(source) {
           micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.5)';
           micBtnAi.style.color = '#ffffff';
         }
-        console.log('[Audio Capture] Successfully acquired microphone stream.');
+        await startStreamForSource('mic', activeMicStream);
+        console.log('[Audio Capture] Successfully acquired microphone stream (You).');
       } catch (micErr) {
         console.warn('[Audio Capture] Microphone capture failed:', micErr.message);
         isRecordingMic = false;
@@ -2465,15 +2451,15 @@ async function toggleSource(source) {
         }
       }
     } else {
-      // Stop microphone
-      if (micSourceNode) {
-        try { micSourceNode.disconnect(); } catch (e) { }
-        micSourceNode = null;
+      if (micMediaRecorder && micMediaRecorder.state !== 'inactive') {
+        try { micMediaRecorder.stop(); } catch (e) { }
       }
-      if (activeMicStream) {
-        activeMicStream.getTracks().forEach(track => track.stop());
-        activeMicStream = null;
+      if (dgSocketMic) {
+        try { dgSocketMic.close(); } catch (e) { }
+        dgSocketMic = null;
       }
+      if (micSourceNode) { try { micSourceNode.disconnect(); } catch (e) { } micSourceNode = null; }
+      if (activeMicStream) { activeMicStream.getTracks().forEach(t => t.stop()); activeMicStream = null; }
       if (micBtnAi) {
         micBtnAi.classList.remove('recording');
         micText.textContent = 'Mic';
@@ -2481,6 +2467,7 @@ async function toggleSource(source) {
         micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.22)';
         micBtnAi.style.color = '#ffffff';
       }
+      flushMicBuffer();
     }
   }
 
@@ -2488,50 +2475,35 @@ async function toggleSource(source) {
 }
 
 function stopRecording() {
+  flushSystemBuffer();
+  flushMicBuffer();
+
   isRecordingSystem = false;
   isRecordingMic = false;
   isRecording = false;
 
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    try {
-      mediaRecorder.stop();
-    } catch (e) { }
+  if (systemMediaRecorder && systemMediaRecorder.state !== 'inactive') {
+    try { systemMediaRecorder.stop(); } catch (e) { }
   }
-  mediaRecorder = null;
+  if (micMediaRecorder && micMediaRecorder.state !== 'inactive') {
+    try { micMediaRecorder.stop(); } catch (e) { }
+  }
+  systemMediaRecorder = null;
+  micMediaRecorder = null;
 
-  if (dgSocket) {
-    try {
-      dgSocket.close();
-    } catch (e) { }
-  }
-  dgSocket = null;
+  if (dgSocketSystem) { try { dgSocketSystem.close(); } catch (e) { } dgSocketSystem = null; }
+  if (dgSocketMic) { try { dgSocketMic.close(); } catch (e) { } dgSocketMic = null; }
 
-  if (systemSourceNode) {
-    try { systemSourceNode.disconnect(); } catch (e) { }
-    systemSourceNode = null;
-  }
-  if (activeSystemStream) {
-    activeSystemStream.getTracks().forEach(track => track.stop());
-    activeSystemStream = null;
-  }
+  if (systemSourceNode) { try { systemSourceNode.disconnect(); } catch (e) { } systemSourceNode = null; }
+  if (activeSystemStream) { activeSystemStream.getTracks().forEach(t => t.stop()); activeSystemStream = null; }
 
-  if (micSourceNode) {
-    try { micSourceNode.disconnect(); } catch (e) { }
-    micSourceNode = null;
-  }
-  if (activeMicStream) {
-    activeMicStream.getTracks().forEach(track => track.stop());
-    activeMicStream = null;
-  }
+  if (micSourceNode) { try { micSourceNode.disconnect(); } catch (e) { } micSourceNode = null; }
+  if (activeMicStream) { activeMicStream.getTracks().forEach(t => t.stop()); activeMicStream = null; }
 
-  if (audioCtx) {
-    audioCtx.close().catch(e => { });
-    audioCtx = null;
-  }
-  audioDestNode = null;
+  if (audioCtx) { audioCtx.close().catch(e => { }); audioCtx = null; }
 
   resetRecordButton();
-  console.log('[Audio Capture] Capture stopped.');
+  console.log('[Audio Capture] Dual capture stopped cleanly.');
 }
 
 function resetRecordButton() {
