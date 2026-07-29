@@ -1505,8 +1505,8 @@ startSessionBtn.addEventListener('click', async () => {
   const chatBlock = document.getElementById('answer-block');
   const dbIntroduction = resumeObj ? resumeObj.introduction : '';
   const setupJdEl = document.getElementById('setup-jd');
-  const activeJdText = (setupJdEl && setupJdEl.value.trim()) 
-    ? setupJdEl.value.trim() 
+  const activeJdText = (setupJdEl && setupJdEl.value.trim())
+    ? setupJdEl.value.trim()
     : (offlineUserContext && offlineUserContext.job_description ? offlineUserContext.job_description : '');
   const jdTag = activeJdText ? `\n\nTarget Job Description (JD) & Role Context:\n"${activeJdText}"` : '';
 
@@ -1514,18 +1514,22 @@ startSessionBtn.addEventListener('click', async () => {
     chatBlock.innerHTML = '';
     // Trigger an initial query to absorb the first-request latency and generate a polished self-intro
     setTimeout(() => {
-      let introPrompt = `GENERATE 100% ROLE-SYNCED VERBAL SELF-INTRODUCTION:
+      const baseBackground = (dbIntroduction && dbIntroduction.trim())
+        ? dbIntroduction.trim()
+        : 'Candidate resume background and technical profile.';
+
+      let introPrompt = `GENERATE A 100% ROLE-SYNCED 5-MINUTE VERBAL SELF-INTRODUCTION:
 
 MANDATORY DIRECTIVE FOR THE AI:
-DO NOT repeat or echo the generic candidate text verbatim. You MUST synthesize a brand-new, 100% role-synced 3-minute verbal self-introduction that explicitly combines:
-1. Candidate Stack: Computer Science degree, Python, Java, FastAPI, SQL, and backend service development at YD360 Services.
-2. Target Role Requirements: Identify key requirements from the Job Description below (Network Support Engineer, TCP/IP, system diagnostics, troubleshooting, API performance, customer experience).
+DO NOT repeat or echo the generic base text verbatim. You MUST synthesize a brand-new, 100% role-synced 3-minute verbal self-introduction that dynamically combines:
+1. Candidate Background & Stack: Extract the candidate's degree, core technical skills, projects, and work experience from the Base Background below.
+2. Target Role Requirements: Extract the key technical skills, responsibilities, and role title from the Target Job Description below.
 
 Candidate Base Background:
-"${dbIntroduction.trim() || 'Computer Science graduate with experience in Python, Java, FastAPI, SQL, and backend development at YD360 Services.'}"
+"${baseBackground}"
 ${jdTag}
 
-Generate the final ready-to-speak verbal self-introduction now (spoken English only, fluid paragraphs, zero markdown formatting):`;
+Generate the final ready-to-speak verbal self-introduction now (spoken English only, fluid natural paragraphs, zero markdown formatting):`;
 
       queryAssistant(introPrompt, true);
     }, 500);
@@ -3445,7 +3449,7 @@ CRITICAL INSTRUCTIONS & JD ALIGNMENT:
 
   // Detect inline JD in prompt and instruct explicit renovation
   if (latestQuestion && (latestQuestion.toLowerCase().includes('for this jd') || latestQuestion.toLowerCase().includes('interview details:') || latestQuestion.toLowerCase().includes('job description:'))) {
-    parts.push(`\n[INLINE TARGET JOB DESCRIPTION & INTERVIEW CONTEXT DETECTED IN PROMPT]\n${latestQuestion}\n\nCRITICAL MANDATE: The user provided a specific target Job Description and role above. DO NOT echo the candidate's generic self-introduction verbatim. You MUST renovate, polish, and adapt the self-introduction so that it explicitly weaves in the candidate's CS background, backend skills (Python, Java, FastAPI, SQL), AI/ML work at YD360 Services, and directly connects them to the target company, role, technical troubleshooting, network support, and customer experience requirements!`);
+    parts.push(`\n[INLINE TARGET JOB DESCRIPTION & INTERVIEW CONTEXT DETECTED IN PROMPT]\n${latestQuestion}\n\nCRITICAL MANDATE: The user provided a specific target Job Description and role above. DO NOT echo the candidate's generic self-introduction verbatim. You MUST renovate, polish, and adapt the self-introduction so that it dynamically weaves in the candidate's background, technical stack, and work experience, directly connecting them to the target company, role, and technical requirements specified in the Job Description!`);
   }
 
   parts.push(`\n[QUESTION / PROMPT TO ANSWER]\n${latestQuestion}`);
@@ -3999,7 +4003,7 @@ function applyOpacity(val) {
   if (appCont) {
     window._isPreviewingOpacity = true;
     appCont.style.opacity = Math.min(1.0, userOpacity);
-    
+
     clearTimeout(window._opacityPreviewTimeout);
     window._opacityPreviewTimeout = setTimeout(() => {
       window._isPreviewingOpacity = false;
@@ -4280,7 +4284,7 @@ if (expandAnswerBtn) {
     // ── Answer panel width can shrink down to 130px minimum width!
     // Window width is kept at minimum WIDTH (640px) so top toolbar NEVER shrinks or clips!
     const targetPanelW = Math.max(130, Math.min(screenW - 20, startPanelW + dx));
-    
+
     // Window width is the max of WIDTH (640px) and targetPanelW + 20
     let newW = Math.max(WIDTH, targetPanelW + 20);
     let newH = Math.max(438, Math.min(screenH, startWinH + dy));
@@ -4331,7 +4335,7 @@ if (expandAnswerBtn) {
   const stopExpandBtnDrag = (e) => {
     isResizingViaExpandBtn = false;
     if (expandAnswerBtn.hasPointerCapture(e.pointerId)) {
-      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) {}
+      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
     }
     if (!isBtnDragging) {
       // ── Tap/click: toggle compact ↔ expanded
