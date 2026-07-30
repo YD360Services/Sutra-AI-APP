@@ -296,11 +296,12 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // Position centered at the top of the display
+  // Position centered near the top of the display with a clean 12px top margin
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
   const x = Math.round((screenWidth - winWidth) / 2) + screenX;
-  mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
+  const initialY = screenY + 12;
+  mainWindow.setBounds({ x, y: initialY, width: winWidth, height: winHeight });
 
   // Load the root index.html (stealth toolbar)
   mainWindow.loadFile(path.join(__dirname, 'frontend', 'index.html'));
@@ -922,7 +923,7 @@ function createWindow() {
         const { width: activeScreenWidth, height: activeScreenHeight, y: screenY, x: screenX } = activeDisplay.workArea;
 
         x = Math.round((activeScreenWidth - width) / 2) + screenX;
-        y = screenY;
+        y = screenY + 12;
 
         if (position === 'bottom') {
           y = screenY + activeScreenHeight - height;
@@ -1117,7 +1118,7 @@ function triggerLaunchToolbar() {
       const winWidth = 600;
       const winHeight = 56;
       const x = Math.round((screenWidth - winWidth) / 2) + screenX;
-      mainWindow.setBounds(clampBoundsToScreen(x, screenY, winWidth, winHeight));
+      mainWindow.setBounds(clampBoundsToScreen(x, screenY + 12, winWidth, winHeight));
     }
 
 

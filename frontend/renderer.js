@@ -1552,6 +1552,15 @@ Generate the final ready-to-speak verbal self-introduction now (spoken English o
 
 // Stop session button event handler
 stopSessionBtn.addEventListener('click', async () => {
+  console.log('[Stealth] Ending live session...');
+
+  // Stop all audio capture, recorders, and WebSockets immediately
+  try {
+    stopRecording();
+  } catch (e) {
+    console.warn('[Stealth] Audio stop error during session end:', e);
+  }
+
   // Expand window back to 600x580 setup state
   pendingProgrammaticResizes++;
   window.electronAPI.resizeWindow(600, 580, 'top', true);
@@ -1936,13 +1945,15 @@ function updateWindowSize(reposition = false) {
 
   if (!activeTab) {
     const settingsPopupEl = document.getElementById('settings-popup');
+    const shortcutsPopupEl = document.getElementById('shortcuts-subpopup');
     const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
+    const shortcutsOpen = shortcutsPopupEl && shortcutsPopupEl.style.display === 'flex';
     const editModalEl = document.getElementById('edit-session-modal');
     const editModalOpen = editModalEl && editModalEl.style.display === 'flex';
 
     let targetHeight = 120;
-    if (settingsOpen || editModalOpen) {
-      targetHeight = 480;
+    if (settingsOpen || shortcutsOpen || editModalOpen) {
+      targetHeight = 420;
     } else {
       targetHeight = 120; // 120px allows hover tooltips below toolbar to render 100% complete without clipping
     }
@@ -2047,8 +2058,10 @@ function updateWindowSize(reposition = false) {
         targetHeight = Math.max(438, Math.min(screenH - 40, contentHeight + 20));
       }
 
-      if (settingsOpen) {
-        targetHeight = Math.max(targetHeight, 520);
+      const shortcutsPopupEl = document.getElementById('shortcuts-subpopup');
+      const shortcutsOpen = shortcutsPopupEl && shortcutsPopupEl.style.display === 'flex';
+      if (settingsOpen || shortcutsOpen) {
+        targetHeight = Math.max(targetHeight, 420);
       }
 
       // WIDTH: when custom resized use currentWidth, else use saved/default panel width
@@ -3893,12 +3906,13 @@ const setupSettingsBtn = document.getElementById('setup-settings-btn');
 function toggleSettingsPopup() {
   console.log('[Stealth Debug] toggleSettingsPopup called');
   const popup = document.getElementById('settings-popup');
+  const shortcutsPopup = document.getElementById('shortcuts-subpopup');
+  if (shortcutsPopup && shortcutsPopup.style.display === 'flex') {
+    shortcutsPopup.style.display = 'none';
+  }
   if (popup) {
     const isShowing = popup.style.display === 'flex';
     popup.style.display = isShowing ? 'none' : 'flex';
-    console.log('[Stealth Debug] settings-popup display toggled to:', popup.style.display);
-  } else {
-    console.log('[Stealth Debug] settings-popup element not found');
   }
   updateWindowSize();
 }
@@ -3915,9 +3929,38 @@ const settingsCloseBtn = document.getElementById('settings-close-btn');
 if (settingsCloseBtn) {
   settingsCloseBtn.addEventListener('click', () => {
     const popup = document.getElementById('settings-popup');
-    if (popup) {
-      popup.style.display = 'none';
-    }
+    if (popup) popup.style.display = 'none';
+    updateWindowSize();
+  });
+}
+
+// ── Shortcuts Sub-popup Event Handlers ─────────────────────────────────────
+const openShortcutsBtn = document.getElementById('open-shortcuts-btn');
+const shortcutsSubpopup = document.getElementById('shortcuts-subpopup');
+const shortcutsBackBtn = document.getElementById('shortcuts-back-btn');
+const shortcutsCloseBtn = document.getElementById('shortcuts-close-btn');
+
+if (openShortcutsBtn) {
+  openShortcutsBtn.addEventListener('click', () => {
+    const settingsPopup = document.getElementById('settings-popup');
+    if (settingsPopup) settingsPopup.style.display = 'none';
+    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'flex';
+    updateWindowSize();
+  });
+}
+
+if (shortcutsBackBtn) {
+  shortcutsBackBtn.addEventListener('click', () => {
+    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'none';
+    const settingsPopup = document.getElementById('settings-popup');
+    if (settingsPopup) settingsPopup.style.display = 'flex';
+    updateWindowSize();
+  });
+}
+
+if (shortcutsCloseBtn) {
+  shortcutsCloseBtn.addEventListener('click', () => {
+    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'none';
     updateWindowSize();
   });
 }

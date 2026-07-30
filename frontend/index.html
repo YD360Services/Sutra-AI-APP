@@ -519,7 +519,7 @@
               style="flex: 1;" />
             <button id="ai-send" class="btn-send interactive" data-tooltip="Ask Manual Question">Ask <span
                 id="badge-ask" class="shortcut-badge" style="display: none;">Ctrl+Enter</span></button>
-            <button id="expand-answer-btn" class="interactive" data-tooltip="Expand Answer Panel" data-tooltip-pos="right"
+            <button id="expand-answer-btn" class="interactive" data-tooltip="Expand Answer Panel"
               style="display: flex; align-items: center; justify-content: center; width: auto; min-width: 32px; padding: 0 6px; height: 32px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: var(--text-secondary);  transition: all 0.2s; outline: none; flex-shrink: 0; gap: 4px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                 stroke-linecap="round" stroke-linejoin="round">
@@ -535,8 +535,8 @@
     </div> <!-- #toolbar-view -->
 
     <!-- Settings Popup (re-parented to app-container to show over both views) -->
-    <div id="settings-popup" class="interactive"
-      style="display: none; position: absolute; top: 40px; right: 10px; background: rgba(15, 15, 22, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 12px; z-index: 99999 !important; min-width: 180px; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);">
+    <div id="settings-popup" class="interactive custom-scrollbar"
+      style="display: none; position: absolute; top: 40px; right: 10px; background: rgba(15, 15, 22, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 12px; z-index: 99999 !important; min-width: 180px; max-height: 530px; overflow-y: auto; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);">
       <div
         style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 4px; margin-bottom: 2px;">
         <span
@@ -602,13 +602,57 @@
         </button>
       </div>
 
-      <!-- Keyboard Shortcuts Section -->
-      <div id="settings-sec-shortcuts"
-        style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
-        <label
-          style="font-size: 10px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">Keyboard
-          Shortcuts</label>
+      <!-- Keyboard Shortcuts Sub-Popup Trigger Button -->
+      <button id="open-shortcuts-btn" class="interactive"
+        style="width: 100%; margin-top: 6px; padding: 7px 10px; background: rgba(20, 184, 166, 0.12); border: 1px solid rgba(20, 184, 166, 0.3); color: #2dd4bf; border-radius: 6px; font-size: 10.5px; font-weight: 600; outline: none; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; -webkit-app-region: no-drag !important;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/></svg>
+          <span>Edit Shortcuts</span>
+        </div>
+        <span style="font-size: 12px; font-weight: 700; opacity: 0.8;">›</span>
+      </button>
 
+      <!-- Dashboard Button -->
+      <button id="settings-dashboard-btn" class="interactive"
+        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600;  transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9"></rect>
+          <rect x="14" y="3" width="7" height="5"></rect>
+          <rect x="14" y="12" width="7" height="9"></rect>
+          <rect x="3" y="16" width="7" height="5"></rect>
+        </svg>
+        Go to Dashboard
+      </button>
+
+      <!-- Logout Button -->
+      <button id="settings-logout-btn" class="interactive"
+        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600;  transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span id="settings-logout-text">Logout</span>
+      </button>
+    </div>
+
+    <!-- DEDICATED KEYBOARD SHORTCUTS SUB-POPUP -->
+    <div id="shortcuts-subpopup" class="interactive custom-scrollbar"
+      style="display: none; position: absolute; top: 40px; right: 10px; background: rgba(15, 15, 22, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 12px; z-index: 99999 !important; min-width: 220px; max-height: 460px; overflow-y: auto; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);">
+      
+      <!-- Sub-popup Header with Back button -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; margin-bottom: 2px;">
+        <button id="shortcuts-back-btn" class="interactive" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">
+          ‹ Back
+        </button>
+        <span style="font-size: 10px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">Keyboard Shortcuts</span>
+        <button id="shortcuts-close-btn" class="interactive" style="background: none; border: none; color: var(--text-muted); font-size: 11px; outline: none; padding: 0 2px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+      </div>
+
+      <!-- Shortcut Recorders -->
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 10.5px; color: #f1f5f9; font-weight: 600;">Capture Screen</span>
           <button id="set-shortcut-capture" class="shortcut-recorder interactive">Ctrl+Space</button>
@@ -640,29 +684,10 @@
         </div>
       </div>
 
-      <!-- Dashboard Button -->
-      <button id="settings-dashboard-btn" class="interactive"
-        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600;  transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="9"></rect>
-          <rect x="14" y="3" width="7" height="5"></rect>
-          <rect x="14" y="12" width="7" height="9"></rect>
-          <rect x="3" y="16" width="7" height="5"></rect>
-        </svg>
-        Go to Dashboard
-      </button>
-
-      <!-- Logout Button -->
-      <button id="settings-logout-btn" class="interactive"
-        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600;  transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-          stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-          <polyline points="16 17 21 12 16 7"></polyline>
-          <line x1="21" y1="12" x2="9" y2="12"></line>
-        </svg>
-        <span id="settings-logout-text">Logout</span>
+      <div style="font-size: 9px; color: var(--text-muted); text-align: center; margin-top: 4px;">
+        Click any button to rebind hotkey.
+      </div>
+    </div>
       </button>
     </div>
   </div>

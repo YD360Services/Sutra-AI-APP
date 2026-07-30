@@ -1172,6 +1172,11 @@ a,
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes tooltip-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 [data-tooltip-pos="right"]:hover::after,
 #settings-close-btn[data-tooltip]:hover::after,
 #dev-stealth-toggle-btn[data-tooltip]:hover::after,
@@ -1183,13 +1188,14 @@ a,
   animation: tooltip-fade-right 0.15s ease-out forwards !important;
 }
 
-#expand-answer-btn[data-tooltip]::after,
-.input-area [data-tooltip]::after {
+#expand-answer-btn[data-tooltip]:hover::after,
+.input-area [data-tooltip]:hover::after {
   top: auto !important;
   bottom: calc(100% + 8px) !important;
   left: auto !important;
   right: 0 !important;
   transform: none !important;
+  animation: tooltip-fade-up 0.15s ease-out forwards !important;
 }
 
 /* Unified Shortcut Badges Design System across the entire Application */
