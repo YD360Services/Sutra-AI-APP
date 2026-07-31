@@ -1357,9 +1357,15 @@ function startSessionTimer() {
 
   sessionTimerInterval = setInterval(() => {
     sessionSecondsElapsed++;
-    const m = Math.floor(sessionSecondsElapsed / 60).toString().padStart(2, '0');
-    const s = (sessionSecondsElapsed % 60).toString().padStart(2, '0');
-    const timeStr = `${m}:${s}`;
+    const hours = Math.floor(sessionSecondsElapsed / 3600);
+    const mins = Math.floor((sessionSecondsElapsed % 3600) / 60);
+    const secs = sessionSecondsElapsed % 60;
+    let timeStr = '';
+    if (hours > 0) {
+      timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    } else {
+      timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
     const stopBtnTimer = document.getElementById('stop-btn-timer');
     if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
@@ -1518,10 +1524,10 @@ startSessionBtn.addEventListener('click', async () => {
         ? dbIntroduction.trim()
         : 'Candidate resume background and technical profile.';
 
-      let introPrompt = `GENERATE A 100% ROLE-SYNCED 5-MINUTE VERBAL SELF-INTRODUCTION:
+      let introPrompt = `GENERATE A 100% ROLE-SYNCED 60-MINUTE FULL INTERVIEW SESSION VERBAL SELF-INTRODUCTION:
 
 MANDATORY DIRECTIVE FOR THE AI:
-DO NOT repeat or echo the generic base text verbatim. You MUST synthesize a brand-new, 100% role-synced 3-minute verbal self-introduction that dynamically combines:
+DO NOT repeat or echo the generic base text verbatim. You MUST synthesize a brand-new, 100% role-synced verbal self-introduction for a 60-minute interview session that dynamically combines:
 1. Candidate Background & Stack: Extract the candidate's degree, core technical skills, projects, and work experience from the Base Background below.
 2. Target Role Requirements: Extract the key technical skills, responsibilities, and role title from the Target Job Description below.
 
@@ -2655,7 +2661,11 @@ async function queryAssistant(manualQuestionText, isManual = false) {
     if (backendUrl && sessionToken) {
       // Resolve the current question on the frontend to display it at the top
       if (isManual) {
-        currentQuestion = manualQuestionText;
+        if (manualQuestionText && (manualQuestionText.startsWith('GENERATE A 100% ROLE-SYNCED') || manualQuestionText.includes('VERBAL SELF-INTRODUCTION'))) {
+          currentQuestion = 'Verbal Self-Introduction (Role-Synced)';
+        } else {
+          currentQuestion = manualQuestionText;
+        }
       } else {
         try {
           const detected = detectLatestQuestion(accumulatedTranscript, lastAnswerOffset);
@@ -3575,6 +3585,13 @@ function renderAnswerToDOM(container, text, questionText = '') {
   container.innerHTML = '';
 
   if (questionText) {
+    let cleanQText = questionText;
+    if (cleanQText.startsWith('GENERATE A 100% ROLE-SYNCED') || cleanQText.includes('VERBAL SELF-INTRODUCTION')) {
+      cleanQText = 'Verbal Self-Introduction (Role-Synced)';
+    } else if (cleanQText.length > 110) {
+      cleanQText = cleanQText.substring(0, 95).trim() + '...';
+    }
+
     const qDiv = document.createElement('div');
     qDiv.style.marginBottom = '12px';
     qDiv.style.padding = '8px 12px';
@@ -3593,9 +3610,9 @@ function renderAnswerToDOM(container, text, questionText = '') {
     qBadge.style.flexShrink = '0';
 
     const qText = document.createElement('span');
-    qText.textContent = questionText;
+    qText.textContent = cleanQText;
     qText.style.color = 'rgba(255, 255, 255, 0.7)';
-    qText.style.fontSize = '1em';
+    qText.style.fontSize = '0.95em';
     qText.style.fontStyle = 'italic';
     qText.style.lineHeight = '1.4';
 
