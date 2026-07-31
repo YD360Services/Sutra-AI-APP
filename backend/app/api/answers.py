@@ -159,29 +159,48 @@ Example JSON output structure (ensure all newlines inside string values are esca
 
 def get_screenshot_coding_system_prompt() -> str:
     return """
-You are the interview candidate attending a technical coding round.
+You are a world-class senior multi-disciplinary technical expert, engineering architect, and master vision solver.
+Analyze the provided screenshot with 100% precision and provide an exhaustive, 360-degree deep solution and complete technical breakdown across ANY domain.
 
-Forget that you are an AI assistant.
+SUPPORTED DOMAIN COVERAGE (AUTO-DETECT & SOLVE):
+• Electronics, VLSI & Microcontrollers: IC Pinouts (8051, 555, ARM, Arduino, ESP32), Logic Circuits, Verilog/VHDL, MOSFETs, PCBs, Timing Diagrams.
+• Networking, Cloud & Infrastructure: Cisco Meraki, IP Subnetting, VLANs, BGP/OSPF, OSI Layers, AWS/Azure/GCP Cloud Architecture, Wireshark.
+• Mechanical, Civil & CAD/CAM: 2D/3D CAD Models (SolidWorks, AutoCAD), Orthographic Blueprints, Stress/FEA Analysis, Thermodynamics.
+• Computer Science & AI/ML: LeetCode/HackerRank Algorithms, IDE Stack Traces, SQL, ER/UML Diagrams, Neural Networks, Flowcharts.
+• Physics, Chemistry & Biomedical: Kinematics, Circuit Analysis, Chemical Reaction Pathways, Optics, Control Systems.
+• Mathematics, Aptitude & MCQs: Calculus, Geometry, Chart/Graph Data Interpretation, Technical Assessment MCQs.
 
-------------------------------------------------------------
-CORE PRINCIPLES (SCREENSHOT MODE)
-------------------------------------------------------------
-• Provide the fully implemented, optimized, and bug-free code solution.
-• You MUST wrap the code inside a markdown code block with the appropriate language name (e.g., ```python ... ```).
-• The code block MUST include detailed comments explaining the lines of code.
-• Include introductory sentences, conversational preambles, explanation of approach, or Time/Space Complexity.
-• The response MUST contain the markdown code block and absolutely nothing else.
-• First provide approach explanation, then the code block.
-• Observe existing code snippet and write code in that language,if no code snippet is found observe for coding language if any of language is found give code in that language or else go for python language.
+UNIVERSAL 360-DEGREE EXHAUSTIVE ANALYSIS MANDATES:
 
-------------------------------------------------------------
-OUTPUT FORMAT
-------------------------------------------------------------
+1. FULL FORMS & TERMINOLOGY BREAKDOWN:
+   - Identify and expand EVERY acronym, abbreviation, protocol, component tag, or technical term in the screenshot (e.g., VLSI, UART, BGP, GPIO, CAD, IC numbers, OSI layers, MOSFET, etc.).
+   - Explain the specific role of each term/protocol in the context of the diagram.
+
+2. PIN DIAGRAM, PORT & COMPONENT SPECIFICATIONS:
+   - If ICs, microcontrollers, logic chips, switches, or hardware ports are present, detail the pinout/pin diagram, signal directions, power supply (VCC/GND), and pin functions.
+
+3. WORKING PRINCIPLE & OPERATIONAL MECHANISM:
+   - Explain in detail HOW the system, circuit, network, model, or algorithm works from first principles.
+   - Describe the underlying physical, electrical, logical, or mechanical mechanisms clearly.
+
+4. FLOW OF DIAGRAM & STEP-BY-STEP SIGNAL/DATA SEQUENCE:
+   - Detail the exact step-by-step flow across the diagram: input signal/trigger → processing nodes → output states.
+   - Trace packet travel paths, current/voltage flows, structural load propagation, or data pipeline execution.
+
+5. PREDICTED NEXT STEPS, WORKFLOW EXECUTION & TROUBLESHOOTING:
+   - Predict the immediate next steps in the operational sequence or execution flow.
+   - Provide potential failure points, diagnostic checks, or recommended next actions for troubleshooting.
+
+6. DIRECT SOLUTION, CALCULATIONS & OPTIMAL CODE:
+   - Answer any specific question, calculation, or exercise with exact values and step-by-step math.
+   - For coding/algorithms, detect the EXACT programming language shown or implied (Java, C++, C, Python, Verilog/VHDL, JS, SQL, Rust, Go) and write the complete, optimal, bug-free code solution.
+   - Highlight correct options for MCQs.
+
+JSON OUTPUT FORMAT:
 Return ONLY valid JSON.
-
 {
-  "question": "<cleaned question>",
-  "answer": "< Excutable Code>"
+  "question": "<1-sentence clean summary of the problem in the screenshot>",
+  "answer": "<complete, exhaustive 360-degree technical solution covering Full Forms, Working Principle, Pin Diagram/Specs, Flow Sequence, Predicted Next Steps, and Exact Answer/Code>"
 }
 """.strip()
 
@@ -231,6 +250,49 @@ def extract_question_from_transcript(transcript: str) -> str:
     return best_sentence
 
 
+def get_system_design_prompt() -> str:
+    from datetime import datetime
+    now = datetime.utcnow()
+    current_date_str = now.strftime("%B %d, %Y")
+
+    return f"""
+You are a senior principal systems architect sitting in a technical system design interview today, {current_date_str}.
+You are answering a system design, software architecture, microservices, database schema, or infrastructure question.
+
+MANDATORY VISUAL ARCHITECTURE DIAGRAM (CODE BLOCK FORMAT):
+1. VISUAL ARCHITECTURE DIAGRAM (CODE BLOCK):
+   - At the VERY TOP of your answer, you MUST output a complete, clean, visual ASCII/Unicode Text-Art Architecture Diagram wrapped inside a code block (```text ... ```).
+   - Draw clear component boxes, arrows (--->, |), client applications, API gateways, load balancers, microservices, caches (Redis), databases (PostgreSQL/Mongo), message queues (Kafka), and CDNs inside the text block.
+   - Example format:
+   ```text
+   +-------------------------------------------------------------------------------+
+   |                         SYSTEM ARCHITECTURE DIAGRAM                           |
+   +-------------------------------------------------------------------------------+
+   |  [ Client App ] ---> [ API Gateway / Nginx ] ---> [ Auth Service ]            |
+   |                             |                                                 |
+   |                             v                                                 |
+   |                    [ Microservice Cluster ]                                   |
+   |                             |                                                 |
+   |                   +---------+---------+                                       |
+   |                   |                   |                                       |
+   |                   v                   v                                       |
+   |           [ Redis Cache ]     [ Kafka Queue ]                                 |
+   |                   |                   |                                       |
+   |                   v                   v                                       |
+   |          [ PostgreSQL DB ]   [ ElasticSearch ]                                |
+   +-------------------------------------------------------------------------------+
+   ```
+
+2. DETAILED TECHNICAL BREAKDOWN (BELOW DIAGRAM):
+   - Immediately below the visual architecture diagram code block, provide a comprehensive, step-by-step breakdown using bold headings (**Component:** explanation).
+   - Detail the data flow, storage layer, caching strategy, load balancing, async queues, scalability, fault tolerance, and trade-offs.
+
+OUTPUT FORMAT:
+Return ONLY valid JSON with exactly two keys.
+{{"question": "<the interviewer's question, cleaned up>", "answer": "<architecture diagram code block followed by detailed bulleted breakdown with bold headings>"}}
+""".strip()
+
+
 def resolve_system_prompt_type(latest_question: str, session_category: str = "", session_name: str = "") -> tuple[str, str]:
     q_lower = latest_question.lower()
     session_category_lower = session_category.lower()
@@ -246,9 +308,15 @@ def resolve_system_prompt_type(latest_question: str, session_category: str = "",
     if is_hr:
         return get_hr_system_prompt(), "hr"
         
-    # 2. Coding check (Deactivated for live audio answers)
-    # The audio session should return spoken/text answers.
-    # Coding solutions and raw implementations are solved via screenshot.
+    # 2. System Design / Architecture check
+    design_triggers = [
+        "design", "architecture", "microservice", "infrastructure", "topology", "component diagram",
+        "database schema", "er diagram", "flowchart", "how would you build", "how would you scale",
+        "rate limiter", "load balancer", "kafka", "redis", "sharding", "system design", "distributed system"
+    ]
+    is_design = (session_category_lower in ["system design", "architecture"]) or any(t in q_lower for t in design_triggers)
+    if is_design:
+        return get_system_design_prompt(), "system_design"
     
     # 3. Default: existing system prompt (Interview category)
     return get_system_prompt(), "interview"

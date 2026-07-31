@@ -2580,39 +2580,44 @@ copyAnswerBtn.addEventListener('click', () => {
   }
 });
 
-// Download Answer (header button — downloads active Q&A answer as .txt file)
-const downloadAnswerBtn = document.getElementById('download-answer-btn');
-if (downloadAnswerBtn) {
-  downloadAnswerBtn.addEventListener('click', () => {
-    let content = '';
-    if (answerHistory.length > 0 && currentAnswerIndex >= 0 && currentAnswerIndex < answerHistory.length) {
-      const entry = answerHistory[currentAnswerIndex];
-      content = `Q: ${entry.question || 'Question'}\n\nA:\n${entry.answer}`;
+// Export Timeline Button (ParakeetAI format timeline export)
+const exportTimelineBtn = document.getElementById('export-timeline-btn');
+if (exportTimelineBtn) {
+  exportTimelineBtn.addEventListener('click', () => {
+    const now = new Date();
+    const formattedDate = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    
+    let exportText = `Sutra AI Timeline Export\nExported: ${formattedDate}\n\n============================================================\n\n`;
+    
+    if (answerHistory.length > 0) {
+      answerHistory.forEach((entry, idx) => {
+        const timeStr = entry.timestamp ? `[${entry.timestamp}] ` : '';
+        exportText += `${timeStr}💬 Question: ${entry.question || 'Question'}\n\n---\n\n⭐️ Answer:  \n${entry.answer}\n\n============================================================\n\n`;
+      });
     } else {
-      const rawText = answerBlock.textContent.trim();
-      if (rawText && !rawText.startsWith('Click the "Answer" button')) {
-        content = rawText;
+      const liveTranscript = accumulatedTranscript.trim();
+      const currentDOMAnswer = answerBlock.textContent.trim();
+      if (liveTranscript || (currentDOMAnswer && !currentDOMAnswer.startsWith('Click the "Answer" button'))) {
+        exportText += `💬 Live Transcript:\n${liveTranscript || '(None)'}\n\n---\n\n⭐️ Active Answer:\n${currentDOMAnswer || '(None)'}\n\n============================================================\n`;
+      } else {
+        alert('No Q&A timeline history available to export yet.');
+        return;
       }
     }
 
-    if (!content) {
-      alert('No answer content available to download.');
-      return;
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const timestampFile = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `sutra_answer_${timestamp}.txt`;
+    a.download = `sutra_ai_timeline_export_${timestampFile}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    downloadAnswerBtn.textContent = 'Downloaded!';
-    setTimeout(() => { downloadAnswerBtn.textContent = 'Download'; }, 1500);
+    exportTimelineBtn.textContent = '✓ Exported!';
+    setTimeout(() => { exportTimelineBtn.textContent = 'Export Timeline'; }, 1500);
   });
 }
 
@@ -3062,18 +3067,41 @@ async function solveFromScreenshot() {
     newEntry.answer = '⚙️ Analyzing with vision AI...';
     renderActiveAnswer();
 
-    const prompt = `Analyze the provided screenshot of the screen. Find the question, coding problem, or conceptual statement visible on the screen.
+    const prompt = `You are a world-class senior multi-disciplinary technical expert, engineering architect, and master vision solver. Analyze the provided screenshot with 100% precision and provide an exhaustive, 360-degree deep solution and complete technical breakdown across ANY domain.
 
-Rules:
-1. If the screenshot shows a coding problem or request to write code:
-   - CRITICAL: You MUST write the code solution in the EXACT programming language shown or implied in the screenshot's code editor, starter code, or description (e.g., if you see Java syntax, classes, or imports, you MUST write the solution in Java. If you see C++, write it in C++. If you see JS, write it in JS). Do NOT default to Python unless the screenshot explicitly requests Python.
-   - At the very top, write a single line summarizing the basic question in 1 sentence. Start the line with "// Question: " (or appropriate comment syntax for the language).
-   - Followed by a blank line.
-   - Then write the clean, fully functional, optimal code solution in that detected language.
-   - The code solution MUST NOT contain any comments (no inline comments, no block comments, no docstrings) or markdown code block formatting (like \`\`\`).
-2. If the screenshot shows a conceptual, theoretical, or verbal question (such as explaining OOP, architecture, system design, or definitions):
-   - Do NOT output any code blocks or code syntax.
-   - Provide a natural, conversational explanation in plain English paragraphs, as if speaking to an interviewer. Keep it concise.`;
+SUPPORTED DOMAIN COVERAGE (AUTO-DETECT & SOLVE):
+• Electronics, VLSI & Microcontrollers: IC Pinouts (8051, 555, ARM, Arduino, ESP32), Logic Circuits, Verilog/VHDL, MOSFETs, PCBs, Timing Diagrams.
+• Networking, Cloud & Infrastructure: Cisco Meraki, IP Subnetting, VLANs, BGP/OSPF, OSI Layers, AWS/Azure/GCP Cloud Architecture, Wireshark.
+• Mechanical, Civil & CAD/CAM: 2D/3D CAD Models (SolidWorks, AutoCAD), Orthographic Blueprints, Stress/FEA Analysis, Thermodynamics.
+• Computer Science & AI/ML: LeetCode/HackerRank Algorithms, IDE Stack Traces, SQL, ER/UML Diagrams, Neural Networks, Flowcharts.
+• Physics, Chemistry & Biomedical: Kinematics, Circuit Analysis, Chemical Reaction Pathways, Optics, Control Systems.
+• Mathematics, Aptitude & MCQs: Calculus, Geometry, Chart/Graph Data Interpretation, Technical Assessment MCQs.
+
+UNIVERSAL 360-DEGREE EXHAUSTIVE ANALYSIS MANDATES:
+
+1. FULL FORMS & TERMINOLOGY BREAKDOWN:
+   - Identify and expand EVERY acronym, abbreviation, protocol, component tag, or technical term in the screenshot (e.g., VLSI, UART, BGP, GPIO, CAD, IC numbers, OSI layers, MOSFET, etc.).
+   - Explain the specific role of each term/protocol in the context of the diagram.
+
+2. PIN DIAGRAM, PORT & COMPONENT SPECIFICATIONS:
+   - If ICs, microcontrollers, logic chips, switches, or hardware ports are present, detail the pinout/pin diagram, signal directions, power supply (VCC/GND), and pin functions.
+
+3. WORKING PRINCIPLE & OPERATIONAL MECHANISM:
+   - Explain in detail HOW the system, circuit, network, model, or algorithm works from first principles.
+   - Describe the underlying physical, electrical, logical, or mechanical mechanisms clearly.
+
+4. FLOW OF DIAGRAM & STEP-BY-STEP SIGNAL/DATA SEQUENCE:
+   - Detail the exact step-by-step flow across the diagram: input signal/trigger → processing nodes → output states.
+   - Trace packet travel paths, current/voltage flows, structural load propagation, or data pipeline execution.
+
+5. PREDICTED NEXT STEPS, WORKFLOW EXECUTION & TROUBLESHOOTING:
+   - Predict the immediate next steps in the operational sequence or execution flow.
+   - Provide potential failure points, diagnostic checks, or recommended next actions for troubleshooting.
+
+6. DIRECT SOLUTION, CALCULATIONS & OPTIMAL CODE:
+   - Answer any specific question, calculation, or exercise with exact values and step-by-step math.
+   - For coding/algorithms, detect the EXACT programming language shown or implied (Java, C++, C, Python, Verilog/VHDL, JS, SQL, Rust, Go) and write the complete, optimal, bug-free code solution.
+   - Highlight correct options for MCQs.`;
 
     let answer;
     if (backendUrl) {
@@ -3598,11 +3626,15 @@ function renderAnswerToDOM(container, text, questionText = '') {
       header.style.borderBottom = '1px solid rgba(20, 184, 166, 0.2)';
 
       const langLabel = document.createElement('span');
-      langLabel.textContent = (segment.lang || 'code').toUpperCase();
+      let displayLang = (segment.lang || 'code').toUpperCase();
+      if (displayLang === 'TEXT' || displayLang === 'DIAGRAM' || displayLang === 'ASCII' || displayLang === 'ARCHITECTURE') {
+        displayLang = '📐 ARCHITECTURE DIAGRAM';
+      }
       langLabel.style.color = '#5eead4';
       langLabel.style.fontSize = '0.75em';
       langLabel.style.fontWeight = 'bold';
       langLabel.style.letterSpacing = '0.5px';
+      langLabel.textContent = displayLang;
 
       const copyBtn = document.createElement('button');
       copyBtn.textContent = 'Copy';
