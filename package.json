@@ -1,14 +1,47 @@
 {
-  "name": "stealth-toolbar",
+  "name": "sutra-ai",
+  "productName": "Sutra AI",
   "version": "1.0.0",
-  "description": "A native transparent stealth overlay toolbar with capture protection",
+  "description": "Sutra AI Stealth Desktop Application",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "server": "node server.js",
-    "launch": "node launch.js"
+    "launch": "node launch.js",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.sutraai.stealthapp",
+    "productName": "Sutra AI",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sutra AI"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "server.js",
+      "launch.js",
+      "frontend/**/*",
+      "icon.ico",
+      ".env"
+    ]
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
   }
 }

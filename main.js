@@ -273,16 +273,15 @@ function createWindow() {
   const winHeight = 580;
 
   mainWindow = new BrowserWindow({
-    title: "Brazilian Space",
+    title: "Sutra AI",
     width: winWidth,
     height: winHeight,
     frame: false,
     transparent: true,
-    alwaysOnTop: true,
     resizable: true,
     maximizable: false,
-    skipTaskbar: true,
-    type: 'toolbar',
+    skipTaskbar: false,
+    focusable: true,
     minWidth: 0,
     minHeight: 0,
     webPreferences: {
@@ -293,7 +292,7 @@ function createWindow() {
   });
 
   // Keep window visible on top of full-screen applications and across workspaces/virtual desktops
-  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
+  mainWindow.setAlwaysOnTop(true, 'floating', 1);
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // Position centered near the top of the display with a clean 12px top margin
@@ -309,7 +308,11 @@ function createWindow() {
   // Enable screen capture protection
   mainWindow.setContentProtection(true);
 
-  mainWindow.showInactive();
+  mainWindow.show();
+  mainWindow.focus();
+  if (mainWindow.webContents) {
+    mainWindow.webContents.focus();
+  }
   mainWindow.setResizable(false);
 
   // Handle focusable state (set focusable to false in stealth mode to prevent blur events on exam portals)
@@ -320,6 +323,21 @@ function createWindow() {
       win.setFocusable(shouldFocus);
       if (shouldFocus) {
         win.focus();
+        if (win.webContents) {
+          win.webContents.focus();
+        }
+      }
+    }
+  });
+
+  // Handle always-on-top level switching (floating vs screen-saver)
+  ipcMain.on('set-always-on-top', (event, level) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed() && typeof win.setAlwaysOnTop === 'function') {
+      if (level === 'screen-saver') {
+        win.setAlwaysOnTop(true, 'screen-saver', 1);
+      } else {
+        win.setAlwaysOnTop(true, 'floating', 1);
       }
     }
   });

@@ -1483,8 +1483,9 @@ startSessionBtn.addEventListener('click', async () => {
   document.body.classList.add('stealth-active');
   isStealthHoverEnabled = true;
   toggleStealthTooltips(true);
-  if (window.electronAPI && window.electronAPI.setFocusable) {
-    window.electronAPI.setFocusable(false); // Make window non-activating so clicks never steal focus from exam portals
+  if (window.electronAPI) {
+    if (window.electronAPI.setAlwaysOnTop) window.electronAPI.setAlwaysOnTop('screen-saver');
+    if (window.electronAPI.setFocusable) window.electronAPI.setFocusable(false); // Make window non-activating so clicks never steal focus from exam portals
   }
   document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
 
@@ -1559,19 +1560,38 @@ Generate the final ready-to-speak verbal self-introduction now (spoken English o
 });
 
 
-// Dynamic Focus Management to allow 100% smooth typing in all input fields while in stealth mode
+// Dynamic Focus Management to allow 100% smooth typing in all input fields and wizard steps
+['setup-company', 'setup-role', 'setup-jd'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    const handleFocus = (e) => {
+      e.stopPropagation();
+      if (window.electronAPI && window.electronAPI.setFocusable) {
+        window.electronAPI.setFocusable(true);
+      }
+      setTimeout(() => el.focus(), 0);
+    };
+    el.addEventListener('pointerdown', handleFocus, true);
+    el.addEventListener('mousedown', handleFocus, true);
+    el.addEventListener('click', handleFocus, true);
+  }
+});
+
 document.addEventListener('pointerdown', (e) => {
   const target = e.target;
-  const isInput = target && (
+  const isInputOrWizard = target && (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
     target.isContentEditable ||
     target.closest('input') ||
     target.closest('textarea') ||
+    target.closest('#setup-view') ||
+    target.closest('.setup-view-container') ||
+    target.closest('#settings-popup') ||
     target.id === 'ai-input' ||
     target.id === 'transcript-block'
   );
-  if (isInput) {
+  if (isInputOrWizard) {
     if (window.electronAPI && window.electronAPI.setFocusable) {
       window.electronAPI.setFocusable(true);
     }
@@ -1580,40 +1600,24 @@ document.addEventListener('pointerdown', (e) => {
 
 document.addEventListener('focusin', (e) => {
   const target = e.target;
-  const isInput = target && (
+  const isInputOrWizard = target && (
     target.tagName === 'INPUT' ||
     target.tagName === 'TEXTAREA' ||
     target.isContentEditable ||
+    target.closest('#setup-view') ||
+    target.closest('.setup-view-container') ||
+    target.closest('#settings-popup') ||
     target.id === 'ai-input' ||
     target.id === 'transcript-block'
   );
-  if (isInput) {
+  if (isInputOrWizard) {
     if (window.electronAPI && window.electronAPI.setFocusable) {
       window.electronAPI.setFocusable(true);
     }
   }
 }, true);
 
-document.addEventListener('focusout', (e) => {
-  const isStealthActive = document.body.classList.contains('stealth-active');
-  if (isStealthActive) {
-    setTimeout(() => {
-      const active = document.activeElement;
-      const isInputStillFocused = active && (
-        active.tagName === 'INPUT' ||
-        active.tagName === 'TEXTAREA' ||
-        active.isContentEditable ||
-        active.id === 'ai-input' ||
-        active.id === 'transcript-block'
-      );
-      if (!isInputStillFocused) {
-        if (window.electronAPI && window.electronAPI.setFocusable) {
-          window.electronAPI.setFocusable(false);
-        }
-      }
-    }, 150);
-  }
-}, true);
+// Focus management is maintained continuously without focusout timers that interrupt typing
 
 // Stop session button event handler
 const endLiveSession = async (e) => {
@@ -1782,6 +1786,13 @@ let isMouseInsideWindow = false;
  * @param {number} [clientY] - cursor Y in client coords (uses last known if omitted)
  */
 function updateClickThrough(clientX, clientY) {
+  const isSetupVisible = setupView && setupView.style.display !== 'none';
+  const isRecentVisible = typeof recentSessionsView !== 'undefined' && recentSessionsView && recentSessionsView.style.display !== 'none';
+  if (isSetupVisible || isRecentVisible) {
+    window.electronAPI.setIgnoreMouseEvents(false);
+    return;
+  }
+
   if (isDraggingWindow || isResizingPanel || isDraggingSlider || isResizingViaExpandBtn) {
     window.electronAPI.setIgnoreMouseEvents(false);
     return;
@@ -2199,12 +2210,23 @@ function closeAllPanels() {
   // Save to localStorage
   safeSetItem('stealth_activeTab', '');
 
+  // Reset focusable state when all panels closed in stealth mode
+  if (document.body.classList.contains('stealth-active')) {
+    if (window.electronAPI && window.electronAPI.setFocusable) {
+      window.electronAPI.setFocusable(false);
+    }
+  }
+
   // Resize window
   updateWindowSize();
 }
 
 function openPanel(tabName) {
   activeTab = tabName;
+
+  if (window.electronAPI && window.electronAPI.setFocusable) {
+    window.electronAPI.setFocusable(true);
+  }
 
   // Deactivate all buttons
   aiBtn.classList.toggle('active', tabName === 'ai');
@@ -3967,6 +3989,11 @@ function showSyncPage() {
 function showSetupWizard() {
   if (setupSyncView) setupSyncView.style.display = 'none';
   if (setupStepsWrapper) setupStepsWrapper.style.display = 'flex';
+  document.body.classList.remove('stealth-active');
+  if (window.electronAPI) {
+    if (window.electronAPI.setAlwaysOnTop) window.electronAPI.setAlwaysOnTop('floating');
+    if (window.electronAPI.setFocusable) window.electronAPI.setFocusable(true);
+  }
 }
 
 async function triggerBrowserSync() {
@@ -4582,6 +4609,16 @@ function toggleStealthTooltips(stealthActive) {
 
 // Key listener to temporarily toggle/disable stealth hover-hide behavior
 window.addEventListener('keydown', (e) => {
+  // If the user is currently typing inside a text input or textarea, let native typing proceed naturally
+  const isTypingInInput = e.target && (
+    e.target.tagName === 'INPUT' ||
+    e.target.tagName === 'TEXTAREA' ||
+    e.target.isContentEditable
+  );
+  if (isTypingInInput) {
+    return; // Don't intercept keypresses while user is typing in form fields!
+  }
+
   // Intercept Chromium native zoom and map to custom stealth_font_size
   if (e.ctrlKey) {
     if (e.key === '-' || e.key === '_') {

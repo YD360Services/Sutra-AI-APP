@@ -129,7 +129,7 @@
         </div>
 
         <!-- STEP 1: Job Details -->
-        <div id="setup-step-1" class="setup-step-content" style="display: flex; flex-direction: column; height: 320px;">
+        <div id="setup-step-1" class="setup-step-content" style="display: flex; flex-direction: column; height: 320px; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;">
           <div class="setup-form-group">
             <label class="setup-label">Session Type</label>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px;">
@@ -143,17 +143,17 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div class="setup-form-group" style="margin: 0;">
               <label class="setup-label">Company Name</label>
-              <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..." />
+              <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..." style="-webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
             </div>
             <div class="setup-form-group" style="margin: 0;">
               <label class="setup-label">Target Role</label>
-              <input type="text" id="setup-role" class="setup-input" placeholder="e.g. Senior SDE..." />
+              <input type="text" id="setup-role" class="setup-input" placeholder="e.g. Senior SDE..." style="-webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
             </div>
           </div>
 
           <div class="setup-form-group" style="margin-bottom: 0; flex: 1; display: flex; flex-direction: column;">
             <label class="setup-label">Job Description (Required)</label>
-            <textarea id="setup-jd" class="setup-textarea" style="flex: 1; min-height: 120px;"
+            <textarea id="setup-jd" class="setup-textarea" style="flex: 1; min-height: 120px; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;"
               placeholder="Paste the target Job Description (required to personalize AI answers)..."></textarea>
           </div>
         </div>

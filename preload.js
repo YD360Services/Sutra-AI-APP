@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveWindowAbsolute: (x, y) => ipcRenderer.send('move-window-absolute', x, y),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
   setFocusable: (focusable) => ipcRenderer.send('set-focusable', focusable),
+  setAlwaysOnTop: (level) => ipcRenderer.send('set-always-on-top', level),
   setStealthMode: (enabled) => ipcRenderer.send('set-stealth-mode', enabled),
   launchToolbar: (config) => ipcRenderer.send('launch-toolbar', config),
   registerGlobalShortcuts: (shortcuts) => ipcRenderer.send('register-global-shortcuts', shortcuts),

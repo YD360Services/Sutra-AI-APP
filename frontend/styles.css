@@ -946,6 +946,10 @@ code {
   font-size: 15px;
   outline: none;
   transition: all 0.2s ease;
+  -webkit-app-region: no-drag !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 .setup-input:focus {
@@ -1002,6 +1006,10 @@ select.setup-input:hover {
   resize: none;
   outline: none;
   transition: all 0.2s ease;
+  -webkit-app-region: no-drag !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 .setup-textarea:focus {
@@ -1272,7 +1280,15 @@ a,
 }
 
 
-/* Global cursor enforcement: Keep cursor uniform and prevent hand icons (pointer) */
-*, *::before, *::after, html, body, button, a, input, select, textarea, [role="button"], .interactive, .ctrl-btn, .nav-btn, .action-btn, .btn-l, .btn-stop, ::-webkit-scrollbar, ::-webkit-scrollbar-thumb {
+/* Global cursor enforcement: Keep arrow cursor for buttons & UI controls, allow text I-beam for inputs */
+*, *::before, *::after, html, body, button, a, select, [role="button"], .interactive, .ctrl-btn, .nav-btn, .action-btn, .btn-l, .btn-stop, ::-webkit-scrollbar, ::-webkit-scrollbar-thumb {
   cursor: default !important;
+}
+
+input, textarea, [contenteditable], .setup-input, .setup-textarea {
+  cursor: text !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-app-region: no-drag !important;
+  pointer-events: auto !important;
 }
