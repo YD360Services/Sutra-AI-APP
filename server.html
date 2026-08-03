@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureTest Proctoring — Exam Session</title>
+    <style>
+        :root {
+            --bg: #0a0d0f;
+            --panel: #10151a;
+            --panel-line: #1d262d;
+            --ink: #d7e2e6;
+            --ink-dim: #7c8a92;
+            --mono-green: #3ddc84;
+            --mono-green-dim: #1f6b45;
+            --alert: #ff5c4d;
+            --alert-dim: #4a2019;
+            --amber: #ffb545;
+            --focus: #4d9fff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: 'IBM Plex Sans', Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+
+        @font-face {
+            font-family: 'monofont';
+            src: local('JetBrains Mono'), local('Consolas'), local('Menlo');
+        }
+
+        .mono {
+            font-family: 'JetBrains Mono', 'Consolas', 'SF Mono', monospace;
+            letter-spacing: 0.02em;
+        }
+
+        /* ---------- top status bar ---------- */
+        .statusbar {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 22px;
+            background: var(--panel);
+            border-bottom: 1px solid var(--panel-line);
+        }
+
+        .statusbar-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .brand {
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--ink);
+        }
+
+        .brand span {
+            color: var(--mono-green);
+        }
+
+        .rec-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: var(--alert);
+            box-shadow: 0 0 0 0 rgba(255, 92, 77, 0.6);
+            animation: pulse 1.6s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 92, 77, 0.55);
+            }
+
+            70% {
+                box-shadow: 0 0 0 9px rgba(255, 92, 77, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 92, 77, 0);
+            }
+        }
+
+        .rec-label {
+            font-size: 11px;
+            color: var(--ink-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .statusbar-right {
+            display: flex;
+            align-items: center;
+            gap: 22px;
+        }
+
+        .stat {
+            text-align: right;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            color: var(--ink-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .stat-value {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .stat-value.warn {
+            color: var(--amber);
+        }
+
+        .stat-value.alert {
+            color: var(--alert);
+        }
+
+        .timer {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--mono-green);
+        }
+
+        /* ---------- layout ---------- */
+        .wrap {
+            max-width: 1180px;
+            margin: 0 auto;
+            padding: 28px 22px 80px;
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            gap: 24px;
+        }
+
+        @media (max-width:860px) {
+            .wrap {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--panel-line);
+            border-radius: 4px;
+        }
+
+        /* exam panel */
+        .exam-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--panel-line);
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+
+        .exam-title {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--ink-dim);
+        }
+
+        .q-index {
+            font-size: 12px;
+            color: var(--ink-dim);
+        }
+
+        .exam-body {
+            padding: 26px 24px;
+        }
+
+        .q-text {
+            font-size: 18px;
+            line-height: 1.55;
+            margin: 0 0 22px;
+        }
+
+        .choice {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 13px 14px;
+            margin-bottom: 9px;
+            border: 1px solid var(--panel-line);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: border-color .15s ease, background .15s ease;
+        }
+
+        .choice:hover {
+            border-color: #33424b;
+            background: #0d1317;
+        }
+
+        .choice input {
+            margin-top: 3px;
+            accent-color: var(--mono-green);
+        }
+
+        .choice-label {
+            font-size: 14.5px;
+            line-height: 1.5;
+        }
+
+        .nav-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-top: 1px solid var(--panel-line);
+        }
+
+        .btn {
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            padding: 10px 18px;
+            border-radius: 3px;
+            border: 1px solid var(--panel-line);
+            background: transparent;
+            color: var(--ink);
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            border-color: #33424b;
+        }
+
+        .btn-primary {
+            background: var(--mono-green);
+            color: #06120b;
+            border-color: var(--mono-green);
+        }
+
+        .btn-primary:hover {
+            background: #33c377;
+        }
+
+        /* side panel */
+        .side-title {
+            padding: 14px 16px 10px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--ink-dim);
+            border-bottom: 1px solid var(--panel-line);
+        }
+
+        .cam-box {
+            margin: 14px;
+            height: 150px;
+            border-radius: 3px;
+            background: repeating-linear-gradient(135deg, #0d1317, #0d1317 10px, #0f1519 10px, #0f1519 20px);
+            border: 1px solid var(--panel-line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cam-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .cam-off-label {
+            font-size: 11px;
+            color: var(--ink-dim);
+            text-align: center;
+            padding: 0 10px;
+        }
+
+        .cam-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.55);
+            padding: 3px 8px;
+            border-radius: 20px;
+        }
+
+        .cam-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--alert);
+            animation: pulse 1.6s infinite;
+        }
+
+        .cam-badge span {
+            font-size: 9.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .log {
+            margin: 0 14px 16px;
+            padding: 0;
+            list-style: none;
+            max-height: 230px;
+            overflow-y: auto;
+            font-size: 11.5px;
+        }
+
+        .log li {
+            padding: 8px 10px;
+            border-left: 2px solid var(--panel-line);
+            margin-bottom: 6px;
+            color: var(--ink-dim);
+            line-height: 1.4;
+        }
+
+        .log li.violation {
+            border-left-color: var(--alert);
+            color: #ffb3ab;
+            background: rgba(255, 92, 77, 0.06);
+        }
+
+        .log li .t {
+            display: block;
+            color: var(--ink-dim);
+            font-size: 10px;
+            margin-top: 2px;
+        }
+
+        .empty-log {
+            padding: 14px;
+            font-size: 12px;
+            color: var(--ink-dim);
+        }
+
+        .fs-btn-wrap {
+            padding: 0 14px 16px;
+        }
+
+        .fs-btn {
+            width: 100%;
+            padding: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            background: transparent;
+            color: var(--mono-green);
+            border: 1px solid var(--mono-green-dim);
+            border-radius: 3px;
+            cursor: pointer;
+            letter-spacing: 0.03em;
+        }
+
+        .fs-btn:hover {
+            background: rgba(61, 220, 132, 0.08);
+        }
+
+        /* ---------- warning toast ---------- */
+        #toast-layer {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 320px;
+            max-width: calc(100vw - 40px);
+        }
+
+        .toast {
+            background: #1a1010;
+            border: 1px solid var(--alert);
+            border-radius: 4px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            animation: slidein .25s ease;
+        }
+
+        @keyframes slidein {
+            from {
+                transform: translateX(30px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .toast-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--alert);
+            margin-bottom: 5px;
+        }
+
+        .toast-body {
+            font-size: 12.5px;
+            color: var(--ink);
+            line-height: 1.45;
+        }
+
+        /* ---------- fullscreen lockout overlay ---------- */
+        .overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(4, 5, 6, 0.92);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .overlay.hidden {
+            display: none;
+        }
+
+        .overlay-card {
+            background: var(--panel);
+            border: 1px solid var(--alert);
+            border-radius: 6px;
+            max-width: 440px;
+            width: 100%;
+            padding: 30px 28px;
+            text-align: center;
+        }
+
+        .overlay-card h2 {
+            margin: 0 0 10px;
+            font-size: 19px;
+            color: var(--alert);
+        }
+
+        .overlay-card p {
+            font-size: 13.5px;
+            color: var(--ink-dim);
+            line-height: 1.55;
+            margin: 0 0 22px;
+        }
+
+        .overlay-card .btn-primary {
+            width: 100%;
+        }
+
+        /* terminated state */
+        #terminated {
+            position: fixed;
+            inset: 0;
+            z-index: 300;
+            background: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #terminated.hidden {
+            display: none;
+        }
+
+        #terminated h1 {
+            color: var(--alert);
+            font-size: 26px;
+            margin-bottom: 10px;
+        }
+
+        #terminated p {
+            color: var(--ink-dim);
+            max-width: 420px;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        #terminated .code {
+            margin-top: 22px;
+            font-size: 11px;
+            color: var(--ink-dim);
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--focus);
+            outline-offset: 2px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+
+            .rec-dot,
+            .cam-badge .dot,
+            .toast {
+                animation: none !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="statusbar">
+        <div class="statusbar-left">
+            <div class="brand">Secure<span>Test</span> Proctoring</div>
+            <div class="rec-dot" aria-hidden="true"></div>
+            <div class="rec-label mono">Monitoring active</div>
+        </div>
+        <div class="statusbar-right">
+            <div class="stat">
+                <div class="stat-label">Time remaining</div>
+                <div class="timer mono" id="timer">45:00</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Warnings</div>
+                <div class="stat-value warn mono" id="warn-count">0 / 3</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="wrap">
+
+        <!-- exam panel -->
+        <div class="card">
+            <div class="exam-header">
+                <div class="exam-title">Intro to Statistics — Final Assessment</div>
+                <div class="q-index mono">Question 4 of 20</div>
+            </div>
+            <div class="exam-body">
+                <p class="q-text">A dataset has a mean of 50 and a standard deviation of 8. Assuming a normal
+                    distribution, approximately what percentage of values fall between 42 and 58?</p>
+
+                <label class="choice"><input type="radio" name="q4"><span class="choice-label">50%</span></label>
+                <label class="choice"><input type="radio" name="q4"><span class="choice-label">68%</span></label>
+                <label class="choice"><input type="radio" name="q4"><span class="choice-label">95%</span></label>
+                <label class="choice"><input type="radio" name="q4"><span class="choice-label">99.7%</span></label>
+            </div>
+            <div class="nav-row">
+                <button class="btn" type="button">Previous</button>
+                <button class="btn btn-primary" type="button">Next question</button>
+            </div>
+        </div>
+
+        <!-- side panel: proctoring status -->
+        <div class="card" style="height:fit-content;">
+            <div class="side-title">Proctor feed</div>
+            <div class="cam-box" id="cam-box">
+                <div class="cam-badge">
+                    <div class="dot"></div><span class="mono">LIVE</span>
+                </div>
+                <div class="cam-off-label">Camera preview off.<br>Click below to simulate enabling it.</div>
+            </div>
+            <div class="fs-btn-wrap">
+                <button class="fs-btn mono" id="cam-toggle" type="button">Enable camera preview</button>
+            </div>
+            <div class="fs-btn-wrap" style="padding-top:0;">
+                <button class="fs-btn mono" id="fs-toggle" type="button">Enter fullscreen (required)</button>
+            </div>
+
+            <div class="side-title" style="border-top:1px solid var(--panel-line);">Activity log</div>
+            <ul class="log" id="log">
+                <li class="empty-log">No activity yet. This log records tab switches, window focus loss, cursor exits,
+                    and fullscreen exits during the session.</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <!-- toast container -->
+    <div id="toast-layer" aria-live="polite"></div>
+
+    <!-- fullscreen-required overlay -->
+    <div class="overlay hidden" id="fs-overlay">
+        <div class="overlay-card">
+            <h2>Fullscreen required</h2>
+            <p>This exam must be taken in fullscreen mode. Exiting fullscreen is logged as a violation. Click below to
+                resume your session.</p>
+            <button class="btn btn-primary" id="fs-resume">Resume in fullscreen</button>
+        </div>
+    </div>
+
+    <!-- terminated screen -->
+    <div id="terminated" class="hidden">
+        <h1 class="mono">SESSION TERMINATED</h1>
+        <p>Your exam session was ended automatically after exceeding the maximum number of monitoring violations. Your
+            instructor has been notified and the incident log has been attached to your submission.</p>
+        <div class="code mono" id="term-code"></div>
+    </div>
+
+    <script>
+        (function () {
+            const MAX_WARNINGS = 3;
+            let warnings = 0;
+            let terminated = false;
+
+            const warnEl = document.getElementById('warn-count');
+            const logEl = document.getElementById('log');
+            const toastLayer = document.getElementById('toast-layer');
+            const fsOverlay = document.getElementById('fs-overlay');
+            const terminatedEl = document.getElementById('terminated');
+
+            function timestamp() {
+                const d = new Date();
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+
+            function addLog(message, isViolation) {
+                if (logEl.querySelector('.empty-log')) logEl.innerHTML = '';
+                const li = document.createElement('li');
+                if (isViolation) li.classList.add('violation');
+                li.innerHTML = message + '<span class="t mono">' + timestamp() + '</span>';
+                logEl.prepend(li);
+            }
+
+            function showToast(title, body) {
+                const t = document.createElement('div');
+                t.className = 'toast';
+                t.innerHTML = '<div class="toast-title">⚠ ' + title + '</div><div class="toast-body">' + body + '</div>';
+                toastLayer.appendChild(t);
+                setTimeout(() => { t.style.transition = 'opacity .3s ease'; t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 4500);
+            }
+
+            function flagViolation(reason, detail) {
+                if (terminated) return;
+                warnings++;
+                warnEl.textContent = warnings + ' / ' + MAX_WARNINGS;
+                warnEl.classList.toggle('alert', warnings >= MAX_WARNINGS);
+                addLog(reason, true);
+                showToast(reason, detail);
+
+                if (warnings >= MAX_WARNINGS) {
+                    terminateSession();
+                }
+            }
+
+            function terminateSession() {
+                terminated = true;
+                document.getElementById('term-code').textContent =
+                    'Incident ref: ' + Math.random().toString(36).slice(2, 8).toUpperCase() + ' · ' + new Date().toISOString();
+                terminatedEl.classList.remove('hidden');
+            }
+
+            // ---- Tab switch / window blur detection ----
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    flagViolation('Tab switched or minimized', 'You navigated away from the exam tab. This has been recorded as a monitoring violation.');
+                }
+            });
+
+            window.addEventListener('blur', () => {
+                // Avoid double-firing right after a deliberate fullscreen prompt click
+                if (!document.hidden) {
+                    flagViolation('Window lost focus', 'The exam window lost focus, possibly due to switching applications.');
+                }
+            });
+
+            // ---- Cursor leaving the viewport ----
+            let cursorWarnCooldown = false;
+            document.addEventListener('mouseleave', (e) => {
+                if (cursorWarnCooldown || terminated) return;
+                // only fire when leaving through the top/sides of the actual browser viewport
+                if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+                    cursorWarnCooldown = true;
+                    flagViolation('Cursor left the exam window', 'Your mouse cursor moved outside the browser viewport.');
+                    setTimeout(() => { cursorWarnCooldown = false; }, 3000);
+                }
+            });
+
+            // ---- Fullscreen enforcement ----
+            const fsToggle = document.getElementById('fs-toggle');
+            const fsResume = document.getElementById('fs-resume');
+            let fsRequested = false;
+
+            function enterFullscreen() {
+                const el = document.documentElement;
+                const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+                if (req) {
+                    req.call(el).catch(() => { /* user gesture / permission issue — ignore */ });
+                }
+            }
+
+            fsToggle.addEventListener('click', () => {
+                fsRequested = true;
+                enterFullscreen();
+            });
+            fsResume.addEventListener('click', () => {
+                fsOverlay.classList.add('hidden');
+                enterFullscreen();
+            });
+
+            document.addEventListener('fullscreenchange', () => {
+                const isFs = !!document.fullscreenElement;
+                if (isFs) {
+                    fsToggle.textContent = 'Fullscreen active';
+                    fsOverlay.classList.add('hidden');
+                    addLog('Entered fullscreen mode', false);
+                } else if (fsRequested && !terminated) {
+                    flagViolation('Exited fullscreen', 'The exam requires fullscreen mode at all times. Click resume to continue.');
+                    fsOverlay.classList.remove('hidden');
+                    fsToggle.textContent = 'Enter fullscreen (required)';
+                }
+            });
+
+            // ---- Right-click / copy-paste / devtools-ish deterrents (demo only) ----
+            document.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                addLog('Right-click blocked', false);
+            });
+            document.addEventListener('copy', () => addLog('Copy action blocked', false));
+            document.addEventListener('keydown', (e) => {
+                // Common devtools / copy shortcuts — best-effort deterrent only, not real security
+                const blocked = (e.key === 'F12') ||
+                    (e.ctrlKey && e.shiftKey && ['I', 'J', 'C'].includes(e.key)) ||
+                    (e.ctrlKey && ['c', 'u'].includes(e.key.toLowerCase()));
+                if (blocked) {
+                    e.preventDefault();
+                    flagViolation('Restricted key combination pressed', 'Keyboard shortcuts for copying or inspecting the page are disabled during the exam.');
+                }
+            });
+
+            // ---- Simulated camera preview (uses real webcam only if user opts in) ----
+            const camToggle = document.getElementById('cam-toggle');
+            const camBox = document.getElementById('cam-box');
+            let camStream = null;
+
+            camToggle.addEventListener('click', async () => {
+                if (camStream) {
+                    camStream.getTracks().forEach(t => t.stop());
+                    camStream = null;
+                    camBox.innerHTML = '<div class="cam-badge"><div class="dot"></div><span class="mono">LIVE</span></div><div class="cam-off-label">Camera preview off.<br>Click below to simulate enabling it.</div>';
+                    camToggle.textContent = 'Enable camera preview';
+                    return;
+                }
+                try {
+                    camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    camBox.innerHTML = '<div class="cam-badge"><div class="dot"></div><span class="mono">LIVE</span></div>';
+                    const video = document.createElement('video');
+                    video.autoplay = true; video.muted = true; video.playsInline = true;
+                    video.srcObject = camStream;
+                    camBox.appendChild(video);
+                    camToggle.textContent = 'Disable camera preview';
+                    addLog('Camera preview enabled', false);
+                } catch (err) {
+                    addLog('Camera permission denied or unavailable', true);
+                    showToast('Camera unavailable', 'Permission was denied, or no camera device was found. This is just a demo preview and is never uploaded anywhere.');
+                }
+            });
+
+            // ---- Countdown timer (cosmetic) ----
+            let secondsLeft = 45 * 60;
+            const timerEl = document.getElementById('timer');
+            setInterval(() => {
+                if (terminated) return;
+                secondsLeft = Math.max(0, secondsLeft - 1);
+                const m = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
+                const s = String(secondsLeft % 60).padStart(2, '0');
+                timerEl.textContent = m + ':' + s;
+            }, 1000);
+
+            addLog('Session started. Monitoring initialized.', false);
+        })();
+    </script>
+
+</body>
+
+</html>
