@@ -16,8 +16,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveWindowDelta: (dx, dy) => ipcRenderer.send('move-window', dx, dy),
   moveWindowAbsolute: (x, y) => ipcRenderer.send('move-window-absolute', x, y),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
+  setFocusable: (focusable) => ipcRenderer.send('set-focusable', focusable),
   setStealthMode: (enabled) => ipcRenderer.send('set-stealth-mode', enabled),
   launchToolbar: (config) => ipcRenderer.send('launch-toolbar', config),
+  registerGlobalShortcuts: (shortcuts) => ipcRenderer.send('register-global-shortcuts', shortcuts),
+  onGlobalShortcutTriggered: (cb) => ipcRenderer.on('global-shortcut-triggered', (_, action) => cb(action)),
 
   // ── Device / Media ────────────────────────────────────────────────
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
@@ -57,6 +60,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getSavedBounds: () => ipcRenderer.invoke('get-saved-bounds'),
   restoreSavedBounds: () => ipcRenderer.invoke('restore-saved-bounds'),
+  saveWindowBounds: () => ipcRenderer.invoke('save-window-bounds'),
 
   // Update a session on the backend (e.g. save duration and complete status)
   updateBackendSession: (sessionId, data) => ipcRenderer.invoke('update-backend-session', sessionId, data),

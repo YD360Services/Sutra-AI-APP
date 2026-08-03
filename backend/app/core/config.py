@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    DEEPGRAM_MODEL: str = "nova-3"
+    DEEPGRAM_MODEL: str = "nova-2"
     OPENAI_MODEL: str = "gpt-4o"
     GROQ_MODEL: str = "llama-3.1-8b-instant"
     

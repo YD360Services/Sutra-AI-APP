@@ -1483,6 +1483,9 @@ startSessionBtn.addEventListener('click', async () => {
   document.body.classList.add('stealth-active');
   isStealthHoverEnabled = true;
   toggleStealthTooltips(true);
+  if (window.electronAPI && window.electronAPI.setFocusable) {
+    window.electronAPI.setFocusable(false); // Make window non-activating so clicks never steal focus from exam portals
+  }
   document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
 
   // Load saved bounds if any
@@ -1560,26 +1563,33 @@ Generate the final ready-to-speak verbal self-introduction now (spoken English o
 stopSessionBtn.addEventListener('click', async () => {
   console.log('[Stealth] Ending live session...');
 
-  // Stop all audio capture, recorders, and WebSockets immediately
+  // 1. Stop all audio capture, recorders, and WebSockets immediately
   try {
     stopRecording();
   } catch (e) {
     console.warn('[Stealth] Audio stop error during session end:', e);
   }
 
-  // Expand window back to 600x580 setup state
-  pendingProgrammaticResizes++;
-  window.electronAPI.resizeWindow(600, 580, 'top', true);
-
-  // Close any active panel/tabs
-  if (activeTab) {
-    const activePanel = aiPanel;
-    activePanel.classList.remove('active');
-    panelsContainer.classList.remove('active');
-    activeTab = null;
+  // 2. Stop session timer
+  try {
+    stopSessionTimer();
+  } catch (e) {
+    console.warn('[Stealth] Timer stop error during session end:', e);
   }
 
-  // Reset session & save ending duration/status to backend (non-blocking)
+  // 3. Reset panels and toolbar UI states
+  try {
+    closeAllPanels();
+  } catch (e) {
+    if (aiPanel) aiPanel.classList.remove('active');
+    if (panelsContainer) panelsContainer.classList.remove('active');
+  }
+
+  if (diamondBtn) {
+    diamondBtn.style.display = 'none';
+  }
+
+  // 4. Save ending duration/status to backend (non-blocking)
   if (sessionToken) {
     const tokenToReset = sessionToken;
     const sessionToReset = activeSessionId;
@@ -1591,7 +1601,6 @@ stopSessionBtn.addEventListener('click', async () => {
     // Fire-and-forget backend updates so they don't block the UI transition
     Promise.resolve()
       .then(async () => {
-        // Flush the full accumulated transcript as one final block if we have content
         if (finalTranscript && shouldSaveTranscript && sessionToReset) {
           try {
             await window.electronAPI.saveTranscriptBlock(sessionToReset, {
@@ -1601,10 +1610,9 @@ stopSessionBtn.addEventListener('click', async () => {
             });
             console.log('[Transcript] Full session transcript flushed to backend.');
           } catch (e) {
-            console.warn('[Transcript] Flush failed — transcript saved in localStorage:', e.message);
+            console.warn('[Transcript] Flush failed:', e.message);
           }
         }
-        // Clear localStorage buffer after successful flush
         safeSetItem('stealth_transcript_buffer', '');
         safeSetItem('stealth_transcript_session', '');
         return window.electronAPI.updateBackendSession(tokenToReset, {
@@ -1615,58 +1623,57 @@ stopSessionBtn.addEventListener('click', async () => {
       .then(() => window.electronAPI.resetSessionMemory(tokenToReset))
       .catch(e => console.error('[Stealth] Failed to complete session on backend:', e.message));
   } else {
-    // Even offline, clear localStorage buffer
     safeSetItem('stealth_transcript_buffer', '');
     safeSetItem('stealth_transcript_session', '');
   }
 
-  // Clear live transcript state
+  // 5. Clear live transcript & Q&A state
   accumulatedTranscript = '';
   lastAnswerOffset = 0;
-
-  // Clear transcript chunk buffer and cancel any pending flush timer
   if (transcriptFlushTimer) {
     clearTimeout(transcriptFlushTimer);
     transcriptFlushTimer = null;
   }
   transcriptChunkBuffer = '';
 
-  // Reset step wizard back to Step 1
+  // 6. Reset step wizard & start button state
   currentStep = 1;
   updateWizardView();
+  startSessionBtn.disabled = false;
+  startSessionBtn.textContent = 'Start Session & Collapse';
 
-  // Clear answer history
+  // 7. Clear answer history
   answerHistory = [];
   currentAnswerIndex = -1;
   renderActiveAnswer();
 
-  // Restore cursor visibility when exiting stealth mode
+  // 8. Restore cursor & click-through when exiting stealth mode
   isStealthHoverEnabled = false;
-  isShrunk = false;  // ensure shrunk state is cleared so click-through isn't triggered
+  isShrunk = false;
   window.electronAPI.setIgnoreMouseEvents(false);
+  if (window.electronAPI && window.electronAPI.setFocusable) {
+    window.electronAPI.setFocusable(true);
+  }
   document.body.classList.remove('stealth-active');
   toggleStealthTooltips(false);
   document.body.classList.remove('hover-active');
-  document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
+  if (document.querySelector('.app-container')) {
+    document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
+  }
 
-  // Stop live session ticking timer
-  stopSessionTimer();
-
-  // Switch views
+  // 9. Switch views and resize window back to setup portal
   toolbarView.style.display = 'none';
   setupView.style.display = 'flex';
   const logoutTextSpan = document.getElementById('settings-logout-text');
   if (logoutTextSpan) logoutTextSpan.textContent = 'Logout';
-  // Guarantee the window is fully interactive after returning to setup portal
-  window.electronAPI.setIgnoreMouseEvents(false);
 
+  pendingProgrammaticResizes++;
+  window.electronAPI.resizeWindow(600, 580, 'top', true);
 
-  // Clear all setup form fields so wizard starts fresh (no stale company/role data)
+  // Clear setup form fields and reload dropdowns
   setupCompany.value = '';
   setupRole.value = '';
   if (setupJd) setupJd.value = '';
-
-  // Reload dropdown options fresh from backend
   loadDropdowns();
 });
 
@@ -2261,15 +2268,23 @@ async function startStreamForSource(source, mediaStream) {
   const speakerLabel = isSystem ? 'Interviewer' : 'You';
   const speakerColor = isSystem ? '#5eead4' : '#4ade80';
 
-  const socket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
+  const socket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
   if (isSystem) dgSocketSystem = socket;
   else dgSocketMic = socket;
 
   socket.onopen = () => {
     console.log(`[Deepgram Live] Connected for ${speakerLabel} (${source}).`);
 
-    const destNode = audioCtx ? audioCtx.createMediaStreamDestination() : null;
-    const mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
+    let recorderOptions = {};
+    if (typeof MediaRecorder !== 'undefined') {
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        recorderOptions = { mimeType: 'audio/webm;codecs=opus' };
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        recorderOptions = { mimeType: 'audio/webm' };
+      }
+    }
+
+    const mediaRecorder = new MediaRecorder(mediaStream, recorderOptions);
     if (isSystem) systemMediaRecorder = mediaRecorder;
     else micMediaRecorder = mediaRecorder;
 
@@ -2315,27 +2330,25 @@ async function startStreamForSource(source, mediaStream) {
             }
           }
 
-          // --- AUTO ANSWER LOGIC (Triggers when Interviewer finishes asking a question) ---
-          if (isSystem) {
-            const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-            const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
+          // --- AUTO ANSWER LOGIC (Triggers when speaker or interviewer finishes asking a question) ---
+          const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
+          const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : true;
 
-            if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-              const score = questionScore(cleanTranscript);
-              if (score > 0) {
-                console.log(`[Auto-Answer] Interviewer question detected: "${cleanTranscript}". Querying AI...`);
-                if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-                queryAssistant(null, false);
-              } else {
-                if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-                autoAnswerTimeoutId = setTimeout(() => {
-                  if (!answerBlock.classList.contains('loading')) {
-                    console.log('[Auto-Answer] Interviewer silence gap detected. Querying AI...');
-                    queryAssistant(null, false);
-                  }
-                  autoAnswerTimeoutId = null;
-                }, 1000);
-              }
+          if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
+            const score = questionScore(cleanTranscript);
+            if (score > 0) {
+              console.log(`[Auto-Answer] Spoken question detected (${speakerLabel}): "${cleanTranscript}". Querying AI...`);
+              if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
+              queryAssistant(null, false);
+            } else {
+              if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+              autoAnswerTimeoutId = setTimeout(() => {
+                if (!answerBlock.classList.contains('loading')) {
+                  console.log(`[Auto-Answer] Silence gap detected after ${speakerLabel} speech. Querying AI...`);
+                  queryAssistant(null, false);
+                }
+                autoAnswerTimeoutId = null;
+              }, 1200);
             }
           }
 
@@ -2643,6 +2656,9 @@ if (copyAllAnswerBtn) {
 // Call AI — routes through backend (4-layer memory) or offline Gemini (local 4-layer memory)
 async function queryAssistant(manualQuestionText, isManual = false) {
   const _ttftStart = Date.now();
+  if (typeof activeTab !== 'undefined' && activeTab !== 'ai' && typeof openPanel === 'function') {
+    openPanel('ai');
+  }
   answerBlock.classList.add('loading');
   updateWindowSize();
 
@@ -2712,6 +2728,9 @@ async function queryAssistant(manualQuestionText, isManual = false) {
 
         // Each raw chunk from the HTTP stream
         window.electronAPI.onAnswerChunk((data) => {
+          if (typeof activeTab !== 'undefined' && activeTab !== 'ai' && typeof openPanel === 'function') {
+            openPanel('ai');
+          }
           rawBuffer += data.chunk;
 
           // Detect stream format on the first non-empty chunk
@@ -3378,7 +3397,7 @@ function questionScore(sentence) {
   const lower = sentence.toLowerCase();
   let score = 0;
   if (sentence.endsWith('?')) score += 2;
-  if (QUESTION_KEYWORDS.some((kw) => lower.startsWith(kw))) score += 1;
+  if (QUESTION_KEYWORDS.some((kw) => lower.includes(kw))) score += 1;
   return score;
 }
 
@@ -3392,7 +3411,7 @@ function detectLatestQuestion(fullTranscript, lastAnsweredOffset = 0) {
   const sentences = splitIntoSentences(newText);
 
   if (sentences.length === 0) {
-    return { question: null, newOffset: lastAnsweredOffset };
+    return { question: newText, newOffset: fullTranscript.length };
   }
 
   let bestSentence = null;
@@ -4182,6 +4201,9 @@ async function toggleShrunk(forceShrink = null) {
   }
 
   if (isShrunk) {
+    if (window.electronAPI && window.electronAPI.saveWindowBounds) {
+      try { await window.electronAPI.saveWindowBounds(); } catch (e) {}
+    }
     // Add instant-hide class to kill all CSS transitions/animations immediately
     appContainer.classList.add('instant-hide');
     appContainer.style.visibility = 'hidden';
@@ -4220,7 +4242,13 @@ async function toggleShrunk(forceShrink = null) {
       pendingProgrammaticResizes++;
       window.electronAPI.resizeWindow(600, 580, 'top', false);
     } else {
-      updateWindowSize();
+      let restored = false;
+      if (window.electronAPI && window.electronAPI.restoreSavedBounds) {
+        restored = await window.electronAPI.restoreSavedBounds();
+      }
+      if (!restored) {
+        updateWindowSize();
+      }
     }
 
     // Smoothly fade in content once the OS has completed window bounds expansion
@@ -4661,6 +4689,11 @@ function updateShortcutUI() {
   if (recScrollDown && !recScrollDown.classList.contains('recording')) recScrollDown.textContent = formatShortcut(window.appShortcuts.scrollDown);
   if (recPrevAnswer && !recPrevAnswer.classList.contains('recording') && window.appShortcuts.prevAnswer) recPrevAnswer.textContent = formatShortcut(window.appShortcuts.prevAnswer);
   if (recNextAnswer && !recNextAnswer.classList.contains('recording') && window.appShortcuts.nextAnswer) recNextAnswer.textContent = formatShortcut(window.appShortcuts.nextAnswer);
+
+  // Sync OS-level system-wide global shortcuts
+  if (window.electronAPI && window.electronAPI.registerGlobalShortcuts) {
+    window.electronAPI.registerGlobalShortcuts(window.appShortcuts);
+  }
 }
 
 function loadShortcuts() {
@@ -4671,6 +4704,41 @@ function loadShortcuts() {
     } catch (e) { console.error('Failed to parse shortcuts', e); }
   }
   updateShortcutUI();
+}
+
+// Listen for system-wide background hotkey triggers
+if (window.electronAPI && window.electronAPI.onGlobalShortcutTriggered) {
+  window.electronAPI.onGlobalShortcutTriggered((action) => {
+    console.log('[Stealth Global Shortcut Triggered]:', action);
+    if (action === 'capture') {
+      const captureBtn = document.getElementById('capture-btn');
+      if (captureBtn) captureBtn.click();
+    } else if (action === 'answer') {
+      const aiSendBtn = document.getElementById('ai-send');
+      const aiAnswerBtn = document.getElementById('ai-answer-btn');
+      const aiInputEl = document.getElementById('ai-input');
+      const queryText = aiInputEl ? aiInputEl.value.trim() : '';
+      if (queryText !== '') {
+        if (aiSendBtn) aiSendBtn.click();
+      } else {
+        if (aiAnswerBtn) aiAnswerBtn.click();
+      }
+    } else if (action === 'scrollUp') {
+      const answerBlock = document.getElementById('answer-block');
+      if (answerBlock) answerBlock.scrollTop -= 80;
+    } else if (action === 'scrollDown') {
+      const answerBlock = document.getElementById('answer-block');
+      if (answerBlock) answerBlock.scrollTop += 80;
+    } else if (action === 'prevAnswer') {
+      const prevBtn = document.getElementById('prev-answer-btn');
+      if (prevBtn) prevBtn.click();
+    } else if (action === 'nextAnswer') {
+      const nextBtn = document.getElementById('next-answer-btn');
+      if (nextBtn) nextBtn.click();
+    } else if (action === 'assistant' || action === 'toggleAssistant') {
+      if (typeof toggleTab === 'function') toggleTab('ai');
+    }
+  });
 }
 
 // Bind Recorder logic

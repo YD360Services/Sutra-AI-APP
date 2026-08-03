@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -309,9 +309,16 @@ function createWindow() {
   // Enable screen capture protection
   mainWindow.setContentProtection(true);
 
-  mainWindow.show();
+  mainWindow.showInactive();
   mainWindow.setResizable(false);
-  mainWindow.focus();
+
+  // Handle focusable state (set focusable to false in stealth mode to prevent blur events on exam portals)
+  ipcMain.on('set-focusable', (event, focusable) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && typeof win.setFocusable === 'function') {
+      win.setFocusable(Boolean(focusable));
+    }
+  });
 
   // Prevent accidental reloads (Ctrl+R / F5) in production unless devtools are open
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -400,6 +407,55 @@ function createWindow() {
       }
     }
     return false;
+  });
+
+  ipcMain.handle('save-window-bounds', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const bounds = mainWindow.getBounds();
+      if (bounds.width >= 200 && bounds.height >= 100) {
+        saveSavedBounds(bounds);
+        return bounds;
+      }
+    }
+    return null;
+  });
+
+  // Handle registering OS-level system-wide global shortcuts
+  ipcMain.on('register-global-shortcuts', (event, shortcutsConfig) => {
+    try {
+      globalShortcut.unregisterAll();
+    } catch (e) {}
+
+    if (!shortcutsConfig) return;
+
+    for (const [action, config] of Object.entries(shortcutsConfig)) {
+      if (!config || !config.key) continue;
+      let accelerator = [];
+      if (config.ctrl) accelerator.push('CommandOrControl');
+      if (config.shift) accelerator.push('Shift');
+      if (config.alt) accelerator.push('Alt');
+
+      let key = config.key;
+      if (key === 'Space') key = 'Space';
+      else if (key === 'ArrowUp') key = 'Up';
+      else if (key === 'ArrowDown') key = 'Down';
+      else if (key === 'ArrowLeft') key = 'Left';
+      else if (key === 'ArrowRight') key = 'Right';
+      else if (key === 'Enter') key = 'Return';
+
+      accelerator.push(key);
+      const accelStr = accelerator.join('+');
+
+      try {
+        globalShortcut.register(accelStr, () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('global-shortcut-triggered', action);
+          }
+        });
+      } catch (e) {
+        console.warn(`[GlobalShortcut] Failed to register ${accelStr}:`, e.message);
+      }
+    }
   });
 
 
@@ -1130,8 +1186,7 @@ function triggerLaunchToolbar() {
     // 4. Force screen capture protection
     mainWindow.setContentProtection(true);
 
-    mainWindow.show();
-    mainWindow.focus();
+    mainWindow.showInactive();
     mainWindow.restore();
   }
 }
