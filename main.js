@@ -315,8 +315,12 @@ function createWindow() {
   // Handle focusable state (set focusable to false in stealth mode to prevent blur events on exam portals)
   ipcMain.on('set-focusable', (event, focusable) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win && typeof win.setFocusable === 'function') {
-      win.setFocusable(Boolean(focusable));
+    if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
+      const shouldFocus = Boolean(focusable);
+      win.setFocusable(shouldFocus);
+      if (shouldFocus) {
+        win.focus();
+      }
     }
   });
 

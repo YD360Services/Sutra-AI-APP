@@ -1559,9 +1559,73 @@ Generate the final ready-to-speak verbal self-introduction now (spoken English o
 });
 
 
+// Dynamic Focus Management to allow 100% smooth typing in all input fields while in stealth mode
+document.addEventListener('pointerdown', (e) => {
+  const target = e.target;
+  const isInput = target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.isContentEditable ||
+    target.closest('input') ||
+    target.closest('textarea') ||
+    target.id === 'ai-input' ||
+    target.id === 'transcript-block'
+  );
+  if (isInput) {
+    if (window.electronAPI && window.electronAPI.setFocusable) {
+      window.electronAPI.setFocusable(true);
+    }
+  }
+}, true);
+
+document.addEventListener('focusin', (e) => {
+  const target = e.target;
+  const isInput = target && (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.isContentEditable ||
+    target.id === 'ai-input' ||
+    target.id === 'transcript-block'
+  );
+  if (isInput) {
+    if (window.electronAPI && window.electronAPI.setFocusable) {
+      window.electronAPI.setFocusable(true);
+    }
+  }
+}, true);
+
+document.addEventListener('focusout', (e) => {
+  const isStealthActive = document.body.classList.contains('stealth-active');
+  if (isStealthActive) {
+    setTimeout(() => {
+      const active = document.activeElement;
+      const isInputStillFocused = active && (
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA' ||
+        active.isContentEditable ||
+        active.id === 'ai-input' ||
+        active.id === 'transcript-block'
+      );
+      if (!isInputStillFocused) {
+        if (window.electronAPI && window.electronAPI.setFocusable) {
+          window.electronAPI.setFocusable(false);
+        }
+      }
+    }, 150);
+  }
+}, true);
+
 // Stop session button event handler
-stopSessionBtn.addEventListener('click', async () => {
+const endLiveSession = async (e) => {
+  if (e) {
+    e.stopPropagation();
+  }
   console.log('[Stealth] Ending live session...');
+
+  // Ensure window is focusable during view transition
+  if (window.electronAPI && window.electronAPI.setFocusable) {
+    window.electronAPI.setFocusable(true);
+  }
 
   // 1. Stop all audio capture, recorders, and WebSockets immediately
   try {
@@ -1585,7 +1649,7 @@ stopSessionBtn.addEventListener('click', async () => {
     if (panelsContainer) panelsContainer.classList.remove('active');
   }
 
-  if (diamondBtn) {
+  if (typeof diamondBtn !== 'undefined' && diamondBtn) {
     diamondBtn.style.display = 'none';
   }
 
@@ -1671,11 +1735,21 @@ stopSessionBtn.addEventListener('click', async () => {
   window.electronAPI.resizeWindow(600, 580, 'top', true);
 
   // Clear setup form fields and reload dropdowns
-  setupCompany.value = '';
-  setupRole.value = '';
+  if (setupCompany) setupCompany.value = '';
+  if (setupRole) setupRole.value = '';
   if (setupJd) setupJd.value = '';
   loadDropdowns();
-});
+};
+
+if (stopSessionBtn) {
+  stopSessionBtn.addEventListener('click', endLiveSession);
+  stopSessionBtn.addEventListener('pointerdown', endLiveSession);
+}
+const stopBtnTimer = document.getElementById('stop-btn-timer');
+if (stopBtnTimer) {
+  stopBtnTimer.addEventListener('click', endLiveSession);
+  stopBtnTimer.addEventListener('pointerdown', endLiveSession);
+}
 
 
 // -------------------------------------------------------------
