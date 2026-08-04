@@ -313,14 +313,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    if (offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
+    if (setupJd) setupJd.value = '';
     if (offlineUserContext.company) setupCompany.value = offlineUserContext.company;
     if (offlineUserContext.role) setupRole.value = offlineUserContext.role;
     if (offlineUserContext.model) {
       const modelSelect = document.getElementById('setup-model-select');
       if (modelSelect) modelSelect.value = offlineUserContext.model;
     }
-    console.log('[Stealth] Populated setup form from local context successfully:', offlineUserContext);
+    console.log('[Stealth] Initialized setup form with empty Job Description:', offlineUserContext);
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
@@ -360,8 +360,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-start session if company, role, or job_description were provided from web launch
   const hasParams = (offlineUserContext.company && offlineUserContext.company.trim() !== '') ||
-                    (offlineUserContext.role && offlineUserContext.role.trim() !== '') ||
-                    (offlineUserContext.job_description && offlineUserContext.job_description.trim() !== '');
+    (offlineUserContext.role && offlineUserContext.role.trim() !== '') ||
+    (offlineUserContext.job_description && offlineUserContext.job_description.trim() !== '');
 
   if (hasParams && offlineUserContext.auto_start !== false) {
     setTimeout(() => {
