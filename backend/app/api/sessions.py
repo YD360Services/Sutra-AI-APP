@@ -6,15 +6,17 @@ import uuid
 from app.db.database import get_db
 from app.db.repositories import SessionRepository
 from app.schemas.session import SessionCreate, SessionUpdate, SessionResponse
+from app.core.user_utils import normalize_user_id
 
 router = APIRouter()
 
 @router.post("/sessions", response_model=SessionResponse)
 async def start_session(
     payload: SessionCreate,
-    user_id: Optional[uuid.UUID] = None,  # Mock user auth dependency in demo
+    user_id: Optional[str] = None,  # Mock user auth dependency in demo
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = SessionRepository(db)
     
     session_name = payload.session_name or f"Mock Prep Session with {payload.company_name}"
@@ -25,7 +27,7 @@ async def start_session(
         role_name=payload.role_name,
         language=payload.language,
         audio_source=payload.audio_source,
-        user_id=user_id,
+        user_id=normalized_user_id,
         job_description_id=payload.job_description_id
     )
     await db.commit()
@@ -34,11 +36,12 @@ async def start_session(
 
 @router.get("/sessions", response_model=List[SessionResponse])
 async def list_sessions(
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = SessionRepository(db)
-    sessions = await repo.list_by_user(user_id=user_id)
+    sessions = await repo.list_by_user(user_id=normalized_user_id)
     return sessions
 
 @router.get("/sessions/{session_id}", response_model=SessionResponse)

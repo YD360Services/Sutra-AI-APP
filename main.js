@@ -282,14 +282,18 @@ function createWindow() {
     try {
       const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
       const contextData = {
-        resume: config.resume || '',
+        resume: config.resume_id || config.resume || '',
+        resume_id: config.resume_id || '',
         job_description: config.jd || '',
         code_context: '',
-        company: config.company || 'Stealth Practice',
-        role: config.role || 'Software Engineer'
+        company: config.company || '',
+        role: config.role || '',
+        model: config.model || '',
+        doc_id: config.doc_id || '',
+        auto_start: true
       };
       fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
-      console.log('[Stealth Config] Successfully initialized active resume and JD context.');
+      console.log('[Stealth Config] Successfully initialized active resume, JD, company, and role context:', contextData);
     } catch (e) {
       console.error('[Stealth Config] Failed to write context data:', e.message);
     }
@@ -315,6 +319,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: true,
+      sandbox: true,
+      allowRunningInsecureContent: false,
     },
   });
 
@@ -384,9 +391,18 @@ function createWindow() {
     }
   });
 
-  // Handle open external URL
+  // Handle open external URL — only allow https:// and http:// schemes
   ipcMain.on('open-external-url', (event, url) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        shell.openExternal(url);
+      } else {
+        console.warn('[Security] Blocked external URL with disallowed protocol:', parsed.protocol);
+      }
+    } catch (e) {
+      console.warn('[Security] Invalid URL passed to open-external-url:', url);
+    }
   });
 
   // Handle desktop sources request for loopback system audio capture
@@ -470,10 +486,14 @@ function createWindow() {
 
   // Handle Gemini Query (offline mode — used when no BACKEND_URL set)
   ipcMain.handle('query-gemini', async (event, prompt, base64Image = null) => {
+    // Input validation
+    if (typeof prompt !== 'string' || prompt.length > 50000) {
+      return 'Error: Invalid prompt input';
+    }
     try {
-      // Log offline prompts to backend/logs/prompt_debug/ for debugging
+      // Log offline prompts to userData/logs for debugging
       try {
-        const logDir = path.join(__dirname, 'backend', 'logs', 'prompt_debug');
+        const logDir = path.join(app.getPath('logs'), 'prompt_debug');
         if (!fs.existsSync(logDir)) {
           fs.mkdirSync(logDir, { recursive: true });
         }
@@ -899,11 +919,29 @@ function createWindow() {
     return {};
   });
 
-  // Save L4 context — save to local file in app data
+  // Save L4 context — save to local file in app data (with input validation)
   ipcMain.handle('save-l4-context', async (event, { token, resume, resume_id, job_description, code_context, doc_id, doc_type, company, role, model }) => {
     try {
+      // Validate string fields — reject if any field is oversized
+      const MAX_STR = 500000;
+      const MAX_SHORT = 500;
+      if (resume && typeof resume === 'string' && resume.length > MAX_STR) return { error: 'resume too large' };
+      if (job_description && typeof job_description === 'string' && job_description.length > MAX_STR) return { error: 'job_description too large' };
+      if (company && typeof company === 'string' && company.length > MAX_SHORT) return { error: 'company too long' };
+      if (role && typeof role === 'string' && role.length > MAX_SHORT) return { error: 'role too long' };
+
       const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
-      const data = { resume, resume_id, job_description, code_context, doc_id, doc_type, company, role, model };
+      const data = {
+        resume: typeof resume === 'string' ? resume : '',
+        resume_id: typeof resume_id === 'string' ? resume_id.substring(0, 200) : '',
+        job_description: typeof job_description === 'string' ? job_description : '',
+        code_context: typeof code_context === 'string' ? code_context.substring(0, MAX_STR) : '',
+        doc_id: typeof doc_id === 'string' ? doc_id.substring(0, 200) : '',
+        doc_type: typeof doc_type === 'string' ? doc_type.substring(0, 50) : '',
+        company: typeof company === 'string' ? company.substring(0, MAX_SHORT) : '',
+        role: typeof role === 'string' ? role.substring(0, MAX_SHORT) : '',
+        model: typeof model === 'string' ? model.substring(0, 100) : ''
+      };
       fs.writeFileSync(localPath, JSON.stringify(data, null, 2), 'utf8');
       return { success: true };
     } catch (e) {
@@ -1128,7 +1166,7 @@ function createWindow() {
 function triggerLaunchToolbar() {
   if (mainWindow) {
     // 1. Load the root index.html
-    mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    mainWindow.loadFile(path.join(__dirname, 'frontend', 'index.html'));
 
     isToolbarMode = true;
 
@@ -1167,11 +1205,35 @@ function triggerLaunchToolbar() {
 
 // Start a local HTTP server to listen for launch triggers from the web browser
 const http = require('http');
+
+// Allowed origins for the internal controller (localhost only)
+const ALLOWED_ORIGINS = new Set([
+  'http://localhost:5173', 'http://127.0.0.1:5173',
+  'http://localhost:3000', 'http://127.0.0.1:3000',
+  'http://localhost:4173', 'http://127.0.0.1:4173',
+  'http://localhost:2999', 'http://127.0.0.1:2999',
+  'http://localhost:8080', 'http://127.0.0.1:8080'
+]);
+
 const server = http.createServer((req, res) => {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers['origin'] || '';
+  // Only allow requests from localhost origins (not from arbitrary web pages)
+  const isLocalhost = !origin ||
+    origin.startsWith('http://localhost') ||
+    origin.startsWith('http://127.0.0.1') ||
+    ALLOWED_ORIGINS.has(origin);
+
+  if (!isLocalhost) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Forbidden: cross-origin request blocked' }));
+    return;
+  }
+
+  // Set CORS headers restricted to same-origin (localhost)
+  if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -1182,18 +1244,79 @@ const server = http.createServer((req, res) => {
   const parsedUrl = require('url').parse(req.url, true);
 
   if (parsedUrl.pathname === '/auth-callback') {
-    const { email, token, user_id } = parsedUrl.query;
-    if (email && token) {
-      if (mainWindow) {
-        mainWindow.webContents.send('sync-credentials', { email, token, user_id });
+    // Accept credentials via POST body (not URL query params)
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { email, token, user_id } = JSON.parse(body || '{}');
+        // Fallback to query params for backward compat but warn
+        const qEmail = parsedUrl.query?.email;
+        const qToken = parsedUrl.query?.token;
+        const qUserId = parsedUrl.query?.user_id;
+        const finalEmail = email || qEmail;
+        const finalToken = token || qToken;
+        const finalUserId = user_id || qUserId;
+
+        if (finalEmail && finalToken) {
+          if (mainWindow) {
+            mainWindow.webContents.send('sync-credentials', { email: finalEmail, token: finalToken, user_id: finalUserId });
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } else {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing email or token' }));
+        }
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON body' }));
       }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true }));
-    } else {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing email or token' }));
-    }
+    });
   } else if (parsedUrl.pathname === '/launch') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const config = JSON.parse(body || '{}');
+          // Write to local context
+          const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
+          const contextData = {
+            resume: config.resume_id || config.resume || '',
+            job_description: config.jd || '',
+            code_context: '',
+            company: config.company || 'Stealth Practice',
+            role: config.role || 'Software Engineer',
+            model: config.model || ''
+          };
+          fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
+          console.log('[Stealth Server] Updated session context on port 48999:', contextData);
+
+          if (mainWindow) {
+            // Forward the updated session parameters to the renderer UI
+            const mappedConfig = {
+              session_name: config.session_name,
+              company: config.company,
+              role: config.role,
+              jd: config.jd,
+              type: config.type,
+              model: config.model,
+              language: config.language,
+              resume_id: config.resume_id,
+              doc_id: config.doc_id,
+              prompt_id: config.prompt_id,
+              auto_answer: config.auto_answer,
+              save_transcript: config.save_transcript
+            };
+            mainWindow.webContents.send('deep-link-session', mappedConfig);
+          }
+        } catch (e) {
+          console.error('[Stealth Server] Failed to update context:', e.message);
+        }
+      });
+    }
+
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, message: 'Launching native stealth toolbar' }));
 
@@ -1205,9 +1328,53 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(48999, '127.0.0.1', () => {
-  console.log('Stealth controller listening on port 48999');
-});
+// ─── Deep Link Protocol Handler (sutra://) ───────────────────────────────────
+// Parses a sutra://start-session?company=...&role=... URL into a session config
+function parseDeepLinkUrl(urlStr) {
+  try {
+    const url = new URL(urlStr);
+    const params = url.searchParams;
+    const config = {};
+    if (params.get('session_name')) config.session_name = params.get('session_name');
+    if (params.get('company'))      config.company       = params.get('company');
+    if (params.get('role'))         config.role          = params.get('role');
+    if (params.get('jd'))           config.jd            = params.get('jd');
+    if (params.get('type'))         config.type          = params.get('type');
+    if (params.get('model'))        config.model         = params.get('model');
+    if (params.get('language'))     config.language      = params.get('language');
+    if (params.get('resume_id'))    config.resume_id     = params.get('resume_id');
+    if (params.get('doc_id'))       config.doc_id        = params.get('doc_id');
+    if (params.get('prompt_id'))    config.prompt_id     = params.get('prompt_id');
+    if (params.get('auto_answer'))  config.auto_answer   = params.get('auto_answer') === 'true';
+    if (params.get('save_transcript')) config.save_transcript = params.get('save_transcript') === 'true';
+    return Object.keys(config).length > 0 ? config : null;
+  } catch (e) {
+    console.error('[DeepLink] Failed to parse URL:', urlStr, e.message);
+    return null;
+  }
+}
+
+// Write deep link config so createWindow() can read it via loadSessionConfig()
+function applyDeepLinkConfig(deepLinkUrl) {
+  const config = parseDeepLinkUrl(deepLinkUrl);
+  if (!config) return;
+  try {
+    const configPath = path.join(__dirname, 'stealth_session_config.json');
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
+    console.log('[DeepLink] Wrote session config from deep link:', config);
+  } catch (e) {
+    console.error('[DeepLink] Failed to write session config:', e.message);
+  }
+}
+
+// Register sutra:// protocol — handles development vs packaged environment parameter matching
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('sutra', process.execPath, [path.resolve(process.argv[1])]);
+  }
+} else {
+  app.setAsDefaultProtocolClient('sutra');
+}
 
 // Ensure single instance
 const additionalData = { myKey: 'stealth-toolbar' };
@@ -1216,7 +1383,20 @@ const gotTheLock = app.requestSingleInstanceLock(additionalData);
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  // Windows / Linux: second-instance fires when a sutra:// URL is clicked while app is already running
+  app.on('second-instance', (_event, argv) => {
+    // argv includes the deep link URL on Windows
+    const deepLinkArg = argv.find(arg => arg.startsWith('sutra://'));
+    if (deepLinkArg) {
+      applyDeepLinkConfig(deepLinkArg);
+      if (mainWindow) {
+        // Send config directly to renderer
+        const config = parseDeepLinkUrl(deepLinkArg);
+        if (config) {
+          mainWindow.webContents.send('deep-link-session', config);
+        }
+      }
+    }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
@@ -1224,7 +1404,30 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    // Check if launched via sutra:// deep link on Windows (URL will be in argv)
+    const deepLinkArg = process.argv.find(arg => arg.startsWith('sutra://'));
+    if (deepLinkArg) {
+      applyDeepLinkConfig(deepLinkArg);
+    }
+
     createWindow();
+
+    // Start local server only on the single main instance
+    server.listen(48999, '127.0.0.1', () => {
+      console.log('Stealth controller listening on port 48999');
+    });
+
+    // macOS: handle open-url event for sutra:// links
+    app.on('open-url', (event, url) => {
+      event.preventDefault();
+      applyDeepLinkConfig(url);
+      if (mainWindow) {
+        const config = parseDeepLinkUrl(url);
+        if (config) mainWindow.webContents.send('deep-link-session', config);
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -1239,4 +1442,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-

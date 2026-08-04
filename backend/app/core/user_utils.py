@@ -16,7 +16,7 @@ def normalize_user_id(user_id: Optional[str]) -> Optional[uuid.UUID]:
     try:
         return uuid.UUID(value)
     except (ValueError, TypeError):
-        # Fallback for legacy/mock identifiers that are not strict UUIDs.
-        # Use a deterministic UUID derived from the incoming string so the API
-        # contract stays compatible with the existing frontend behavior.
-        return uuid.uuid5(uuid.NAMESPACE_DNS, f"legacy-user:{value}")
+        # Fallback for legacy/mock/firebase identifiers that are not strict UUIDs.
+        # Use a deterministic UUID derived from the incoming string.
+        # We try to match the 'firebase:' prefix mapping used in auth.py
+        return uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{value}")

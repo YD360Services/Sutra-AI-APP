@@ -79,4 +79,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Web Authentication Sync Handlers ──────────────────────────────
   openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),
   onSyncCredentials: (cb) => ipcRenderer.on('sync-credentials', (_, data) => cb(data)),
+
+  // ── Deep Link Session Handler ─────────────────────────────────────
+  // Fires when the app is opened via sutra://start-session?... deep link
+  onDeepLinkSession: (cb) => ipcRenderer.on('deep-link-session', (_, config) => cb(config)),
 });

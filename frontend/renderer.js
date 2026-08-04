@@ -314,13 +314,32 @@ document.addEventListener('DOMContentLoaded', () => {
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
     if (offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
-    console.log('[Stealth] Populated setup form from local context successfully');
+    if (offlineUserContext.company) setupCompany.value = offlineUserContext.company;
+    if (offlineUserContext.role) setupRole.value = offlineUserContext.role;
+    if (offlineUserContext.model) {
+      const modelSelect = document.getElementById('setup-model-select');
+      if (modelSelect) modelSelect.value = offlineUserContext.model;
+    }
+    console.log('[Stealth] Populated setup form from local context successfully:', offlineUserContext);
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
 
   // Load dropdown options
   await loadDropdowns();
+
+  if (offlineUserContext.resume_id) {
+    if (setupResumeSelect) setupResumeSelect.value = offlineUserContext.resume_id;
+  }
+  if (offlineUserContext.doc_id) {
+    if (setupDocSelect) {
+      const ids = String(offlineUserContext.doc_id).split(',');
+      Array.from(setupDocSelect.options).forEach(opt => {
+        opt.selected = ids.includes(opt.value);
+      });
+    }
+  }
+
   updateResumeJdScore();
 
   // Reset window size to setup dimensions so it's fully visible and centered on load/reload
@@ -338,6 +357,21 @@ document.addEventListener('DOMContentLoaded', () => {
   setupView.style.display = 'flex';
   toolbarView.style.display = 'none';
   updateWizardView();
+
+  // Auto-start session if company, role, or job_description were provided from web launch
+  const hasParams = (offlineUserContext.company && offlineUserContext.company.trim() !== '') ||
+                    (offlineUserContext.role && offlineUserContext.role.trim() !== '') ||
+                    (offlineUserContext.job_description && offlineUserContext.job_description.trim() !== '');
+
+  if (hasParams && offlineUserContext.auto_start !== false) {
+    setTimeout(() => {
+      const startBtn = document.getElementById('start-session-btn');
+      if (startBtn && !startBtn.disabled) {
+        console.log('[Stealth UI] Auto-launching live session with web parameters...');
+        startBtn.click();
+      }
+    }, 150);
+  }
 })();
 
 // ── Setup View Header Buttons ─────────────────────────────────────────────────
@@ -4433,4 +4467,65 @@ setTimeout(() => {
   const savedOpacity = safeGetItem('stealth_opacity');
   if (savedOpacity) applyOpacity(savedOpacity);
 }, 500);
+
+// Deep Link / Session Update event listener
+if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'function') {
+  window.electronAPI.onDeepLinkSession((config) => {
+    console.log('[Stealth UI] Received deep link session configuration update:', config);
+    if (!config) return;
+
+    // Fill form fields
+    if (config.company) {
+      const companyInput = document.getElementById('setup-company');
+      if (companyInput) companyInput.value = config.company;
+    }
+    if (config.role) {
+      const roleInput = document.getElementById('setup-role');
+      if (roleInput) roleInput.value = config.role;
+    }
+    if (config.jd) {
+      const jdInput = document.getElementById('setup-jd');
+      if (jdInput) jdInput.value = config.jd;
+    }
+    if (config.model) {
+      const modelSelect = document.getElementById('setup-model-select');
+      if (modelSelect) modelSelect.value = config.model;
+    }
+    if (config.language) {
+      const languageSelect = document.getElementById('setup-language-select');
+      if (languageSelect) languageSelect.value = config.language;
+    }
+    if (config.resume_id) {
+      const resumeSelect = document.getElementById('setup-resume-select');
+      if (resumeSelect) resumeSelect.value = config.resume_id;
+    }
+    if (config.doc_id) {
+      const docSelect = document.getElementById('setup-doc-select');
+      if (docSelect) {
+        // Multi-select handling
+        const ids = String(config.doc_id).split(',');
+        Array.from(docSelect.options).forEach(opt => {
+          opt.selected = ids.includes(opt.value);
+        });
+      }
+    }
+    if (config.auto_answer !== undefined) {
+      const autoAnswerInput = document.getElementById('setup-auto-answer');
+      if (autoAnswerInput) autoAnswerInput.checked = Boolean(config.auto_answer);
+    }
+    if (config.save_transcript !== undefined) {
+      const saveTranscriptInput = document.getElementById('setup-save-transcript');
+      if (saveTranscriptInput) saveTranscriptInput.checked = Boolean(config.save_transcript);
+    }
+
+    // Trigger session launch automatically after a brief delay to ensure dropdowns are populated
+    setTimeout(() => {
+      const startBtn = document.getElementById('start-session-btn');
+      if (startBtn && !startBtn.disabled) {
+        startBtn.click();
+      }
+    }, 100);
+  });
+}
+
 

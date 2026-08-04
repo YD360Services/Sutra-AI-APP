@@ -6,18 +6,20 @@ import uuid
 from app.db.database import get_db
 from app.db.repositories import JDRepository
 from app.schemas.job_description import JDCreate, JDResponse
+from app.core.user_utils import normalize_user_id
 
 router = APIRouter()
 
 @router.post("/job-descriptions", response_model=JDResponse)
 async def create_job_description(
     payload: JDCreate,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = JDRepository(db)
     jd = await repo.create(
-        user_id=user_id,
+        user_id=normalized_user_id,
         company_name=payload.company_name,
         role_name=payload.role_name,
         description=payload.description
@@ -26,21 +28,23 @@ async def create_job_description(
 
 @router.get("/job-descriptions", response_model=List[JDResponse])
 async def list_job_descriptions(
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = JDRepository(db)
-    jds = await repo.list_by_user(user_id=user_id)
+    jds = await repo.list_by_user(user_id=normalized_user_id)
     return jds
 
 @router.patch("/job-descriptions/{jd_id}/activate", response_model=JDResponse)
 async def activate_job_description(
     jd_id: uuid.UUID,
-    user_id: Optional[uuid.UUID] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    normalized_user_id = normalize_user_id(user_id)
     repo = JDRepository(db)
-    jd = await repo.activate(user_id=user_id, jd_id=jd_id)
+    jd = await repo.activate(user_id=normalized_user_id, jd_id=jd_id)
     if not jd:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

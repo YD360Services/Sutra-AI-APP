@@ -86,7 +86,7 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => {
       body += chunk.toString();
     });
-    req.on('end', () => {
+    req.on('end', async () => {
       let payload = {};
       try {
         if (body) payload = JSON.parse(body);
@@ -101,6 +101,35 @@ const server = http.createServer((req, res) => {
         );
       } catch (err) {
         console.error('Failed to write temp session config:', err.message);
+      }
+
+      if (isStealthRunning) {
+        // Forward the payload to the running Electron process on port 48999
+        console.log('\x1b[35m%s\x1b[0m', '🔄 Stealth is already running. Forwarding config update to port 48999...');
+        const forwarded = await new Promise((resolve) => {
+          const dataStr = JSON.stringify(payload);
+          const fReq = http.request({
+            hostname: '127.0.0.1',
+            port: 48999,
+            path: '/launch',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(dataStr)
+            }
+          }, (fRes) => {
+            resolve(fRes.statusCode === 200);
+          });
+          fReq.on('error', () => resolve(false));
+          fReq.write(dataStr);
+          fReq.end();
+        });
+
+        if (forwarded) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'Updated session config in running app.', running: true }));
+          return;
+        }
       }
 
       const result = launchStealth();

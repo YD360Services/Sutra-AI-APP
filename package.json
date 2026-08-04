@@ -8,27 +8,55 @@
     "start": "electron .",
     "server": "node server.js",
     "launch": "node launch.js",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
   },
   "build": {
     "appId": "com.sutraai.stealthapp",
     "productName": "Sutra AI",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/electron/**",
+      "*.env"
+    ],
     "directories": {
       "output": "dist"
     },
+    "protocols": [
+      {
+        "name": "Sutra AI",
+        "schemes": [
+          "sutra"
+        ],
+        "role": "Viewer"
+      }
+    ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
-      "icon": "icon.ico"
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Sutra AI"
+      "shortcutName": "Sutra AI",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
     },
     "files": [
       "main.js",
@@ -37,11 +65,21 @@
       "launch.js",
       "frontend/**/*",
       "icon.ico",
-      ".env"
+      ".env",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!**/node_modules/*.d.ts",
+      "!**/node_modules/.bin",
+      "!**/*.{iml,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,__pycache__,thumbs.db,.gitignore,.gitattributes}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
     ]
   },
   "devDependencies": {
-    "electron": "^30.0.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^40.10.6",
+    "electron-builder": "^26.15.3"
   }
 }
