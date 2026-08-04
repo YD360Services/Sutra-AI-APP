@@ -37,12 +37,16 @@ body {
   background: rgba(0, 0, 0, 0.002);
   color: var(--text-primary);
   overflow: hidden;
-  user-select: none;
+  user-select: auto;
+  -webkit-user-select: auto;
   width: 100vw;
   height: 100vh;
 }
 
-/* Native OS cursor used for interaction */
+/* Enforce standard OS arrow cursor everywhere (inputs, textareas, dropdowns, options, buttons, settings popup) */
+*, input, textarea, select, select *, option, optgroup, button, [contenteditable], .setup-input, .setup-input *, .setup-textarea, #setup-resume-select, #setup-resume-select *, #setup-doc-select, #setup-doc-select *, .interactive, #settings-popup, #settings-popup *, #shortcuts-subpopup, #shortcuts-subpopup * {
+  cursor: default !important;
+}
 
 /* Base Wrapper for Toolbar and Content */
 .app-container {
@@ -872,6 +876,10 @@ code {
   box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.05);
   animation: slide-in-down 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   margin-top: 10px;
+  -webkit-app-region: no-drag !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  pointer-events: auto !important;
 }
 
 /* Recent sessions view is wider to accommodate table columns and fits window height */

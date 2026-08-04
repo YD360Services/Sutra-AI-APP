@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -23,17 +23,49 @@ let activeSessionId = null;
 let activeSessionStartTime = null;
 let isToolbarMode = false;
 
+// Persistent Bounds (Width, Height, X, Y, Panel Size) file path
+function getBoundsFilePath() {
+  try {
+    return path.join(app.getPath('userData'), 'stealth_window_state.json');
+  } catch (e) {
+    return path.join(__dirname, 'stealth_window_state.json');
+  }
+}
+
+function loadSavedBounds() {
+  try {
+    const file = getBoundsFilePath();
+    if (fs.existsSync(file)) {
+      const data = fs.readFileSync(file, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('[Stealth Bounds] Error reading saved bounds:', e.message);
+  }
+  return null;
+}
+
+function saveSavedBounds(bounds) {
+  try {
+    if (!bounds || typeof bounds !== 'object') return;
+    const file = getBoundsFilePath();
+    const existing = loadSavedBounds() || {};
+    const merged = { ...existing, ...bounds };
+    fs.writeFileSync(file, JSON.stringify(merged, null, 2), 'utf8');
+    console.log('[Stealth Bounds] Saved window state:', merged);
+  } catch (e) {
+    console.error('[Stealth Bounds] Error saving bounds:', e.message);
+  }
+}
+
 
 // Load environment variables manually to avoid external dependency issues
 function loadEnv() {
-  const rootEnvPath = path.join(__dirname, '.env');
-  const backendEnvPath = path.join(__dirname, 'backend', '.env');
+  const envPath = path.join(__dirname, '.env');
   const env = {};
-
-  const parseFile = (filePath) => {
-    if (!fs.existsSync(filePath)) return;
+  if (fs.existsSync(envPath)) {
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
+      const content = fs.readFileSync(envPath, 'utf8');
       const lines = content.split(/\r?\n/);
       for (const line of lines) {
         const trimmed = line.trim();
@@ -42,18 +74,13 @@ function loadEnv() {
         if (index > -1) {
           const key = trimmed.substring(0, index).trim();
           const value = trimmed.substring(index + 1).trim();
-          if (!env[key]) {
-            env[key] = value.replace(/^['"]|['"]$/g, '');
-          }
+          env[key] = value.replace(/^['"]|['"]$/g, '');
         }
       }
     } catch (e) {
-      console.error('Failed to read env file:', filePath, e.message);
+      console.error('Failed to read .env file:', e.message);
     }
-  };
-
-  parseFile(rootEnvPath);
-  parseFile(backendEnvPath);
+  }
   return env;
 }
 
@@ -278,10 +305,10 @@ function createWindow() {
     height: winHeight,
     frame: false,
     transparent: true,
+    alwaysOnTop: true,
     resizable: true,
-    maximizable: false,
-    skipTaskbar: false,
-    focusable: true,
+    skipTaskbar: true,
+    type: 'toolbar',
     minWidth: 0,
     minHeight: 0,
     webPreferences: {
@@ -292,15 +319,14 @@ function createWindow() {
   });
 
   // Keep window visible on top of full-screen applications and across workspaces/virtual desktops
-  mainWindow.setAlwaysOnTop(true, 'floating', 1);
+  mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // Position centered near the top of the display with a clean 12px top margin
+  // Position centered at the top of the display
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
   const x = Math.round((screenWidth - winWidth) / 2) + screenX;
-  const initialY = screenY + 12;
-  mainWindow.setBounds({ x, y: initialY, width: winWidth, height: winHeight });
+  mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
 
   // Load the root index.html (stealth toolbar)
   mainWindow.loadFile(path.join(__dirname, 'frontend', 'index.html'));
@@ -309,38 +335,8 @@ function createWindow() {
   mainWindow.setContentProtection(true);
 
   mainWindow.show();
-  mainWindow.focus();
-  if (mainWindow.webContents) {
-    mainWindow.webContents.focus();
-  }
   mainWindow.setResizable(false);
-
-  // Handle focusable state (set focusable to false in stealth mode to prevent blur events on exam portals)
-  ipcMain.on('set-focusable', (event, focusable) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
-      const shouldFocus = Boolean(focusable);
-      win.setFocusable(shouldFocus);
-      if (shouldFocus) {
-        win.focus();
-        if (win.webContents) {
-          win.webContents.focus();
-        }
-      }
-    }
-  });
-
-  // Handle always-on-top level switching (floating vs screen-saver)
-  ipcMain.on('set-always-on-top', (event, level) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (win && !win.isDestroyed() && typeof win.setAlwaysOnTop === 'function') {
-      if (level === 'screen-saver') {
-        win.setAlwaysOnTop(true, 'screen-saver', 1);
-      } else {
-        win.setAlwaysOnTop(true, 'floating', 1);
-      }
-    }
-  });
+  mainWindow.focus();
 
   // Prevent accidental reloads (Ctrl+R / F5) in production unless devtools are open
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -363,29 +359,28 @@ function createWindow() {
     }
   });
 
-  // Handle IPC window moving (absolute coordinates)
-  ipcMain.on('move-window-absolute', (event, targetX, targetY) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const bounds = mainWindow.getBounds();
-      const clamped = clampBoundsToScreen(Math.round(targetX), Math.round(targetY), bounds.width, bounds.height);
-      mainWindow.setBounds(clamped);
+  // Handle focusable state (setFocusable(false) prevents OS window activation & blur events on background app)
+  ipcMain.on('set-focusable', (event, focusable) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
+      const shouldFocus = Boolean(focusable);
+      win.setFocusable(shouldFocus);
+      if (shouldFocus) {
+        win.focus();
+        if (win.webContents) {
+          win.webContents.focus();
+        }
+      }
     }
   });
 
-  // Handle IPC window moving (delta coordinates)
-  ipcMain.on('move-window', (event, dx, dy) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const bounds = mainWindow.getBounds();
-      const clamped = clampBoundsToScreen(bounds.x + Math.round(dx), bounds.y + Math.round(dy), bounds.width, bounds.height);
-      mainWindow.setBounds(clamped);
-    }
-  });
-
-  // Handle developer stealth mode toggle (enable/disable OS screen capture protection)
-  ipcMain.on('set-stealth-mode', (event, enabled) => {
-    if (mainWindow) {
-      mainWindow.setContentProtection(Boolean(enabled));
-      console.log(`[Developer Mode] Content protection set to: ${enabled}`);
+  // Handle content protection toggle (Dev Stealth Mode ON/OFF)
+  ipcMain.on('set-content-protection', (event, enable) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed() && typeof win.setContentProtection === 'function') {
+      const shouldProtect = Boolean(enable);
+      win.setContentProtection(shouldProtect);
+      console.log(`[Stealth Mode] Content protection toggled to: ${shouldProtect}`);
     }
   });
 
@@ -414,6 +409,11 @@ function createWindow() {
     return loadSavedBounds();
   });
 
+  ipcMain.handle('save-window-bounds', (event, bounds) => {
+    saveSavedBounds(bounds);
+    return true;
+  });
+
   ipcMain.handle('restore-saved-bounds', () => {
     if (mainWindow) {
       isToolbarMode = true;
@@ -429,55 +429,6 @@ function createWindow() {
       }
     }
     return false;
-  });
-
-  ipcMain.handle('save-window-bounds', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const bounds = mainWindow.getBounds();
-      if (bounds.width >= 200 && bounds.height >= 100) {
-        saveSavedBounds(bounds);
-        return bounds;
-      }
-    }
-    return null;
-  });
-
-  // Handle registering OS-level system-wide global shortcuts
-  ipcMain.on('register-global-shortcuts', (event, shortcutsConfig) => {
-    try {
-      globalShortcut.unregisterAll();
-    } catch (e) {}
-
-    if (!shortcutsConfig) return;
-
-    for (const [action, config] of Object.entries(shortcutsConfig)) {
-      if (!config || !config.key) continue;
-      let accelerator = [];
-      if (config.ctrl) accelerator.push('CommandOrControl');
-      if (config.shift) accelerator.push('Shift');
-      if (config.alt) accelerator.push('Alt');
-
-      let key = config.key;
-      if (key === 'Space') key = 'Space';
-      else if (key === 'ArrowUp') key = 'Up';
-      else if (key === 'ArrowDown') key = 'Down';
-      else if (key === 'ArrowLeft') key = 'Left';
-      else if (key === 'ArrowRight') key = 'Right';
-      else if (key === 'Enter') key = 'Return';
-
-      accelerator.push(key);
-      const accelStr = accelerator.join('+');
-
-      try {
-        globalShortcut.register(accelStr, () => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('global-shortcut-triggered', action);
-          }
-        });
-      } catch (e) {
-        console.warn(`[GlobalShortcut] Failed to register ${accelStr}:`, e.message);
-      }
-    }
   });
 
 
@@ -1001,7 +952,7 @@ function createWindow() {
         const { width: activeScreenWidth, height: activeScreenHeight, y: screenY, x: screenX } = activeDisplay.workArea;
 
         x = Math.round((activeScreenWidth - width) / 2) + screenX;
-        y = screenY + 12;
+        y = screenY;
 
         if (position === 'bottom') {
           y = screenY + activeScreenHeight - height;
@@ -1160,14 +1111,14 @@ function createWindow() {
   });
 
   mainWindow.on('move', () => {
-    if (isToolbarMode && mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
       saveSavedBounds(bounds);
     }
   });
 
   mainWindow.on('resize', () => {
-    if (isToolbarMode && mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
       saveSavedBounds(bounds);
     }
@@ -1196,7 +1147,7 @@ function triggerLaunchToolbar() {
       const winWidth = 600;
       const winHeight = 56;
       const x = Math.round((screenWidth - winWidth) / 2) + screenX;
-      mainWindow.setBounds(clampBoundsToScreen(x, screenY + 12, winWidth, winHeight));
+      mainWindow.setBounds(clampBoundsToScreen(x, screenY, winWidth, winHeight));
     }
 
 
@@ -1208,7 +1159,8 @@ function triggerLaunchToolbar() {
     // 4. Force screen capture protection
     mainWindow.setContentProtection(true);
 
-    mainWindow.showInactive();
+    mainWindow.show();
+    mainWindow.focus();
     mainWindow.restore();
   }
 }

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setFocusable: (focusable) => ipcRenderer.send('set-focusable', focusable),
   setAlwaysOnTop: (level) => ipcRenderer.send('set-always-on-top', level),
   setStealthMode: (enabled) => ipcRenderer.send('set-stealth-mode', enabled),
+  setContentProtection: (enable) => ipcRenderer.send('set-content-protection', enable),
   launchToolbar: (config) => ipcRenderer.send('launch-toolbar', config),
   registerGlobalShortcuts: (shortcuts) => ipcRenderer.send('register-global-shortcuts', shortcuts),
   onGlobalShortcutTriggered: (cb) => ipcRenderer.on('global-shortcut-triggered', (_, action) => cb(action)),

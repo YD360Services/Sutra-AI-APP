@@ -26,6 +26,23 @@ const copyAllAnswerBtn = document.getElementById('copy-all-answer-btn');
 const copyCodeBtn = document.getElementById('copy-code-btn');
 const codeScreenshotBtn = document.getElementById('code-screenshot-btn');
 
+// Settings Popup Controls
+const opacitySlider = document.getElementById('opacity-slider');
+const opacityDisplay = document.getElementById('opacity-display');
+const opacityMinus = document.getElementById('opacity-minus');
+const opacityPlus = document.getElementById('opacity-plus');
+const fontSizeInput = document.getElementById('font-size-input');
+const fontSizeMinus = document.getElementById('font-size-minus');
+const fontSizePlus = document.getElementById('font-size-plus');
+const devStealthToggleBtn = document.getElementById('dev-stealth-toggle-btn');
+const stealthModeLabel = document.getElementById('stealth-mode-label');
+const openShortcutsBtn = document.getElementById('open-shortcuts-btn');
+const shortcutsBackBtn = document.getElementById('shortcuts-back-btn');
+const shortcutsSubpopup = document.getElementById('shortcuts-subpopup');
+const settingsCloseBtn = document.getElementById('settings-close-btn');
+const settingsDashboardBtn = document.getElementById('settings-dashboard-btn');
+const settingsLogoutBtn = document.getElementById('settings-logout-btn');
+
 // Size Definitions
 const WIDTH = 640;
 const COLLAPSED_HEIGHT = 56;
@@ -74,7 +91,7 @@ let isStealthHoverEnabled = true;
 let backendUrl = '';       // set at startup — empty = offline mode
 let sessionToken = '';     // session UUID (also used as token)
 let activeSessionId = '';  // session UUID — same as sessionToken, stored separately for clarity
-let lastAnswerOffset = 0;  // transcript 
+let lastAnswerOffset = 0;  // transcript cursor: char offset of last answered position
 
 // Cache storage for loaded resources
 let backendResumes = [];
@@ -266,8 +283,6 @@ async function loadDropdowns() {
       setupResumeSelect.appendChild(resumeUploadOpt);
     }
 
-
-
     if (resumeError || docError) {
       const parts = [];
       if (resumeError) parts.push('resumes');
@@ -298,7 +313,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    console.log('[Stealth] Loaded local L4 context successfully');
+    if (offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
+    console.log('[Stealth] Populated setup form from local context successfully');
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
@@ -407,7 +423,7 @@ async function loadRecentSessions() {
       const description = `${s.role_name || ''}${s.company_name ? ` (${s.company_name})` : ''}`;
 
       const row = document.createElement('div');
-      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:6px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.03);transition:background 0.15s;';
+      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:6px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.03);transition:background 0.15s;cursor:pointer;';
       row.innerHTML = `
         <div style="font-size:11px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${title}">${title}</div>
         <div style="font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${description}">${description || '—'}</div>
@@ -418,23 +434,19 @@ async function loadRecentSessions() {
         <div>
           <div style="display: flex; gap: 5px; align-items: center;">
             <!-- Transcript Button -->
-            <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(20, 184, 166,0.12);border:1px solid rgba(20, 184, 166,0.25);color:#2dd4bf;outline:none;transition:all 0.15s;">
+            <button class="session-transcript-btn interactive" data-id="${s.id}" title="View Transcript" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(20, 184, 166,0.12);border:1px solid rgba(20, 184, 166,0.25);color:#2dd4bf;cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
             </button>
-            <!-- Download Button -->
-            <button class="session-download-btn interactive" data-id="${s.id}" title="Download Transcript (.txt)" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.25);color:#60a5fa;outline:none;transition:all 0.15s;">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            </button>
             <!-- Summary Button -->
-            <button class="session-summary-btn interactive" data-id="${s.id}" title="View Summary" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#4ade80;outline:none;transition:all 0.15s;">
+            <button class="session-summary-btn interactive" data-id="${s.id}" title="View Summary" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#4ade80;cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
             <!-- Edit Button -->
-            <button class="session-edit-btn interactive" data-id="${s.id}" title="Edit Config" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);outline:none;transition:all 0.15s;">
+            <button class="session-edit-btn interactive" data-id="${s.id}" title="Edit Config" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </button>
             <!-- Delete Button -->
-            <button class="session-delete-btn interactive" data-id="${s.id}" title="Delete Session" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#ef4444;outline:none;transition:all 0.15s;">
+            <button class="session-delete-btn interactive" data-id="${s.id}" title="Delete Session" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#ef4444;cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
@@ -445,21 +457,9 @@ async function loadRecentSessions() {
       row.addEventListener('mouseleave', () => row.style.background = '');
 
       // Helper to pre-fill wizard
-      const prefillWizard = async () => {
+      const prefillWizard = () => {
         if (s.company_name && setupCompany) setupCompany.value = s.company_name;
         if (s.role_name && setupRole) setupRole.value = s.role_name;
-
-        // Auto-fill Job Description from session object or context
-        if (setupJd) {
-          if (s.job_description && typeof s.job_description === 'object' && s.job_description.description) {
-            setupJd.value = s.job_description.description;
-          } else if (typeof s.job_description === 'string' && s.job_description.trim()) {
-            setupJd.value = s.job_description.trim();
-          } else if (offlineUserContext && offlineUserContext.job_description) {
-            setupJd.value = offlineUserContext.job_description;
-          }
-        }
-
         // Match session type badge
         document.querySelectorAll('.type-badge').forEach(b => {
           b.classList.remove('active');
@@ -479,56 +479,6 @@ async function loadRecentSessions() {
       row.querySelector('.session-edit-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         prefillWizard();
-      });
-
-      // Direct Download Transcript button click on table row
-      row.querySelector('.session-download-btn').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const dlBtn = e.currentTarget;
-        try {
-          const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-          const [tRes, aRes] = await Promise.all([
-            fetch(`${base}/api/sessions/${s.id}/transcripts`),
-            fetch(`${base}/api/sessions/${s.id}/answers`)
-          ]);
-          if (!tRes.ok || !aRes.ok) throw new Error('Fetch failed');
-          const transcripts = await tRes.json();
-          const answers = await aRes.json();
-
-          const timeline = [
-            ...transcripts.map(t => ({ ...t, type: 'audio' })),
-            ...answers.map(a => ({ ...a, type: 'ai' }))
-          ];
-          timeline.sort((x, y) => new Date(x.created_at) - new Date(y.created_at));
-
-          if (!timeline || timeline.length === 0) {
-            alert('No transcript records found for this session.');
-            return;
-          }
-
-          const rawText = timeline.map(b => {
-            const timeStr = b.created_at ? new Date(b.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
-            if (b.type === 'audio') {
-              let spk = b.speaker === 'interviewer' ? 'Interviewer' : (b.speaker === 'you' ? 'You' : 'Audio');
-              return `[${timeStr}] ${spk}\n${b.content}`;
-            } else {
-              return `[${timeStr}] AI\n💬 Question: ${b.question}\n\n---\n\n⭐️ Answer:\n${b.answer}`;
-            }
-          }).join('\n\n');
-
-          const safeTitle = (title || 'session').replace(/[^a-z0-9_-]/gi, '_');
-          const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `sutra_transcript_${safeTitle}_${new Date().toISOString().slice(0, 10)}.txt`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        } catch (err) {
-          alert('Failed to download transcript: ' + err.message);
-        }
       });
 
       // View Transcript button click
@@ -620,14 +570,11 @@ async function loadRecentSessions() {
             }
           }).join('\n\n');
 
-          // Create container with Download & Copy Buttons at the top
+          // Create container with a Copy Button at the top
           const wrapperHtml = `
             <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
-              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 4px;">
-                <button id="download-timeline-btn" class="interactive" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.35); color: #60a5fa; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
-                  📥 Download Transcript (.txt)
-                </button>
-                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+              <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+                <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
                   Copy Raw Timeline
                 </button>
               </div>
@@ -638,30 +585,6 @@ async function loadRecentSessions() {
           `;
 
           showModalOverlay(`Transcript — ${title}`, wrapperHtml);
-
-          // Add download click listener
-          const downloadBtn = document.getElementById('download-timeline-btn');
-          if (downloadBtn) {
-            downloadBtn.addEventListener('click', () => {
-              const safeTitle = (title || 'session').replace(/[^a-z0-9_-]/gi, '_');
-              const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `sutra_transcript_${safeTitle}_${new Date().toISOString().slice(0, 10)}.txt`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-
-              downloadBtn.textContent = '✓ Downloaded!';
-              downloadBtn.style.color = '#4ade80';
-              setTimeout(() => {
-                downloadBtn.textContent = '📥 Download Transcript (.txt)';
-                downloadBtn.style.color = '#60a5fa';
-              }, 2000);
-            });
-          }
 
           // Add copy click listener
           const copyBtn = document.getElementById('copy-timeline-btn');
@@ -717,8 +640,8 @@ async function loadRecentSessions() {
           <div style="text-align:center;padding:8px 0;">
             <div style="font-size:12px;color:rgba(255,255,255,0.8);margin-bottom:20px;">Are you sure you want to permanently delete <strong>${title}</strong>?</div>
             <div style="display:flex;gap:10px;justify-content:center;">
-              <button id="confirm-delete-yes" style="padding:8px 22px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.5);color:#fca5a5;border-radius:7px;font-size:11px;">Delete</button>
-              <button id="confirm-delete-no" style="padding:8px 22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:7px;font-size:11px;">Cancel</button>
+              <button id="confirm-delete-yes" style="padding:8px 22px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.5);color:#fca5a5;border-radius:7px;cursor:pointer;font-size:11px;">Delete</button>
+              <button id="confirm-delete-no" style="padding:8px 22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.7);border-radius:7px;cursor:pointer;font-size:11px;">Cancel</button>
             </div>
           </div>
         `);
@@ -773,7 +696,7 @@ function showInlineError(msg, container) {
     'animation:fadeInDown 0.2s ease', 'position:relative', 'z-index:9'
   ].join(';');
   banner.innerHTML = `<span style="font-size:14px;flex-shrink:0;">⚠️</span><span style="flex:1;">${msg}</span>`
-    + `<button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fca5a5;font-size:14px;padding:0 0 0 6px;line-height:1;">✕</button>`;
+    + `<button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fca5a5;cursor:pointer;font-size:14px;padding:0 0 0 6px;line-height:1;">✕</button>`;
   target.prepend(banner);
   setTimeout(() => { if (banner.parentElement) banner.remove(); }, 5000);
 }
@@ -805,7 +728,7 @@ function showModalOverlay(title, contentHtml) {
   modal.innerHTML = `
     <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0;">
       <h3 style="margin: 0; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">${title}</h3>
-      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600;  outline: none; transition: background 0.2s;">
+      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: background 0.2s;">
         Close
       </button>
     </div>
@@ -1270,17 +1193,6 @@ if (editSessionSaveBtn) {
     const newResumeId = editResumeSelect?.value || '';
     const newDocId = editDocSelect?.value || '';
 
-    if (!newJd) {
-      if (editSessionStatus) {
-        editSessionStatus.style.display = 'block';
-        editSessionStatus.style.background = 'rgba(239,68,68,0.12)';
-        editSessionStatus.style.border = '1px solid rgba(239,68,68,0.3)';
-        editSessionStatus.style.color = '#fca5a5';
-        editSessionStatus.textContent = '⚠️ Job Description is required.';
-      }
-      return;
-    }
-
     editSessionSaveBtn.disabled = true;
     editSessionSaveBtn.textContent = 'Updating...';
 
@@ -1357,15 +1269,9 @@ function startSessionTimer() {
 
   sessionTimerInterval = setInterval(() => {
     sessionSecondsElapsed++;
-    const hours = Math.floor(sessionSecondsElapsed / 3600);
-    const mins = Math.floor((sessionSecondsElapsed % 3600) / 60);
-    const secs = sessionSecondsElapsed % 60;
-    let timeStr = '';
-    if (hours > 0) {
-      timeStr = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    } else {
-      timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
+    const m = Math.floor(sessionSecondsElapsed / 60).toString().padStart(2, '0');
+    const s = (sessionSecondsElapsed % 60).toString().padStart(2, '0');
+    const timeStr = `${m}:${s}`;
     if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
     const stopBtnTimer = document.getElementById('stop-btn-timer');
     if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
@@ -1392,13 +1298,16 @@ startSessionBtn.addEventListener('click', async () => {
 
   // Find the selected resume & JD doc contents from cache
   const selectedResumeId = setupResumeSelect.value;
-  const selectedDocId = setupDocSelect.value;
+  const selectedDocIds = Array.from(setupDocSelect.selectedOptions)
+    .map(o => o.value)
+    .filter(val => val && val !== '');
 
   const resumeObj = backendResumes.find(r => r.id === selectedResumeId);
   const resume = resumeObj ? resumeObj.parsed_content : '';
 
-  const docObj = backendDocs.find(d => d.id === selectedDocId);
-  const docText = docObj ? docObj.content : '';
+  const selectedDocs = backendDocs.filter(d => selectedDocIds.includes(d.id));
+  const docText = selectedDocs.map(d => `--- ${d.document_name} ---\n${d.content}`).join('\n\n');
+  const selectedDocId = selectedDocIds.join(',');
 
   // Options from step 3
   const preferredModel = document.getElementById('setup-model-select').value;
@@ -1410,7 +1319,7 @@ startSessionBtn.addEventListener('click', async () => {
   startSessionBtn.textContent = 'Starting Session...';
 
   // 1. Save L4 context (including model so backend always uses the right one)
-  const isPrompt = docObj ? (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt') || docObj.document_name.toLowerCase().includes('instruction')) : false;
+  const isPrompt = selectedDocs.some(d => d.document_type === 'prompt' || d.document_name.toLowerCase().includes('prompt') || d.document_name.toLowerCase().includes('instruction'));
   try {
     await window.electronAPI.saveL4Context({
       resume,
@@ -1483,10 +1392,6 @@ startSessionBtn.addEventListener('click', async () => {
   document.body.classList.add('stealth-active');
   isStealthHoverEnabled = true;
   toggleStealthTooltips(true);
-  if (window.electronAPI) {
-    if (window.electronAPI.setAlwaysOnTop) window.electronAPI.setAlwaysOnTop('screen-saver');
-    if (window.electronAPI.setFocusable) window.electronAPI.setFocusable(false); // Make window non-activating so clicks never steal focus from exam portals
-  }
   document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
 
   // Load saved bounds if any
@@ -1514,33 +1419,14 @@ startSessionBtn.addEventListener('click', async () => {
   // Clear answerBlock and show Intro message
   const chatBlock = document.getElementById('answer-block');
   const dbIntroduction = resumeObj ? resumeObj.introduction : '';
-  const setupJdEl = document.getElementById('setup-jd');
-  const activeJdText = (setupJdEl && setupJdEl.value.trim())
-    ? setupJdEl.value.trim()
-    : (offlineUserContext && offlineUserContext.job_description ? offlineUserContext.job_description : '');
-  const jdTag = activeJdText ? `\n\nTarget Job Description (JD) & Role Context:\n"${activeJdText}"` : '';
-
   if (chatBlock) {
     chatBlock.innerHTML = '';
     // Trigger an initial query to absorb the first-request latency and generate a polished self-intro
     setTimeout(() => {
-      const baseBackground = (dbIntroduction && dbIntroduction.trim())
-        ? dbIntroduction.trim()
-        : 'Candidate resume background and technical profile.';
-
-      let introPrompt = `GENERATE A 100% ROLE-SYNCED 60-MINUTE FULL INTERVIEW SESSION VERBAL SELF-INTRODUCTION:
-
-MANDATORY DIRECTIVE FOR THE AI:
-DO NOT repeat or echo the generic base text verbatim. You MUST synthesize a brand-new, 100% role-synced verbal self-introduction for a 60-minute interview session that dynamically combines:
-1. Candidate Background & Stack: Extract the candidate's degree, core technical skills, projects, and work experience from the Base Background below.
-2. Target Role Requirements: Extract the key technical skills, responsibilities, and role title from the Target Job Description below.
-
-Candidate Base Background:
-"${baseBackground}"
-${jdTag}
-
-Generate the final ready-to-speak verbal self-introduction now (spoken English only, fluid natural paragraphs, zero markdown formatting):`;
-
+      let introPrompt = "Based on my uploaded resume, can you provide a strong 3-minute self-introduction that I can use for this interview?";
+      if (dbIntroduction && dbIntroduction.trim()) {
+        introPrompt = `Please polish, improve the grammar, and optimize the flow of this self-introduction from my profile to make it sound highly professional, natural, and perfect for a 3-minute verbal delivery:\n\n"${dbIntroduction.trim()}"`;
+      }
       queryAssistant(introPrompt, true);
     }, 500);
   }
@@ -1560,104 +1446,21 @@ Generate the final ready-to-speak verbal self-introduction now (spoken English o
 });
 
 
-// Dynamic Focus Management to allow 100% smooth typing in all input fields and wizard steps
-['setup-company', 'setup-role', 'setup-jd'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) {
-    const handleFocus = (e) => {
-      e.stopPropagation();
-      if (window.electronAPI && window.electronAPI.setFocusable) {
-        window.electronAPI.setFocusable(true);
-      }
-      setTimeout(() => el.focus(), 0);
-    };
-    el.addEventListener('pointerdown', handleFocus, true);
-    el.addEventListener('mousedown', handleFocus, true);
-    el.addEventListener('click', handleFocus, true);
-  }
-});
-
-document.addEventListener('pointerdown', (e) => {
-  const target = e.target;
-  const isInputOrWizard = target && (
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.isContentEditable ||
-    target.closest('input') ||
-    target.closest('textarea') ||
-    target.closest('#setup-view') ||
-    target.closest('.setup-view-container') ||
-    target.closest('#settings-popup') ||
-    target.id === 'ai-input' ||
-    target.id === 'transcript-block'
-  );
-  if (isInputOrWizard) {
-    if (window.electronAPI && window.electronAPI.setFocusable) {
-      window.electronAPI.setFocusable(true);
-    }
-  }
-}, true);
-
-document.addEventListener('focusin', (e) => {
-  const target = e.target;
-  const isInputOrWizard = target && (
-    target.tagName === 'INPUT' ||
-    target.tagName === 'TEXTAREA' ||
-    target.isContentEditable ||
-    target.closest('#setup-view') ||
-    target.closest('.setup-view-container') ||
-    target.closest('#settings-popup') ||
-    target.id === 'ai-input' ||
-    target.id === 'transcript-block'
-  );
-  if (isInputOrWizard) {
-    if (window.electronAPI && window.electronAPI.setFocusable) {
-      window.electronAPI.setFocusable(true);
-    }
-  }
-}, true);
-
-// Focus management is maintained continuously without focusout timers that interrupt typing
-
 // Stop session button event handler
-const endLiveSession = async (e) => {
-  if (e) {
-    e.stopPropagation();
-  }
-  console.log('[Stealth] Ending live session...');
+stopSessionBtn.addEventListener('click', async () => {
+  // Expand window back to 600x580 setup state
+  pendingProgrammaticResizes++;
+  window.electronAPI.resizeWindow(600, 580, 'top', true);
 
-  // Ensure window is focusable during view transition
-  if (window.electronAPI && window.electronAPI.setFocusable) {
-    window.electronAPI.setFocusable(true);
-  }
-
-  // 1. Stop all audio capture, recorders, and WebSockets immediately
-  try {
-    stopRecording();
-  } catch (e) {
-    console.warn('[Stealth] Audio stop error during session end:', e);
+  // Close any active panel/tabs
+  if (activeTab) {
+    const activePanel = aiPanel;
+    activePanel.classList.remove('active');
+    panelsContainer.classList.remove('active');
+    activeTab = null;
   }
 
-  // 2. Stop session timer
-  try {
-    stopSessionTimer();
-  } catch (e) {
-    console.warn('[Stealth] Timer stop error during session end:', e);
-  }
-
-  // 3. Reset panels and toolbar UI states
-  try {
-    closeAllPanels();
-  } catch (e) {
-    if (aiPanel) aiPanel.classList.remove('active');
-    if (panelsContainer) panelsContainer.classList.remove('active');
-  }
-
-  if (typeof diamondBtn !== 'undefined' && diamondBtn) {
-    diamondBtn.style.display = 'none';
-  }
-
-  // 4. Save ending duration/status to backend (non-blocking)
+  // Reset session & save ending duration/status to backend (non-blocking)
   if (sessionToken) {
     const tokenToReset = sessionToken;
     const sessionToReset = activeSessionId;
@@ -1669,6 +1472,7 @@ const endLiveSession = async (e) => {
     // Fire-and-forget backend updates so they don't block the UI transition
     Promise.resolve()
       .then(async () => {
+        // Flush the full accumulated transcript as one final block if we have content
         if (finalTranscript && shouldSaveTranscript && sessionToReset) {
           try {
             await window.electronAPI.saveTranscriptBlock(sessionToReset, {
@@ -1678,9 +1482,10 @@ const endLiveSession = async (e) => {
             });
             console.log('[Transcript] Full session transcript flushed to backend.');
           } catch (e) {
-            console.warn('[Transcript] Flush failed:', e.message);
+            console.warn('[Transcript] Flush failed — transcript saved in localStorage:', e.message);
           }
         }
+        // Clear localStorage buffer after successful flush
         safeSetItem('stealth_transcript_buffer', '');
         safeSetItem('stealth_transcript_session', '');
         return window.electronAPI.updateBackendSession(tokenToReset, {
@@ -1691,69 +1496,60 @@ const endLiveSession = async (e) => {
       .then(() => window.electronAPI.resetSessionMemory(tokenToReset))
       .catch(e => console.error('[Stealth] Failed to complete session on backend:', e.message));
   } else {
+    // Even offline, clear localStorage buffer
     safeSetItem('stealth_transcript_buffer', '');
     safeSetItem('stealth_transcript_session', '');
   }
 
-  // 5. Clear live transcript & Q&A state
+  // Clear live transcript state
   accumulatedTranscript = '';
   lastAnswerOffset = 0;
+
+  // Clear transcript chunk buffer and cancel any pending flush timer
   if (transcriptFlushTimer) {
     clearTimeout(transcriptFlushTimer);
     transcriptFlushTimer = null;
   }
   transcriptChunkBuffer = '';
 
-  // 6. Reset step wizard & start button state
+  // Reset step wizard back to Step 1
   currentStep = 1;
   updateWizardView();
-  startSessionBtn.disabled = false;
-  startSessionBtn.textContent = 'Start Session & Collapse';
 
-  // 7. Clear answer history
+  // Clear answer history
   answerHistory = [];
   currentAnswerIndex = -1;
   renderActiveAnswer();
 
-  // 8. Restore cursor & click-through when exiting stealth mode
+  // Restore cursor visibility when exiting stealth mode
   isStealthHoverEnabled = false;
-  isShrunk = false;
+  isShrunk = false;  // ensure shrunk state is cleared so click-through isn't triggered
   window.electronAPI.setIgnoreMouseEvents(false);
-  if (window.electronAPI && window.electronAPI.setFocusable) {
-    window.electronAPI.setFocusable(true);
-  }
   document.body.classList.remove('stealth-active');
   toggleStealthTooltips(false);
   document.body.classList.remove('hover-active');
-  if (document.querySelector('.app-container')) {
-    document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
-  }
+  document.querySelector('.app-container').style.opacity = userOpacity;
 
-  // 9. Switch views and resize window back to setup portal
+  // Stop live session ticking timer
+  stopSessionTimer();
+
+  // Switch views
   toolbarView.style.display = 'none';
   setupView.style.display = 'flex';
   const logoutTextSpan = document.getElementById('settings-logout-text');
   if (logoutTextSpan) logoutTextSpan.textContent = 'Logout';
+  // Guarantee the window is fully interactive after returning to setup portal
+  window.electronAPI.setIgnoreMouseEvents(false);
 
-  pendingProgrammaticResizes++;
-  window.electronAPI.resizeWindow(600, 580, 'top', true);
 
-  // Clear setup form fields and reload dropdowns
-  if (setupCompany) setupCompany.value = '';
-  if (setupRole) setupRole.value = '';
+  // Clear all setup form fields so wizard starts fresh (no stale company/role data)
+  setupCompany.value = '';
+  setupRole.value = '';
   if (setupJd) setupJd.value = '';
-  loadDropdowns();
-};
 
-if (stopSessionBtn) {
-  stopSessionBtn.addEventListener('click', endLiveSession);
-  stopSessionBtn.addEventListener('pointerdown', endLiveSession);
-}
-const stopBtnTimer = document.getElementById('stop-btn-timer');
-if (stopBtnTimer) {
-  stopBtnTimer.addEventListener('click', endLiveSession);
-  stopBtnTimer.addEventListener('pointerdown', endLiveSession);
-}
+  // Reload dropdown options fresh from backend
+  loadDropdowns();
+});
 
 
 // -------------------------------------------------------------
@@ -1764,7 +1560,6 @@ if (stopBtnTimer) {
 // Resizing state
 let isResizingPanel = false;
 let isDraggingSlider = false;
-let isResizingViaExpandBtn = false;
 let justExpanded = false;
 let justExpandedTimeout;
 let startWidth, startHeight;
@@ -1786,17 +1581,7 @@ let isMouseInsideWindow = false;
  * @param {number} [clientY] - cursor Y in client coords (uses last known if omitted)
  */
 function updateClickThrough(clientX, clientY) {
-  const isSetupVisible = setupView && setupView.style.display !== 'none';
-  const isRecentVisible = typeof recentSessionsView !== 'undefined' && recentSessionsView && recentSessionsView.style.display !== 'none';
-  if (isSetupVisible || isRecentVisible) {
-    window.electronAPI.setIgnoreMouseEvents(false);
-    return;
-  }
-
-  if (isDraggingWindow || isResizingPanel || isDraggingSlider || isResizingViaExpandBtn) {
-    window.electronAPI.setIgnoreMouseEvents(false);
-    return;
-  }
+  if (isDraggingWindow) return;
   if (justExpanded) {
     window.electronAPI.setIgnoreMouseEvents(false);
     return;
@@ -1849,27 +1634,27 @@ function updateClickThrough(clientX, clientY) {
 
   if (isInteractive) {
     window.electronAPI.setIgnoreMouseEvents(false);
+    if (!isMouseInsideWindow) {
+      isMouseInsideWindow = true;
+      updateWindowSize();
+    }
   } else {
     // Pass clicks through gaps
     window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
+    if (isMouseInsideWindow) {
+      isMouseInsideWindow = false;
+      updateWindowSize();
+    }
   }
 
   const appCont = document.querySelector('.app-container');
   if (appCont) {
-    if (isDraggingSlider || window._isPreviewingOpacity) {
-      appCont.style.opacity = Math.min(1.0, userOpacity);
-    } else {
-      appCont.style.opacity = isMouseInsideWindow ? '1' : Math.min(1.0, userOpacity);
-    }
+    appCont.style.opacity = userOpacity;
   }
 }
 
 window.addEventListener('mouseleave', () => {
   isMouseInsideWindow = false;
-  const appCont = document.querySelector('.app-container');
-  if (appCont && !isDraggingSlider && !window._isPreviewingOpacity) {
-    appCont.style.opacity = Math.min(1.0, userOpacity);
-  }
   updateClickThrough();
   updateWindowSize();
 });
@@ -1877,10 +1662,6 @@ window.addEventListener('mouseleave', () => {
 window.addEventListener('mouseenter', () => {
   isDraggingWindow = false;
   isMouseInsideWindow = true;
-  const appCont = document.querySelector('.app-container');
-  if (appCont && !isDraggingSlider && !window._isPreviewingOpacity) {
-    appCont.style.opacity = '1';
-  }
   updateClickThrough();
   updateWindowSize();
 });
@@ -1899,10 +1680,24 @@ window.addEventListener('pointerup', (e) => {
     }
 
     safeSetItem('stealth_panelHeight', currentHeight);
+    safeSetItem('stealth_windowX', window.screenX);
+    safeSetItem('stealth_windowY', window.screenY);
+
+    const finalWinWidth = Math.max(WIDTH, finalPanelWidth + 20);
+
+    // Save full bounds (size + position) to main process JSON store
+    if (window.electronAPI && window.electronAPI.saveWindowBounds) {
+      window.electronAPI.saveWindowBounds({
+        width: finalWinWidth,
+        height: currentHeight,
+        x: window.screenX,
+        y: window.screenY,
+        panelWidth: finalPanelWidth,
+        panelHeight: currentHeight
+      });
+    }
 
     // Perform final, unthrottled resize to align the window boundaries exactly
-    const finalWinWidth = Math.max(WIDTH, finalPanelWidth + 20);
-    // Lock X to startX — toolbar never shifts
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(finalWinWidth, currentHeight, toolbarPosition, false, startX, startY);
 
@@ -1923,22 +1718,13 @@ window.addEventListener('pointerup', (e) => {
   requestAnimationFrame(() => updateClickThrough());
 });
 
-window.addEventListener('pointercancel', () => {
-  isResizingPanel = false;
-  isDraggingWindow = false;
-  isDraggingSlider = false;
-  document.body.classList.remove('resizing');
-  updateClickThrough();
-});
-
 window.addEventListener('pointermove', (e) => {
   // Always track cursor position for state-change re-evaluations
   _lastClientX = e.clientX;
   _lastClientY = e.clientY;
 
-  // Handle panel resizing — apply double arrow cursor strictly while actively expanding
+  // Handle panel resizing
   if (isResizingPanel) {
-    document.body.classList.add('resizing');
     const dx = e.screenX - startMouseX;
     const dy = e.screenY - startMouseY;
 
@@ -2043,17 +1829,15 @@ function updateWindowSize(reposition = false) {
 
   if (!activeTab) {
     const settingsPopupEl = document.getElementById('settings-popup');
-    const shortcutsPopupEl = document.getElementById('shortcuts-subpopup');
     const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
-    const shortcutsOpen = shortcutsPopupEl && shortcutsPopupEl.style.display === 'flex';
     const editModalEl = document.getElementById('edit-session-modal');
     const editModalOpen = editModalEl && editModalEl.style.display === 'flex';
 
-    let targetHeight = 120;
-    if (settingsOpen || shortcutsOpen || editModalOpen) {
-      targetHeight = 420;
-    } else {
-      targetHeight = 120; // 120px allows hover tooltips below toolbar to render 100% complete without clipping
+    let targetHeight = COLLAPSED_HEIGHT;
+    if (settingsOpen || editModalOpen) {
+      targetHeight = 480;
+    } else if (isMouseInsideWindow) {
+      targetHeight = 140;
     }
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(WIDTH, targetHeight, toolbarPosition, reposition);
@@ -2065,78 +1849,63 @@ function updateWindowSize(reposition = false) {
     const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
     const maxAnswerHeight = Math.max(150, screenHeight - 250);
 
-    // ACTUAL LAYOUT HEIGHTS (measured from DOM/CSS):
-    // panels margin-top=56 + panelHeader(pad12x2+content20)=44 + panelContent(pad16top)=16
-    // + transcriptRow(label18+gap4+input38)=60 + gap10 + answerNavRow=28 + answer-block + pad16bot=16 + inputArea(pad12x2+input32)=56
-    // Fixed overhead WITH transcript = 56+44+16+60+10+28+16+56 = 286px
-    // Fixed overhead WITHOUT transcript = 286 - 60 - 10 = 216px
-    // So: compact(transcript visible) answer = 390-286 = 104px → use 100px
-    //     expanded(transcript hidden) answer = 390-216 = 174px → use 170px
-    const COMPACT_ANSWER_H = 130;
-    const EXPANDED_ANSWER_H = 280;
-
-    const transcriptSection = document.querySelector('.block-container:first-child');
-    if (transcriptSection) transcriptSection.style.display = '';
-
     if (window.isCustomResized) {
-      const overheadH = 308;
-      const computedAnswerHeight = Math.max(130, currentHeight - overheadH);
+      const headerHeight = 45;
+      const navHeight = 35;
+      const inputHeight = 55;
+      const computedAnswerHeight = currentHeight - COLLAPSED_HEIGHT - 12 - headerHeight - navHeight - inputHeight;
       if (answerBlock) {
-        answerBlock.style.height = computedAnswerHeight + 'px';
-        answerBlock.style.maxHeight = computedAnswerHeight + 'px';
+        answerBlock.style.height = Math.max(100, computedAnswerHeight) + 'px';
+        answerBlock.style.maxHeight = 'none';
         answerBlock.style.overflowY = 'auto';
       }
       if (codeDisplayPre) {
-        codeDisplayPre.style.height = computedAnswerHeight + 'px';
-        codeDisplayPre.style.maxHeight = computedAnswerHeight + 'px';
+        codeDisplayPre.style.height = Math.max(100, computedAnswerHeight) + 'px';
+        codeDisplayPre.style.maxHeight = 'none';
         codeDisplayPre.style.overflowY = 'auto';
       }
       const panelsContainer = document.getElementById('panels');
       if (panelsContainer) {
-        panelsContainer.style.height = 'auto';
+        panelsContainer.style.height = (currentHeight - COLLAPSED_HEIGHT - 12) + 'px';
         panelsContainer.style.maxHeight = 'none';
       }
       if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
     } else {
-      // Reset all drag-imposed styles so CSS defaults take over
-      const panelsContainer = document.getElementById('panels');
-      if (panelsContainer) {
-        panelsContainer.style.height = 'auto';
-        panelsContainer.style.maxHeight = 'none';
-        panelsContainer.style.width = '';        // reset to CSS var(--panel-width)
-        panelsContainer.style.maxWidth = '';     // reset to CSS max-width: 100%
-        panelsContainer.style.overflow = '';     // reset to CSS overflow: visible
-      }
-
       if (isAnswerExpanded) {
-        const savedExpWidth = parseFloat(safeGetItem('stealth_expandedPanelWidth') || '780');
-        const targetExpWidth = Math.max(780, savedExpWidth);
-        if (panelsContainer) {
-          panelsContainer.style.width = (targetExpWidth - 20) + 'px';
-        }
         if (answerBlock) {
-          answerBlock.style.height = EXPANDED_ANSWER_H + 'px';
-          answerBlock.style.maxHeight = EXPANDED_ANSWER_H + 'px';
+          answerBlock.style.height = 'auto';
+          answerBlock.style.maxHeight = maxAnswerHeight + 'px';
           answerBlock.style.overflowY = 'auto';
         }
         if (codeDisplayPre) {
-          codeDisplayPre.style.height = EXPANDED_ANSWER_H + 'px';
-          codeDisplayPre.style.maxHeight = EXPANDED_ANSWER_H + 'px';
+          codeDisplayPre.style.height = 'auto';
+          codeDisplayPre.style.maxHeight = '350px';
+          codeDisplayPre.style.overflowY = 'auto';
+        }
+        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
+      } else if (hasActiveAnswer) {
+        if (answerBlock) {
+          answerBlock.style.height = 'auto';
+          answerBlock.style.maxHeight = '250px';
+          answerBlock.style.overflowY = 'auto';
+        }
+        if (codeDisplayPre) {
+          codeDisplayPre.style.height = 'auto';
+          codeDisplayPre.style.maxHeight = '350px';
           codeDisplayPre.style.overflowY = 'auto';
         }
         if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
       } else {
         if (answerBlock) {
-          answerBlock.style.height = COMPACT_ANSWER_H + 'px';
-          answerBlock.style.maxHeight = COMPACT_ANSWER_H + 'px';
+          answerBlock.style.height = '110px';
+          answerBlock.style.maxHeight = '250px';
           answerBlock.style.overflowY = 'auto';
         }
         if (codeDisplayPre) {
-          codeDisplayPre.style.height = COMPACT_ANSWER_H + 'px';
-          codeDisplayPre.style.maxHeight = COMPACT_ANSWER_H + 'px';
+          codeDisplayPre.style.height = '310px';
+          codeDisplayPre.style.maxHeight = '350px';
           codeDisplayPre.style.overflowY = 'auto';
         }
-        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
       }
     }
 
@@ -2145,34 +1914,19 @@ function updateWindowSize(reposition = false) {
       const rect = appContainer ? appContainer.getBoundingClientRect() : { height: 0 };
       const settingsPopupEl = document.getElementById('settings-popup');
       const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
+      const settingsBuffer = settingsOpen ? 180 : 0;
 
-      // HEIGHT: when custom resized, trust currentHeight (drag handler already clamped to screen)
+      // Use scrollHeight to capture the full unclipped content height
       let targetHeight;
       if (window.isCustomResized) {
-        targetHeight = currentHeight; // set by drag handler, already screen-clamped
+        targetHeight = currentHeight;
       } else {
-        const contentHeight = appContainer ? appContainer.scrollHeight : Math.round(rect.height);
-        const screenH = window.screen.availHeight;
-        targetHeight = Math.max(438, Math.min(screenH - 40, contentHeight + 20));
+        const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
+        targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
       }
 
-      const shortcutsPopupEl = document.getElementById('shortcuts-subpopup');
-      const shortcutsOpen = shortcutsPopupEl && shortcutsPopupEl.style.display === 'flex';
-      if (settingsOpen || shortcutsOpen) {
-        targetHeight = Math.max(targetHeight, 420);
-      }
-
-      // WIDTH: when custom resized use currentWidth, else use saved/default panel width
-      let targetWinWidth;
-      if (window.isCustomResized) {
-        targetWinWidth = currentWidth || WIDTH;
-      } else if (isAnswerExpanded) {
-        const savedExpWidth = parseFloat(safeGetItem('stealth_expandedPanelWidth') || '780');
-        targetWinWidth = Math.max(WIDTH, savedExpWidth);
-      } else {
-        const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
-        targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
-      }
+      const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
+      const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
 
       pendingProgrammaticResizes++;
       window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition);
@@ -2210,23 +1964,12 @@ function closeAllPanels() {
   // Save to localStorage
   safeSetItem('stealth_activeTab', '');
 
-  // Reset focusable state when all panels closed in stealth mode
-  if (document.body.classList.contains('stealth-active')) {
-    if (window.electronAPI && window.electronAPI.setFocusable) {
-      window.electronAPI.setFocusable(false);
-    }
-  }
-
   // Resize window
   updateWindowSize();
 }
 
 function openPanel(tabName) {
   activeTab = tabName;
-
-  if (window.electronAPI && window.electronAPI.setFocusable) {
-    window.electronAPI.setFocusable(true);
-  }
 
   // Deactivate all buttons
   aiBtn.classList.toggle('active', tabName === 'ai');
@@ -2289,11 +2032,7 @@ const aiInput = document.getElementById('ai-input');
 const aiSend = document.getElementById('ai-send');
 
 let mediaRecorder = null;
-let dgSocketSystem = null;
-let dgSocketMic = null;
-let systemMediaRecorder = null;
-let micMediaRecorder = null;
-
+let dgSocket = null;
 let isRecording = false;
 let isRecordingSystem = false;
 let isRecordingMic = false;
@@ -2303,39 +2042,31 @@ let activeSystemStream = null;
 let micSourceNode = null;
 let systemSourceNode = null;
 let audioCtx = null;
+let audioDestNode = null;
 
-// ── Transcript Buffering (Separate Interviewer & You buffers) ─────────────────
-const TRANSCRIPT_FLUSH_SILENCE_MS = 6000; // 6 s silence → flush
-const TRANSCRIPT_FLUSH_WORD_THRESHOLD = 60;
-let systemChunkBuffer = '';
-let micChunkBuffer = '';
-let systemFlushTimer = null;
-let micFlushTimer = null;
+// ── Transcript Buffering ─────────────────────────────────────────────────────
+// Accumulate is_final chunks and only flush to the backend as a meaningful block
+// after a silence gap (TRANSCRIPT_FLUSH_SILENCE_MS) or when enough words pile up.
+const TRANSCRIPT_FLUSH_SILENCE_MS = 8000; // 8 s of no new speech → flush
+const TRANSCRIPT_FLUSH_WORD_THRESHOLD = 80; // flush early if buffer hits this many words
+let transcriptChunkBuffer = '';           // pending text not yet saved to backend
+let transcriptFlushTimer = null;          // setTimeout handle for silence-based flush
 
-function flushSystemBuffer() {
-  if (systemFlushTimer) { clearTimeout(systemFlushTimer); systemFlushTimer = null; }
-  const content = systemChunkBuffer.trim();
-  systemChunkBuffer = '';
+// Flush the current buffer to the backend as one coherent block, then reset.
+function flushTranscriptBuffer() {
+  if (transcriptFlushTimer) {
+    clearTimeout(transcriptFlushTimer);
+    transcriptFlushTimer = null;
+  }
+  const content = transcriptChunkBuffer.trim();
+  transcriptChunkBuffer = '';
   if (!content || !sessionToken || !shouldSaveTranscript) return;
   window.electronAPI.saveTranscriptBlock(sessionToken, {
-    speaker: 'interviewer',
+    speaker: 'system',
     content: content,
-    source: 'speaker_audio'
-  }).catch(e => console.warn('[Save Transcript] Interviewer save failed:', e.message));
-  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words (Interviewer) to backend.`);
-}
-
-function flushMicBuffer() {
-  if (micFlushTimer) { clearTimeout(micFlushTimer); micFlushTimer = null; }
-  const content = micChunkBuffer.trim();
-  micChunkBuffer = '';
-  if (!content || !sessionToken || !shouldSaveTranscript) return;
-  window.electronAPI.saveTranscriptBlock(sessionToken, {
-    speaker: 'you',
-    content: content,
-    source: 'mic_audio'
-  }).catch(e => console.warn('[Save Transcript] You save failed:', e.message));
-  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words (You) to backend.`);
+    source: 'mixed_audio'
+  }).catch(e => console.warn('[Save Transcript] Buffered backend save failed:', e.message));
+  console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words to backend.`);
 }
 
 // New Mic Button elements
@@ -2352,119 +2083,10 @@ async function toggleMicRecording() {
   await toggleSource('mic');
 }
 
-// Helper to initialize Deepgram WebSocket for a specific audio stream source ('system' = Interviewer, 'mic' = You)
-async function startStreamForSource(source, mediaStream) {
-  const dgKey = await window.electronAPI.getDeepgramKey();
-  if (!dgKey || dgKey.startsWith('your_')) {
-    showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
-    return;
-  }
-
-  const isSystem = (source === 'system');
-  const speakerLabel = isSystem ? 'Interviewer' : 'You';
-  const speakerColor = isSystem ? '#5eead4' : '#4ade80';
-
-  const socket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
-  if (isSystem) dgSocketSystem = socket;
-  else dgSocketMic = socket;
-
-  socket.onopen = () => {
-    console.log(`[Deepgram Live] Connected for ${speakerLabel} (${source}).`);
-
-    let recorderOptions = {};
-    if (typeof MediaRecorder !== 'undefined') {
-      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-        recorderOptions = { mimeType: 'audio/webm;codecs=opus' };
-      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-        recorderOptions = { mimeType: 'audio/webm' };
-      }
-    }
-
-    const mediaRecorder = new MediaRecorder(mediaStream, recorderOptions);
-    if (isSystem) systemMediaRecorder = mediaRecorder;
-    else micMediaRecorder = mediaRecorder;
-
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0 && socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(event.data);
-      }
-    };
-    mediaRecorder.start(250);
-  };
-
-  socket.onmessage = (message) => {
-    try {
-      const data = JSON.parse(message.data);
-      const transcript = data.channel?.alternatives?.[0]?.transcript;
-      if (transcript && transcript.trim()) {
-        const cleanTranscript = transcript.trim();
-        const formattedLine = `${speakerLabel}: ${cleanTranscript}`;
-
-        if (data.is_final) {
-          // Confirmed text: update accumulatedTranscript with speaker prefix
-          accumulatedTranscript += (accumulatedTranscript ? '\n' : '') + formattedLine;
-          transcriptBlock.textContent = accumulatedTranscript;
-          transcriptBlock.dataset.placeholder = 'false';
-
-          if (shouldSaveTranscript) {
-            const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
-            const updatedBuffer = existingBuffer ? existingBuffer + '\n' + formattedLine : formattedLine;
-            safeSetItem('stealth_transcript_buffer', updatedBuffer);
-
-            if (sessionToken) {
-              if (isSystem) {
-                systemChunkBuffer += (systemChunkBuffer ? ' ' : '') + cleanTranscript;
-                if (systemFlushTimer) clearTimeout(systemFlushTimer);
-                systemFlushTimer = setTimeout(flushSystemBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-                if (systemChunkBuffer.split(/\s+/).filter(Boolean).length >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushSystemBuffer();
-              } else {
-                micChunkBuffer += (micChunkBuffer ? ' ' : '') + cleanTranscript;
-                if (micFlushTimer) clearTimeout(micFlushTimer);
-                micFlushTimer = setTimeout(flushMicBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-                if (micChunkBuffer.split(/\s+/).filter(Boolean).length >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushMicBuffer();
-              }
-            }
-          }
-
-          // --- AUTO ANSWER LOGIC (Triggers when speaker or interviewer finishes asking a question) ---
-          const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-          const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : true;
-
-          if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-            const score = questionScore(cleanTranscript);
-            if (score > 0) {
-              console.log(`[Auto-Answer] Spoken question detected (${speakerLabel}): "${cleanTranscript}". Querying AI...`);
-              if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-              queryAssistant(null, false);
-            } else {
-              if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-              autoAnswerTimeoutId = setTimeout(() => {
-                if (!answerBlock.classList.contains('loading')) {
-                  console.log(`[Auto-Answer] Silence gap detected after ${speakerLabel} speech. Querying AI...`);
-                  queryAssistant(null, false);
-                }
-                autoAnswerTimeoutId = null;
-              }, 1200);
-            }
-          }
-
-        } else {
-          // Interim text: colored preview with speaker label
-          transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? '\n' : '') + `<span style="color: ${speakerColor}; font-style: italic;">[${speakerLabel}] ${cleanTranscript}</span>`;
-        }
-        transcriptBlock.scrollTop = transcriptBlock.scrollHeight;
-      }
-    } catch (e) {
-      console.error(`[Deepgram Live ${speakerLabel}] Error parsing message:`, e);
-    }
-  };
-
-  socket.onerror = (err) => console.error(`[Deepgram Live ${speakerLabel}] Connection error:`, err);
-  socket.onclose = () => console.log(`[Deepgram Live ${speakerLabel}] Socket closed.`);
-}
-
-// Toggle audio capture for a specific source ('system' = Speaker/Interviewer, 'mic' = You)
+// Toggle audio capture for a specific source ('system' or 'mic')
 async function toggleSource(source) {
+  const isCurrentlyRecordingAny = isRecordingSystem || isRecordingMic;
+
   if (source === 'system') {
     isRecordingSystem = !isRecordingSystem;
   } else if (source === 'mic') {
@@ -2473,32 +2095,155 @@ async function toggleSource(source) {
 
   isRecording = isRecordingSystem || isRecordingMic;
 
+  // Case 1: Both are now inactive → Stop recording completely
   if (!isRecording) {
     stopRecording();
     return;
   }
 
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === 'suspended') {
-    try { await audioCtx.resume(); } catch (e) { }
+  // Case 2: First source starts → Initialize Speech-to-Text Socket and Audio Context
+  if (!isCurrentlyRecordingAny) {
+    try {
+      // Check if this is a live interview session
+      const isLiveSession = (selectedSessionType === 'Interview+Coding');
+
+      // Initialize Web Audio API nodes
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      audioDestNode = audioCtx.createMediaStreamDestination();
+
+      // Direct Deepgram WebSocket — no backend hop for minimum latency during live sessions
+      const dgKey = await window.electronAPI.getDeepgramKey();
+      if (!dgKey || dgKey.startsWith('your_')) {
+        showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
+        resetRecordButton();
+        isRecordingSystem = false;
+        isRecordingMic = false;
+        isRecording = false;
+        return;
+      }
+      dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
+      console.log('[Stealth] Connecting direct to Deepgram for live session...');
+
+      dgSocket.onopen = async () => {
+        console.log('[Deepgram Live] Connected successfully.');
+        if (audioCtx && audioCtx.state === 'suspended') {
+          try { await audioCtx.resume(); } catch (e) { }
+        }
+
+        recordBtn.style.pointerEvents = 'auto';
+        if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
+
+        const existingText = transcriptBlock.textContent.trim();
+        if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
+          transcriptBlock.textContent = '';
+          transcriptBlock.dataset.placeholder = 'false';
+        } else {
+          // User has typed something manually — keep it
+          accumulatedTranscript = existingText;
+        }
+
+        // Initialize MediaRecorder from mixed destination node
+        mediaRecorder = new MediaRecorder(audioDestNode.stream, { mimeType: 'audio/webm' });
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0 && dgSocket && dgSocket.readyState === WebSocket.OPEN) {
+            dgSocket.send(event.data);
+          }
+        };
+
+        // Stream audio slices in 250ms intervals
+        mediaRecorder.start(250);
+      };
+
+      dgSocket.onmessage = (message) => {
+        try {
+          const data = JSON.parse(message.data);
+          const transcript = data.channel?.alternatives?.[0]?.transcript;
+          if (transcript && transcript.trim()) {
+            const cleanTranscript = transcript.trim();
+            if (data.is_final) {
+              // Confirmed text: update accumulatedTranscript and show in white
+              accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
+              transcriptBlock.textContent = accumulatedTranscript;
+              transcriptBlock.dataset.placeholder = 'false';
+
+              // Save transcript block to backend and localStorage
+              if (shouldSaveTranscript) {
+                const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
+                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
+                safeSetItem('stealth_transcript_buffer', updatedBuffer);
+
+                if (sessionToken) {
+                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
+                  if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
+                  transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+                  const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
+                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
+                }
+              }
+
+              // --- AUTO ANSWER LOGIC ---
+              const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
+              const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
+
+              if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
+                const score = questionScore(cleanTranscript);
+                if (score > 0) {
+                  console.log(`[Auto-Answer] Question detected: "${cleanTranscript}". Querying AI...`);
+                  if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
+                  queryAssistant(null, false);
+                } else {
+                  if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+                  autoAnswerTimeoutId = setTimeout(() => {
+                    if (!answerBlock.classList.contains('loading')) {
+                      console.log('[Auto-Answer] 1-second gap detected. Querying AI...');
+                      queryAssistant(null, false);
+                    }
+                    autoAnswerTimeoutId = null;
+                  }, 1000);
+                }
+              }
+            } else {
+              // Interim text: gray preview — does NOT update accumulatedTranscript
+              transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
+            }
+            transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
+          }
+        } catch (e) {
+          console.error('[Deepgram Live] Error parsing message:', e);
+        }
+      };
+
+      dgSocket.onerror = (err) => {
+        console.error('[Deepgram Live] Connection error:', err);
+        stopRecording();
+      };
+
+      dgSocket.onclose = () => {
+        console.log('[Deepgram Live] Connection closed.');
+        if (isRecordingSystem || isRecordingMic) stopRecording();
+      };
+
+
+    } catch (err) {
+      console.error('[Audio Capture] Failed to initialize:', err);
+      showInlineError(`Audio capture error: ${err.message}`, answerBlock);
+      resetRecordButton();
+      isRecordingSystem = false;
+      isRecordingMic = false;
+      isRecording = false;
+      return;
+    }
   }
 
-  const existingText = transcriptBlock.textContent.trim();
-  if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
-    transcriptBlock.textContent = '';
-    transcriptBlock.dataset.placeholder = 'false';
-  } else {
-    accumulatedTranscript = existingText;
-  }
-
+  // Handle stream creation/destruction and UI updates for the active source
   if (source === 'system') {
     if (isRecordingSystem) {
+      // Start system loopback
       recordText.textContent = 'Connecting...';
       recordBtn.style.pointerEvents = 'none';
       try {
-        console.log('[Audio Capture] Attempting loopback screen-audio capture (Interviewer)...');
+        console.log('[Audio Capture] Attempting loopback screen-audio capture...');
         const sources = await window.electronAPI.getDesktopSources();
         const screenSource = sources.find(s => s.id.startsWith('screen'));
         if (screenSource) {
@@ -2516,16 +2261,20 @@ async function toggleSource(source) {
               }
             }
           });
+          // Keep video tracks alive to prevent Chromium/Electron from closing the stream
+          console.log('[Audio Capture] Acquired system loopback tracks:', activeSystemStream.getTracks().map(t => `${t.kind}: state=${t.readyState}, enabled=${t.enabled}`));
+
           systemSourceNode = audioCtx.createMediaStreamSource(activeSystemStream);
+          systemSourceNode.connect(audioDestNode);
+          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
 
           recordBtn.style.pointerEvents = 'auto';
           recordBtn.classList.add('recording');
           recordDot.classList.add('recording');
           recordText.textContent = 'Listening';
-
-          await startStreamForSource('system', activeSystemStream);
-          console.log('[Audio Capture] Successfully acquired system loopback stream (Interviewer).');
+          console.log('[Audio Capture] Successfully acquired system loopback stream.');
         } else {
+          console.warn('[Audio Capture] No screen source found for loopback capture.');
           isRecordingSystem = false;
           recordBtn.style.pointerEvents = 'auto';
           recordText.textContent = 'Speaker';
@@ -2537,28 +2286,31 @@ async function toggleSource(source) {
         recordText.textContent = 'Speaker';
       }
     } else {
-      if (systemMediaRecorder && systemMediaRecorder.state !== 'inactive') {
-        try { systemMediaRecorder.stop(); } catch (e) { }
+      // Stop system loopback
+      if (systemSourceNode) {
+        try { systemSourceNode.disconnect(); } catch (e) { }
+        systemSourceNode = null;
       }
-      if (dgSocketSystem) {
-        try { dgSocketSystem.close(); } catch (e) { }
-        dgSocketSystem = null;
+      if (activeSystemStream) {
+        activeSystemStream.getTracks().forEach(track => track.stop());
+        activeSystemStream = null;
       }
-      if (systemSourceNode) { try { systemSourceNode.disconnect(); } catch (e) { } systemSourceNode = null; }
-      if (activeSystemStream) { activeSystemStream.getTracks().forEach(t => t.stop()); activeSystemStream = null; }
       recordBtn.classList.remove('recording');
       recordDot.classList.remove('recording');
       recordText.textContent = 'Speaker';
-      flushSystemBuffer();
     }
   } else if (source === 'mic') {
     if (isRecordingMic) {
+      // Start microphone
       if (micText) micText.textContent = 'Connecting...';
       if (micBtnAi) micBtnAi.style.pointerEvents = 'none';
       try {
-        console.log('[Audio Capture] Attempting hardware microphone capture (You)...');
+        console.log('[Audio Capture] Attempting hardware microphone capture...');
         activeMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
         micSourceNode = audioCtx.createMediaStreamSource(activeMicStream);
+        micSourceNode.connect(audioDestNode);
+        if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
 
         if (micBtnAi) {
           micBtnAi.style.pointerEvents = 'auto';
@@ -2568,8 +2320,7 @@ async function toggleSource(source) {
           micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.5)';
           micBtnAi.style.color = '#ffffff';
         }
-        await startStreamForSource('mic', activeMicStream);
-        console.log('[Audio Capture] Successfully acquired microphone stream (You).');
+        console.log('[Audio Capture] Successfully acquired microphone stream.');
       } catch (micErr) {
         console.warn('[Audio Capture] Microphone capture failed:', micErr.message);
         isRecordingMic = false;
@@ -2579,15 +2330,15 @@ async function toggleSource(source) {
         }
       }
     } else {
-      if (micMediaRecorder && micMediaRecorder.state !== 'inactive') {
-        try { micMediaRecorder.stop(); } catch (e) { }
+      // Stop microphone
+      if (micSourceNode) {
+        try { micSourceNode.disconnect(); } catch (e) { }
+        micSourceNode = null;
       }
-      if (dgSocketMic) {
-        try { dgSocketMic.close(); } catch (e) { }
-        dgSocketMic = null;
+      if (activeMicStream) {
+        activeMicStream.getTracks().forEach(track => track.stop());
+        activeMicStream = null;
       }
-      if (micSourceNode) { try { micSourceNode.disconnect(); } catch (e) { } micSourceNode = null; }
-      if (activeMicStream) { activeMicStream.getTracks().forEach(t => t.stop()); activeMicStream = null; }
       if (micBtnAi) {
         micBtnAi.classList.remove('recording');
         micText.textContent = 'Mic';
@@ -2595,7 +2346,6 @@ async function toggleSource(source) {
         micBtnAi.style.borderColor = 'rgba(255, 255, 255, 0.22)';
         micBtnAi.style.color = '#ffffff';
       }
-      flushMicBuffer();
     }
   }
 
@@ -2603,35 +2353,50 @@ async function toggleSource(source) {
 }
 
 function stopRecording() {
-  flushSystemBuffer();
-  flushMicBuffer();
-
   isRecordingSystem = false;
   isRecordingMic = false;
   isRecording = false;
 
-  if (systemMediaRecorder && systemMediaRecorder.state !== 'inactive') {
-    try { systemMediaRecorder.stop(); } catch (e) { }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try {
+      mediaRecorder.stop();
+    } catch (e) { }
   }
-  if (micMediaRecorder && micMediaRecorder.state !== 'inactive') {
-    try { micMediaRecorder.stop(); } catch (e) { }
+  mediaRecorder = null;
+
+  if (dgSocket) {
+    try {
+      dgSocket.close();
+    } catch (e) { }
   }
-  systemMediaRecorder = null;
-  micMediaRecorder = null;
+  dgSocket = null;
 
-  if (dgSocketSystem) { try { dgSocketSystem.close(); } catch (e) { } dgSocketSystem = null; }
-  if (dgSocketMic) { try { dgSocketMic.close(); } catch (e) { } dgSocketMic = null; }
+  if (systemSourceNode) {
+    try { systemSourceNode.disconnect(); } catch (e) { }
+    systemSourceNode = null;
+  }
+  if (activeSystemStream) {
+    activeSystemStream.getTracks().forEach(track => track.stop());
+    activeSystemStream = null;
+  }
 
-  if (systemSourceNode) { try { systemSourceNode.disconnect(); } catch (e) { } systemSourceNode = null; }
-  if (activeSystemStream) { activeSystemStream.getTracks().forEach(t => t.stop()); activeSystemStream = null; }
+  if (micSourceNode) {
+    try { micSourceNode.disconnect(); } catch (e) { }
+    micSourceNode = null;
+  }
+  if (activeMicStream) {
+    activeMicStream.getTracks().forEach(track => track.stop());
+    activeMicStream = null;
+  }
 
-  if (micSourceNode) { try { micSourceNode.disconnect(); } catch (e) { } micSourceNode = null; }
-  if (activeMicStream) { activeMicStream.getTracks().forEach(t => t.stop()); activeMicStream = null; }
-
-  if (audioCtx) { audioCtx.close().catch(e => { }); audioCtx = null; }
+  if (audioCtx) {
+    audioCtx.close().catch(e => { });
+    audioCtx = null;
+  }
+  audioDestNode = null;
 
   resetRecordButton();
-  console.log('[Audio Capture] Dual capture stopped cleanly.');
+  console.log('[Audio Capture] Capture stopped.');
 }
 
 function resetRecordButton() {
@@ -2695,47 +2460,6 @@ copyAnswerBtn.addEventListener('click', () => {
   }
 });
 
-// Export Timeline Button (ParakeetAI format timeline export)
-const exportTimelineBtn = document.getElementById('export-timeline-btn');
-if (exportTimelineBtn) {
-  exportTimelineBtn.addEventListener('click', () => {
-    const now = new Date();
-    const formattedDate = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}, ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-    
-    let exportText = `Sutra AI Timeline Export\nExported: ${formattedDate}\n\n============================================================\n\n`;
-    
-    if (answerHistory.length > 0) {
-      answerHistory.forEach((entry, idx) => {
-        const timeStr = entry.timestamp ? `[${entry.timestamp}] ` : '';
-        exportText += `${timeStr}💬 Question: ${entry.question || 'Question'}\n\n---\n\n⭐️ Answer:  \n${entry.answer}\n\n============================================================\n\n`;
-      });
-    } else {
-      const liveTranscript = accumulatedTranscript.trim();
-      const currentDOMAnswer = answerBlock.textContent.trim();
-      if (liveTranscript || (currentDOMAnswer && !currentDOMAnswer.startsWith('Click the "Answer" button'))) {
-        exportText += `💬 Live Transcript:\n${liveTranscript || '(None)'}\n\n---\n\n⭐️ Active Answer:\n${currentDOMAnswer || '(None)'}\n\n============================================================\n`;
-      } else {
-        alert('No Q&A timeline history available to export yet.');
-        return;
-      }
-    }
-
-    const timestampFile = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `sutra_ai_timeline_export_${timestampFile}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    exportTimelineBtn.textContent = '✓ Exported!';
-    setTimeout(() => { exportTimelineBtn.textContent = 'Export Timeline'; }, 1500);
-  });
-}
-
 // Copy All Answer button (sticky inside answer block)
 if (copyAllAnswerBtn) {
   copyAllAnswerBtn.addEventListener('click', () => {
@@ -2752,19 +2476,8 @@ if (copyAllAnswerBtn) {
 // Call AI — routes through backend (4-layer memory) or offline Gemini (local 4-layer memory)
 async function queryAssistant(manualQuestionText, isManual = false) {
   const _ttftStart = Date.now();
-  if (typeof activeTab !== 'undefined' && activeTab !== 'ai' && typeof openPanel === 'function') {
-    openPanel('ai');
-  }
   answerBlock.classList.add('loading');
   updateWindowSize();
-
-  // Always sync latest transcript text from DOM (including gray interim text) for automatic queries
-  if (!isManual && transcriptBlock) {
-    const currentDOMText = transcriptBlock.textContent.trim();
-    if (currentDOMText && transcriptBlock.dataset.placeholder !== 'true') {
-      accumulatedTranscript = currentDOMText;
-    }
-  }
 
   try {
     let answer;
@@ -2773,11 +2486,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
     if (backendUrl && sessionToken) {
       // Resolve the current question on the frontend to display it at the top
       if (isManual) {
-        if (manualQuestionText && (manualQuestionText.startsWith('GENERATE A 100% ROLE-SYNCED') || manualQuestionText.includes('VERBAL SELF-INTRODUCTION'))) {
-          currentQuestion = 'Verbal Self-Introduction (Role-Synced)';
-        } else {
-          currentQuestion = manualQuestionText;
-        }
+        currentQuestion = manualQuestionText;
       } else {
         try {
           const detected = detectLatestQuestion(accumulatedTranscript, lastAnswerOffset);
@@ -2824,9 +2533,6 @@ async function queryAssistant(manualQuestionText, isManual = false) {
 
         // Each raw chunk from the HTTP stream
         window.electronAPI.onAnswerChunk((data) => {
-          if (typeof activeTab !== 'undefined' && activeTab !== 'ai' && typeof openPanel === 'function') {
-            openPanel('ai');
-          }
           rawBuffer += data.chunk;
 
           // Detect stream format on the first non-empty chunk
@@ -2841,7 +2547,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
             // Plain text stream
             newEntry.answer = rawBuffer;
             renderAnswerToDOM(answerBlock, rawBuffer, currentQuestion);
-            answerBlock.scrollTop = 0;
+            answerBlock.scrollTop = answerBlock.scrollHeight;
             updateWindowSize();
           } else if (isJsonStream === true) {
             // JSON stream extraction
@@ -2871,7 +2577,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
                 displayText = displayText.replace(/"\s*\}?\s*$/, '');
                 newEntry.answer = displayText;
                 renderAnswerToDOM(answerBlock, displayText, currentQuestion);
-                answerBlock.scrollTop = 0;
+                answerBlock.scrollTop = answerBlock.scrollHeight;
                 updateWindowSize();
               }
             }
@@ -3008,7 +2714,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
         newEntry.answer = answer.substring(0, idx + chunkSize);
         renderAnswerToDOM(answerBlock, newEntry.answer, currentQuestion);
         idx += chunkSize;
-        answerBlock.scrollTop = 0;
+        answerBlock.scrollTop = answerBlock.scrollHeight;
         updateWindowSize();
         setTimeout(typeResponse, 10);
       } else {
@@ -3124,10 +2830,14 @@ if (nextAnswerBtn) {
 
 // Answer Button: detect latest question in transcript → backend or offline
 aiAnswerBtn.addEventListener('click', () => {
-  // Sync full text from DOM including both confirmed (white) and interim (gray) text
-  const currentDOMText = transcriptBlock.textContent.trim();
-  if (currentDOMText && transcriptBlock.dataset.placeholder !== 'true') {
-    accumulatedTranscript = currentDOMText;
+  // Only sync from the contenteditable DOM when NOT recording (i.e. manual paste/type mode).
+  // When Deepgram is active, accumulatedTranscript is the authoritative confirmed-only source.
+  // Reading textContent during live recording would mix in unconfirmed interim (gray) text.
+  if (!isRecording) {
+    const typedText = transcriptBlock.textContent.trim();
+    if (typedText && transcriptBlock.dataset.placeholder !== 'true') {
+      accumulatedTranscript = typedText;
+    }
   }
 
   const currentText = accumulatedTranscript.trim();
@@ -3151,20 +2861,10 @@ function handleManualAISubmit() {
   queryAssistant(query, true);
 }
 
-if (aiSend) {
-  aiSend.addEventListener('click', (e) => {
-    e.preventDefault();
-    handleManualAISubmit();
-  });
-}
-if (aiInput) {
-  aiInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleManualAISubmit();
-    }
-  });
-}
+aiSend.addEventListener('click', handleManualAISubmit);
+aiInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') handleManualAISubmit();
+});
 
 recordBtn.addEventListener('click', toggleRecording);
 if (micBtnAi) {
@@ -3192,41 +2892,18 @@ async function solveFromScreenshot() {
     newEntry.answer = '⚙️ Analyzing with vision AI...';
     renderActiveAnswer();
 
-    const prompt = `You are a world-class senior multi-disciplinary technical expert, engineering architect, and master vision solver. Analyze the provided screenshot with 100% precision and provide an exhaustive, 360-degree deep solution and complete technical breakdown across ANY domain.
+    const prompt = `Analyze the provided screenshot of the screen. Find the question, coding problem, or conceptual statement visible on the screen.
 
-SUPPORTED DOMAIN COVERAGE (AUTO-DETECT & SOLVE):
-• Electronics, VLSI & Microcontrollers: IC Pinouts (8051, 555, ARM, Arduino, ESP32), Logic Circuits, Verilog/VHDL, MOSFETs, PCBs, Timing Diagrams.
-• Networking, Cloud & Infrastructure: Cisco Meraki, IP Subnetting, VLANs, BGP/OSPF, OSI Layers, AWS/Azure/GCP Cloud Architecture, Wireshark.
-• Mechanical, Civil & CAD/CAM: 2D/3D CAD Models (SolidWorks, AutoCAD), Orthographic Blueprints, Stress/FEA Analysis, Thermodynamics.
-• Computer Science & AI/ML: LeetCode/HackerRank Algorithms, IDE Stack Traces, SQL, ER/UML Diagrams, Neural Networks, Flowcharts.
-• Physics, Chemistry & Biomedical: Kinematics, Circuit Analysis, Chemical Reaction Pathways, Optics, Control Systems.
-• Mathematics, Aptitude & MCQs: Calculus, Geometry, Chart/Graph Data Interpretation, Technical Assessment MCQs.
-
-UNIVERSAL 360-DEGREE EXHAUSTIVE ANALYSIS MANDATES:
-
-1. FULL FORMS & TERMINOLOGY BREAKDOWN:
-   - Identify and expand EVERY acronym, abbreviation, protocol, component tag, or technical term in the screenshot (e.g., VLSI, UART, BGP, GPIO, CAD, IC numbers, OSI layers, MOSFET, etc.).
-   - Explain the specific role of each term/protocol in the context of the diagram.
-
-2. PIN DIAGRAM, PORT & COMPONENT SPECIFICATIONS:
-   - If ICs, microcontrollers, logic chips, switches, or hardware ports are present, detail the pinout/pin diagram, signal directions, power supply (VCC/GND), and pin functions.
-
-3. WORKING PRINCIPLE & OPERATIONAL MECHANISM:
-   - Explain in detail HOW the system, circuit, network, model, or algorithm works from first principles.
-   - Describe the underlying physical, electrical, logical, or mechanical mechanisms clearly.
-
-4. FLOW OF DIAGRAM & STEP-BY-STEP SIGNAL/DATA SEQUENCE:
-   - Detail the exact step-by-step flow across the diagram: input signal/trigger → processing nodes → output states.
-   - Trace packet travel paths, current/voltage flows, structural load propagation, or data pipeline execution.
-
-5. PREDICTED NEXT STEPS, WORKFLOW EXECUTION & TROUBLESHOOTING:
-   - Predict the immediate next steps in the operational sequence or execution flow.
-   - Provide potential failure points, diagnostic checks, or recommended next actions for troubleshooting.
-
-6. DIRECT SOLUTION, CALCULATIONS & OPTIMAL CODE:
-   - Answer any specific question, calculation, or exercise with exact values and step-by-step math.
-   - For coding/algorithms, detect the EXACT programming language shown or implied (Java, C++, C, Python, Verilog/VHDL, JS, SQL, Rust, Go) and write the complete, optimal, bug-free code solution.
-   - Highlight correct options for MCQs.`;
+Rules:
+1. If the screenshot shows a coding problem or request to write code:
+   - CRITICAL: You MUST write the code solution in the EXACT programming language shown or implied in the screenshot's code editor, starter code, or description (e.g., if you see Java syntax, classes, or imports, you MUST write the solution in Java. If you see C++, write it in C++. If you see JS, write it in JS). Do NOT default to Python unless the screenshot explicitly requests Python.
+   - At the very top, write a single line summarizing the basic question in 1 sentence. Start the line with "// Question: " (or appropriate comment syntax for the language).
+   - Followed by a blank line.
+   - Then write the clean, fully functional, optimal code solution in that detected language.
+   - The code solution MUST NOT contain any comments (no inline comments, no block comments, no docstrings) or markdown code block formatting (like \`\`\`).
+2. If the screenshot shows a conceptual, theoretical, or verbal question (such as explaining OOP, architecture, system design, or definitions):
+   - Do NOT output any code blocks or code syntax.
+   - Provide a natural, conversational explanation in plain English paragraphs, as if speaking to an interviewer. Keep it concise.`;
 
     let answer;
     if (backendUrl) {
@@ -3493,7 +3170,7 @@ function questionScore(sentence) {
   const lower = sentence.toLowerCase();
   let score = 0;
   if (sentence.endsWith('?')) score += 2;
-  if (QUESTION_KEYWORDS.some((kw) => lower.includes(kw))) score += 1;
+  if (QUESTION_KEYWORDS.some((kw) => lower.startsWith(kw))) score += 1;
   return score;
 }
 
@@ -3507,7 +3184,7 @@ function detectLatestQuestion(fullTranscript, lastAnsweredOffset = 0) {
   const sentences = splitIntoSentences(newText);
 
   if (sentences.length === 0) {
-    return { question: newText, newOffset: fullTranscript.length };
+    return { question: null, newOffset: lastAnsweredOffset };
   }
 
   let bestSentence = null;
@@ -3550,25 +3227,29 @@ function buildPrompt({ latestQuestion, recentQA, rollingSummary, userContext, tr
   const parts = [];
 
   parts.push(
-    `You are a candidate sitting in an interview today answering out loud. You are the real candidate, not an AI.
-Your job is to generate a polished, professional, natural, and persuasive verbal answer.
+    `You are a real person sitting in a technical interview today. You are the candidate, not an AI.
+Your only job is to answer the interviewer's question the way a real, experienced engineer would naturally say it out loud.
 
-CRITICAL INSTRUCTIONS & JD ALIGNMENT:
-1. FLAWLESS GRAMMAR & FLOW: Ensure impecable English grammar, professional tone, and smooth conversational flow tailored for verbal delivery.
-2. JOB DESCRIPTION SYNC: Always align and sync your background, self-introduction, technical skills, and answers directly to the target Job Description (JD) and Resume provided below.
-3. SELF-INTRODUCTION RENOVATION: If asked to introduce yourself ("tell me about yourself", "walk me through your resume", "introduce yourself", "optimize my self-introduction"), renovate the self-introduction so that technical skills, project experiences, and career accomplishments highlight the exact requirements and technologies of the target JD.
-4. SPOKEN STYLE: Speak in 1-3 fluid, natural paragraphs. NEVER use bullet points, numbered lists (1., 2.), dashes, asterisks (**), or markdown headings.
-5. NO FILLER: Start directly with the answer. Do NOT say "Certainly", "Sure", "Great question", "As an AI", or "Here is the response".`
+HOW TO ANSWER:
+- Speak in one or two fluid, conversational paragraphs.
+- NEVER use numbered lists (like 1., 2., 3.), bullet points, dashes, or numbered steps.
+- NEVER use bold text, asterisks (**), or any markdown headings.
+- Talk the way a confident engineer talks in a real conversation.
+- Use casual contractions: I've, I'd, I'm, that's, it's, we've, didn't, don't.
+- Start directly with the point. Do NOT warm up with filler.
+- Keep the response short and clean — under 150 words.
+- Do NOT say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "Here's the answer", "As an AI".
+- Sound like a real person talking, not a document being read.`
   );
 
   if (userContext) {
     const { resume, job_description, code_context } = userContext;
     const ctxParts = [];
-    if (resume) ctxParts.push(`RESUME:\n${resume.substring(0, 1500)}`);
-    if (job_description) ctxParts.push(`JOB DESCRIPTION (JD):\n${job_description.substring(0, 2000)}`);
-    if (code_context) ctxParts.push(`CODE CONTEXT:\n${code_context.substring(0, 1000)}`);
+    if (resume) ctxParts.push(`RESUME:\n${resume.substring(0, 400)}`);
+    if (job_description) ctxParts.push(`JOB DESCRIPTION:\n${job_description.substring(0, 300)}`);
+    if (code_context) ctxParts.push(`CODE CONTEXT:\n${code_context.substring(0, 400)}`);
     if (ctxParts.length > 0) {
-      parts.push(`\n[USER & ROLE CONTEXT]\n${ctxParts.join('\n\n')}`);
+      parts.push(`\n[USER CONTEXT]\n${ctxParts.join('\n\n')}`);
     }
   }
 
@@ -3585,13 +3266,8 @@ CRITICAL INSTRUCTIONS & JD ALIGNMENT:
     parts.push(`\n[RECENT AUDIO TRANSCRIPT]\n${transcriptWindow}`);
   }
 
-  // Detect inline JD in prompt and instruct explicit renovation
-  if (latestQuestion && (latestQuestion.toLowerCase().includes('for this jd') || latestQuestion.toLowerCase().includes('interview details:') || latestQuestion.toLowerCase().includes('job description:'))) {
-    parts.push(`\n[INLINE TARGET JOB DESCRIPTION & INTERVIEW CONTEXT DETECTED IN PROMPT]\n${latestQuestion}\n\nCRITICAL MANDATE: The user provided a specific target Job Description and role above. DO NOT echo the candidate's generic self-introduction verbatim. You MUST renovate, polish, and adapt the self-introduction so that it dynamically weaves in the candidate's background, technical stack, and work experience, directly connecting them to the target company, role, and technical requirements specified in the Job Description!`);
-  }
-
-  parts.push(`\n[QUESTION / PROMPT TO ANSWER]\n${latestQuestion}`);
-  parts.push(`\nAnswer (spoken English only, flawless grammar, 100% tailored & synced to the target JD, no markdown formatting):`);
+  parts.push(`\n[QUESTION TO ANSWER]\n${latestQuestion}`);
+  parts.push(`\nAnswer (plain spoken English only, no formatting):`);
 
   return parts.join('\n');
 }
@@ -3700,13 +3376,6 @@ function renderAnswerToDOM(container, text, questionText = '') {
   container.innerHTML = '';
 
   if (questionText) {
-    let cleanQText = questionText;
-    if (cleanQText.startsWith('GENERATE A 100% ROLE-SYNCED') || cleanQText.includes('VERBAL SELF-INTRODUCTION')) {
-      cleanQText = 'Verbal Self-Introduction (Role-Synced)';
-    } else if (cleanQText.length > 110) {
-      cleanQText = cleanQText.substring(0, 95).trim() + '...';
-    }
-
     const qDiv = document.createElement('div');
     qDiv.style.marginBottom = '12px';
     qDiv.style.padding = '8px 12px';
@@ -3725,9 +3394,9 @@ function renderAnswerToDOM(container, text, questionText = '') {
     qBadge.style.flexShrink = '0';
 
     const qText = document.createElement('span');
-    qText.textContent = cleanQText;
+    qText.textContent = questionText;
     qText.style.color = 'rgba(255, 255, 255, 0.7)';
-    qText.style.fontSize = '0.95em';
+    qText.style.fontSize = '1em';
     qText.style.fontStyle = 'italic';
     qText.style.lineHeight = '1.4';
 
@@ -3758,15 +3427,11 @@ function renderAnswerToDOM(container, text, questionText = '') {
       header.style.borderBottom = '1px solid rgba(20, 184, 166, 0.2)';
 
       const langLabel = document.createElement('span');
-      let displayLang = (segment.lang || 'code').toUpperCase();
-      if (displayLang === 'TEXT' || displayLang === 'DIAGRAM' || displayLang === 'ASCII' || displayLang === 'ARCHITECTURE') {
-        displayLang = '📐 ARCHITECTURE DIAGRAM';
-      }
+      langLabel.textContent = (segment.lang || 'code').toUpperCase();
       langLabel.style.color = '#5eead4';
       langLabel.style.fontSize = '0.75em';
       langLabel.style.fontWeight = 'bold';
       langLabel.style.letterSpacing = '0.5px';
-      langLabel.textContent = displayLang;
 
       const copyBtn = document.createElement('button');
       copyBtn.textContent = 'Copy';
@@ -3776,7 +3441,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
       copyBtn.style.fontSize = '0.75em';
       copyBtn.style.padding = '2px 8px';
       copyBtn.style.borderRadius = '4px';
-      copyBtn
+      copyBtn.style.cursor = 'pointer';
       copyBtn.onclick = () => {
         navigator.clipboard.writeText(segment.content.trim());
         copyBtn.textContent = 'Copied!';
@@ -3868,9 +3533,6 @@ function renderAnswerToDOM(container, text, questionText = '') {
 }
 
 const settingsBtn = document.getElementById('settings-btn');
-const opacitySlider = document.getElementById('opacity-slider');
-const opacityDisplay = document.getElementById('opacity-display');
-const fontSizeInput = document.getElementById('font-size-input');
 const userEmailDisplay = document.getElementById('user-email-display');
 const mainAnswerBlock = document.getElementById('answer-block');
 const mainTranscriptBlock = document.getElementById('transcript-block');
@@ -3897,25 +3559,24 @@ async function loadAllSettings() {
 
   const savedOpacity = safeGetItem('stealth_opacity');
   if (savedOpacity !== null) {
-    userOpacity = Math.max(0.20, Math.min(1.0, parseFloat(savedOpacity)));
+    userOpacity = Math.max(0.20, Math.min(2.0, parseFloat(savedOpacity)));
     if (opacitySlider) opacitySlider.value = userOpacity;
     if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
-    // Apply user opacity to the app container (both steps wizard and active session)
-    const appCont = document.querySelector('.app-container');
-    if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
+    // Apply opacity only when in an active stealth session — not on the setup screen
+    if (document.body.classList.contains('stealth-active')) {
+      const appCont = document.querySelector('.app-container');
+      if (appCont) appCont.style.opacity = Math.min(1.0, userOpacity);
+    } else {
+      // Always keep setup view at full opacity
+      const appCont = document.querySelector('.app-container');
+      if (appCont) appCont.style.opacity = '1';
+    }
   } else {
     userOpacity = 1.0;
     if (opacityDisplay && opacitySlider) {
       opacitySlider.value = 1.0;
       opacityDisplay.textContent = '100%';
     }
-  }
-
-  const savedDevStealth = safeGetItem('stealth_dev_mode_enabled');
-  if (savedDevStealth !== null) {
-    updateDevStealthUI(savedDevStealth === 'true');
-  } else {
-    updateDevStealthUI(true);
   }
 
   const savedFontSize = safeGetItem('stealth_font_size');
@@ -3936,6 +3597,33 @@ async function loadAllSettings() {
 
   if (window.electronAPI && window.electronAPI.setZoomFactor) {
     window.electronAPI.setZoomFactor(1.0);
+  }
+
+  // Restore saved panel width, height, and window X/Y position
+  const savedPanelWidth = safeGetItem('stealth_panelWidth');
+  if (savedPanelWidth) {
+    document.documentElement.style.setProperty('--panel-width', parseFloat(savedPanelWidth) + 'px');
+  }
+  const savedPanelHeight = safeGetItem('stealth_panelHeight');
+  if (savedPanelHeight) {
+    currentHeight = parseFloat(savedPanelHeight);
+  }
+
+  if (window.electronAPI && window.electronAPI.getSavedBounds) {
+    try {
+      const bounds = await window.electronAPI.getSavedBounds();
+      if (bounds) {
+        if (bounds.panelWidth) {
+          document.documentElement.style.setProperty('--panel-width', bounds.panelWidth + 'px');
+        }
+        if (bounds.height) {
+          currentHeight = bounds.height;
+        }
+        if (bounds.width) {
+          currentWidth = bounds.width;
+        }
+      }
+    } catch (e) { }
   }
 }
 
@@ -3989,11 +3677,6 @@ function showSyncPage() {
 function showSetupWizard() {
   if (setupSyncView) setupSyncView.style.display = 'none';
   if (setupStepsWrapper) setupStepsWrapper.style.display = 'flex';
-  document.body.classList.remove('stealth-active');
-  if (window.electronAPI) {
-    if (window.electronAPI.setAlwaysOnTop) window.electronAPI.setAlwaysOnTop('floating');
-    if (window.electronAPI.setFocusable) window.electronAPI.setFocusable(true);
-  }
 }
 
 async function triggerBrowserSync() {
@@ -4075,13 +3758,12 @@ const setupSettingsBtn = document.getElementById('setup-settings-btn');
 function toggleSettingsPopup() {
   console.log('[Stealth Debug] toggleSettingsPopup called');
   const popup = document.getElementById('settings-popup');
-  const shortcutsPopup = document.getElementById('shortcuts-subpopup');
-  if (shortcutsPopup && shortcutsPopup.style.display === 'flex') {
-    shortcutsPopup.style.display = 'none';
-  }
   if (popup) {
     const isShowing = popup.style.display === 'flex';
     popup.style.display = isShowing ? 'none' : 'flex';
+    console.log('[Stealth Debug] settings-popup display toggled to:', popup.style.display);
+  } else {
+    console.log('[Stealth Debug] settings-popup element not found');
   }
   updateWindowSize();
 }
@@ -4094,42 +3776,12 @@ if (setupSettingsBtn) {
   setupSettingsBtn.addEventListener('click', toggleSettingsPopup);
 }
 
-const settingsCloseBtn = document.getElementById('settings-close-btn');
 if (settingsCloseBtn) {
   settingsCloseBtn.addEventListener('click', () => {
     const popup = document.getElementById('settings-popup');
-    if (popup) popup.style.display = 'none';
-    updateWindowSize();
-  });
-}
-
-// ── Shortcuts Sub-popup Event Handlers ─────────────────────────────────────
-const openShortcutsBtn = document.getElementById('open-shortcuts-btn');
-const shortcutsSubpopup = document.getElementById('shortcuts-subpopup');
-const shortcutsBackBtn = document.getElementById('shortcuts-back-btn');
-const shortcutsCloseBtn = document.getElementById('shortcuts-close-btn');
-
-if (openShortcutsBtn) {
-  openShortcutsBtn.addEventListener('click', () => {
-    const settingsPopup = document.getElementById('settings-popup');
-    if (settingsPopup) settingsPopup.style.display = 'none';
-    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'flex';
-    updateWindowSize();
-  });
-}
-
-if (shortcutsBackBtn) {
-  shortcutsBackBtn.addEventListener('click', () => {
-    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'none';
-    const settingsPopup = document.getElementById('settings-popup');
-    if (settingsPopup) settingsPopup.style.display = 'flex';
-    updateWindowSize();
-  });
-}
-
-if (shortcutsCloseBtn) {
-  shortcutsCloseBtn.addEventListener('click', () => {
-    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'none';
+    if (popup) {
+      popup.style.display = 'none';
+    }
     updateWindowSize();
   });
 }
@@ -4156,43 +3808,46 @@ function logoutLocalUser() {
   }
 }
 
-const settingsLogoutBtn = document.getElementById('settings-logout-btn');
 if (settingsLogoutBtn) {
   settingsLogoutBtn.addEventListener('click', () => {
-    console.log('[Stealth] Exit button clicked — directly killing application process.');
-    window.electronAPI.quitApp();
+    const popup = document.getElementById('settings-popup');
+    if (popup) popup.style.display = 'none';
+    updateWindowSize();
+
+    const sessionActive = document.body.classList.contains('stealth-active');
+    if (sessionActive) {
+      // During a live session → behave exactly like End Session button
+      if (stopSessionBtn) stopSessionBtn.click();
+    } else {
+      // Outside a session → normal logout
+      logoutLocalUser();
+    }
   });
 }
 
-const settingsDashboardBtn = document.getElementById('settings-dashboard-btn');
 if (settingsDashboardBtn) {
-  settingsDashboardBtn.addEventListener('click', () => {
-    window.electronAPI.openExternalUrl('http://localhost:5173');
+  settingsDashboardBtn.addEventListener('click', async () => {
+    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    if (window.electronAPI && window.electronAPI.openExternalUrl) {
+      window.electronAPI.openExternalUrl(base);
+    } else {
+      window.open(base, '_blank');
+    }
   });
 }
-
-const opacityMinus = document.getElementById('opacity-minus');
-const opacityPlus = document.getElementById('opacity-plus');
 
 window._opacityPreviewTimeout = null;
 window._isPreviewingOpacity = false;
 
 function applyOpacity(val) {
-  userOpacity = Math.max(0.20, Math.min(1.0, parseFloat(val)));
+  userOpacity = Math.max(0.20, Math.min(1.0, parseFloat(val) || 1.0));
   if (opacitySlider) opacitySlider.value = userOpacity;
   safeSetItem('stealth_opacity', userOpacity.toString());
   if (opacityDisplay) opacityDisplay.textContent = Math.round(userOpacity * 100) + '%';
 
   const appCont = document.querySelector('.app-container');
   if (appCont) {
-    window._isPreviewingOpacity = true;
-    appCont.style.opacity = Math.min(1.0, userOpacity);
-
-    clearTimeout(window._opacityPreviewTimeout);
-    window._opacityPreviewTimeout = setTimeout(() => {
-      window._isPreviewingOpacity = false;
-      updateClickThrough();
-    }, 1500);
+    appCont.style.opacity = userOpacity;
   }
 }
 
@@ -4220,48 +3875,15 @@ if (opacitySlider) {
   });
 }
 
-// ── Developer Stealth Mode Toggle ─────────────────────────────────────────────
-let isDevStealthModeEnabled = true;
-const devStealthToggleBtn = document.getElementById('dev-stealth-toggle-btn');
-const stealthModeLabel = document.getElementById('stealth-mode-label');
-
-function updateDevStealthUI(enabled) {
-  isDevStealthModeEnabled = Boolean(enabled);
-  safeSetItem('stealth_dev_mode_enabled', isDevStealthModeEnabled ? 'true' : 'false');
-
-  if (window.electronAPI && window.electronAPI.setStealthMode) {
-    window.electronAPI.setStealthMode(isDevStealthModeEnabled);
-  }
-
-  if (devStealthToggleBtn) {
-    devStealthToggleBtn.textContent = isDevStealthModeEnabled ? 'ON' : 'OFF';
-    devStealthToggleBtn.style.background = isDevStealthModeEnabled ? 'rgba(20, 184, 166, 0.15)' : 'rgba(255, 255, 255, 0.06)';
-    devStealthToggleBtn.style.borderColor = isDevStealthModeEnabled ? 'rgba(20, 184, 166, 0.4)' : 'rgba(255, 255, 255, 0.15)';
-    devStealthToggleBtn.style.color = isDevStealthModeEnabled ? '#2dd4bf' : 'var(--text-secondary)';
-  }
-
-  if (stealthModeLabel) {
-    stealthModeLabel.textContent = isDevStealthModeEnabled ? 'ON (Protected)' : 'OFF (Normal)';
-    stealthModeLabel.style.color = isDevStealthModeEnabled ? '#2dd4bf' : 'var(--text-secondary)';
-  }
-}
-
-if (devStealthToggleBtn) {
-  devStealthToggleBtn.addEventListener('click', () => {
-    updateDevStealthUI(!isDevStealthModeEnabled);
-  });
-}
-
-const fontSizeMinus = document.getElementById('font-size-minus');
-const fontSizePlus = document.getElementById('font-size-plus');
-
 function applyFontSize(val) {
-  val = Math.max(8, Math.min(36, parseFloat(val)));
+  val = Math.max(8, Math.min(36, parseFloat(val) || 12.5));
   if (fontSizeInput) fontSizeInput.value = val;
   safeSetItem('stealth_font_size', val.toString());
   const valPx = val + 'px';
-  if (mainAnswerBlock) mainAnswerBlock.style.fontSize = valPx;
-  if (mainTranscriptBlock) mainTranscriptBlock.style.fontSize = valPx;
+  const answerBlock = document.getElementById('answer-block');
+  const transcriptBlock = document.getElementById('transcript-block');
+  if (answerBlock) answerBlock.style.fontSize = valPx;
+  if (transcriptBlock) transcriptBlock.style.fontSize = valPx;
 }
 
 if (fontSizeMinus) {
@@ -4302,9 +3924,6 @@ async function toggleShrunk(forceShrink = null) {
   }
 
   if (isShrunk) {
-    if (window.electronAPI && window.electronAPI.saveWindowBounds) {
-      try { await window.electronAPI.saveWindowBounds(); } catch (e) {}
-    }
     // Add instant-hide class to kill all CSS transitions/animations immediately
     appContainer.classList.add('instant-hide');
     appContainer.style.visibility = 'hidden';
@@ -4343,13 +3962,7 @@ async function toggleShrunk(forceShrink = null) {
       pendingProgrammaticResizes++;
       window.electronAPI.resizeWindow(600, 580, 'top', false);
     } else {
-      let restored = false;
-      if (window.electronAPI && window.electronAPI.restoreSavedBounds) {
-        restored = await window.electronAPI.restoreSavedBounds();
-      }
-      if (!restored) {
-        updateWindowSize();
-      }
+      updateWindowSize();
     }
 
     // Smoothly fade in content once the OS has completed window bounds expansion
@@ -4358,7 +3971,7 @@ async function toggleShrunk(forceShrink = null) {
         appContainer.style.opacity = userOpacity;
         document.body.classList.add('hover-active');
       } else {
-        appContainer.style.opacity = '1.0';
+        appContainer.style.opacity = userOpacity;
       }
       updateClickThrough();
     }, 100);
@@ -4401,7 +4014,7 @@ if (diamondBtn) {
     const totalMoved = Math.abs(e.screenX - _diamondStartX) + Math.abs(e.screenY - _diamondStartY);
     if (totalMoved > DRAG_THRESHOLD) {
       _diamondDragging = true;
-      diamondBtn
+      diamondBtn.style.cursor = 'grabbing';
     }
     if (_diamondDragging) {
       const dx = e.screenX - _diamondStartX;
@@ -4414,7 +4027,7 @@ if (diamondBtn) {
   });
 
   diamondBtn.addEventListener('pointerup', (e) => {
-    diamondBtn
+    diamondBtn.style.cursor = 'pointer';
     if (diamondBtn.hasPointerCapture(e.pointerId)) {
       diamondBtn.releasePointerCapture(e.pointerId);
     }
@@ -4428,153 +4041,67 @@ if (diamondBtn) {
 }
 
 const expandAnswerBtn = document.getElementById('expand-answer-btn');
+let isDragClick = false;
 
 if (expandAnswerBtn) {
-  let isBtnDragging = false;
-  let startScreenX = 0;
-  let startScreenY = 0;
-  let startWinX = 0;    // window.screenX at drag start
-  let startWinY = 0;    // window.screenY at drag start
-  let startWinW = 0;    // window.innerWidth at drag start
-  let startWinH = 0;    // window.innerHeight at drag start
-  const RESIZE_THRESHOLD = 4;
-
-  // ── Fixed non-answer overhead (px): toolbar-margin(56) + panelHeader(44) + panelContent-padding(32) + transcriptRow(60) + gap(10) + navRow(28) + inputArea(56) = 286
-  // When transcript hidden: 286 - 60 - 10 = 216
-  const OVERHEAD_WITH_TRANSCRIPT = 308;
-  const OVERHEAD_NO_TRANSCRIPT = 238;
-
-  let startPanelW = 0;
   expandAnswerBtn.addEventListener('pointerdown', (e) => {
-    isBtnDragging = false;
-    isResizingViaExpandBtn = true;
-    window.electronAPI.setIgnoreMouseEvents(false);
-    startScreenX = e.screenX;
-    startScreenY = e.screenY;
-    startWinX = window.screenX;
-    startWinY = window.screenY;
-    startWinW = window.innerWidth || currentWidth || 640;
-    startWinH = window.innerHeight || currentHeight || 380;
-    const panelsContainer = document.getElementById('panels');
-    startPanelW = panelsContainer ? panelsContainer.getBoundingClientRect().width : 620;
-    expandAnswerBtn.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  });
-
-  expandAnswerBtn.addEventListener('pointermove', (e) => {
-    if (!expandAnswerBtn.hasPointerCapture(e.pointerId)) return;
-    const dx = e.screenX - startScreenX;
-    const dy = e.screenY - startScreenY;
-    if (Math.abs(dx) > RESIZE_THRESHOLD || Math.abs(dy) > RESIZE_THRESHOLD) {
-      isBtnDragging = true;
-    }
-    if (!isBtnDragging) { e.preventDefault(); return; }
-
-    // ── Screen limits
-    const screenW = window.screen.availWidth;
-    const screenH = window.screen.availHeight;
-
-    // ── Answer panel width can shrink down to 130px minimum width!
-    // Window width is kept at minimum WIDTH (640px) so top toolbar NEVER shrinks or clips!
-    const targetPanelW = Math.max(130, Math.min(screenW - 20, startPanelW + dx));
-
-    // Window width is the max of WIDTH (640px) and targetPanelW + 20
-    let newW = Math.max(WIDTH, targetPanelW + 20);
-    let newH = Math.max(438, Math.min(screenH, startWinH + dy));
-    let newX = startWinX;
-    let newY = startWinY;
-
-    // ── Clamp to screen bounds
-    if (newX + newW > screenW) newW = screenW - newX;
-    if (newY + newH > screenH) newH = screenH - newY;
-
-    // ── Answer block: fill available vertical space
-    const transcriptSectionDrag = document.querySelector('.block-container:first-child');
-    if (transcriptSectionDrag) transcriptSectionDrag.style.display = '';
-    const overhead = OVERHEAD_WITH_TRANSCRIPT;
-
-    const newAnswerH = Math.max(130, newH - overhead);
-    const answerBlock = document.getElementById('answer-block');
-    if (answerBlock) {
-      answerBlock.style.height = newAnswerH + 'px';
-      answerBlock.style.maxHeight = newAnswerH + 'px';
-      answerBlock.style.overflowY = 'auto';
-    }
-    const codeDisplayPre = document.getElementById('code-display');
-    if (codeDisplayPre) {
-      codeDisplayPre.style.height = newAnswerH + 'px';
-      codeDisplayPre.style.maxHeight = newAnswerH + 'px';
-      codeDisplayPre.style.overflowY = 'auto';
-    }
-
-    // ── Panels container width tracks targetPanelW (can shrink to 130px!)
-    const panelsContainerDrag = document.getElementById('panels');
-    if (panelsContainerDrag) {
-      panelsContainerDrag.style.width = targetPanelW + 'px';
-      panelsContainerDrag.style.maxWidth = 'none';
-      panelsContainerDrag.style.height = 'auto';
-      panelsContainerDrag.style.maxHeight = 'none';
-    }
-
+    isResizingPanel = true;
     window.isCustomResized = true;
-    currentHeight = Math.round(newH);
-    currentWidth = Math.round(newW);
-    safeSetItem('stealth_expandedPanelWidth', Math.round(targetPanelW + 20).toString());
-
-    window.electronAPI.resizeWindow(Math.round(newW), Math.round(newH), toolbarPosition, false);
+    document.body.classList.add('resizing');
+    updateDynamicToolbarPosition();
+    startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
+    startHeight = currentHeight;
+    startMouseX = e.screenX;
+    startMouseY = e.screenY;
+    startX = window.screenX;
+    startY = window.screenY;
+    isDragClick = false;
     e.preventDefault();
+
+    // Capture pointer events globally to allow dragging outside window boundaries
+    expandAnswerBtn.setPointerCapture(e.pointerId);
+
+    window.electronAPI.setIgnoreMouseEvents(false);
   });
 
-  const stopExpandBtnDrag = (e) => {
-    isResizingViaExpandBtn = false;
-    if (expandAnswerBtn.hasPointerCapture(e.pointerId)) {
-      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
+  expandAnswerBtn.addEventListener('click', (e) => {
+    if (isDragClick) {
+      isDragClick = false;
+      return;
     }
-    if (!isBtnDragging) {
-      // ── Tap/click: toggle compact ↔ expanded
-      window.isCustomResized = false;
-      currentHeight = 0;  // force updateWindowSize to recalculate
-      currentWidth = 0;
-      isAnswerExpanded = !isAnswerExpanded;
-      expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
+    window.isCustomResized = false;
+    isAnswerExpanded = !isAnswerExpanded;
+    expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
+    if (isAnswerExpanded) {
+      expandAnswerBtn.style.color = 'var(--accent-ai)';
+      expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
+      expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.08)';
 
-      // Reset ALL drag-imposed panel styles so CSS defaults fully restore
-      const panelsContainerReset = document.getElementById('panels');
-      if (panelsContainerReset) {
-        panelsContainerReset.style.width = '';
-        panelsContainerReset.style.maxWidth = '';
-        panelsContainerReset.style.overflow = '';
-        panelsContainerReset.style.height = 'auto';
-        panelsContainerReset.style.maxHeight = 'none';
+      // Default large dimensions
+      currentWidth = Math.max(currentWidth, WIDTH);
+      currentHeight = Math.max(currentHeight, 664);
+    } else {
+      expandAnswerBtn.style.color = 'var(--text-secondary)';
+      expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
+      expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
+
+      // Default collapsed dimensions
+      currentWidth = WIDTH;
+      currentHeight = 664;
+
+      const panelsContainer = document.getElementById('panels');
+      if (panelsContainer) {
+        panelsContainer.style.height = 'auto';
+        panelsContainer.style.maxHeight = '1450px';
       }
-
-      // Restore transcript section visibility
-      const transcriptSectionReset = document.querySelector('.block-container:first-child');
-      if (transcriptSectionReset) transcriptSectionReset.style.display = '';
-
-      const askBadge = document.getElementById('badge-ask');
-      if (askBadge) askBadge.style.display = isAnswerExpanded ? 'inline-block' : 'none';
-
       const answerBlock = document.getElementById('answer-block');
-      if (isAnswerExpanded) {
-        expandAnswerBtn.style.color = 'var(--accent-ai)';
-        expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
-        expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.12)';
-        if (answerBlock) { answerBlock.style.height = '280px'; answerBlock.style.maxHeight = '280px'; }
-      } else {
-        expandAnswerBtn.style.color = 'var(--text-secondary)';
-        expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-        expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
-        if (answerBlock) { answerBlock.style.height = '130px'; answerBlock.style.maxHeight = '130px'; }
+      if (answerBlock) {
+        answerBlock.style.height = 'auto';
+        answerBlock.style.maxHeight = '250px';
       }
-      updateWindowSize();
     }
-    isBtnDragging = false;
-    e.preventDefault();
-  };
-
-  expandAnswerBtn.addEventListener('pointerup', stopExpandBtnDrag);
-  expandAnswerBtn.addEventListener('pointercancel', stopExpandBtnDrag);
+    updateWindowSize();
+  });
 }
 
 
@@ -4609,16 +4136,6 @@ function toggleStealthTooltips(stealthActive) {
 
 // Key listener to temporarily toggle/disable stealth hover-hide behavior
 window.addEventListener('keydown', (e) => {
-  // If the user is currently typing inside a text input or textarea, let native typing proceed naturally
-  const isTypingInInput = e.target && (
-    e.target.tagName === 'INPUT' ||
-    e.target.tagName === 'TEXTAREA' ||
-    e.target.isContentEditable
-  );
-  if (isTypingInInput) {
-    return; // Don't intercept keypresses while user is typing in form fields!
-  }
-
   // Intercept Chromium native zoom and map to custom stealth_font_size
   if (e.ctrlKey) {
     if (e.key === '-' || e.key === '_') {
@@ -4679,27 +4196,12 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  // Prev Question / Answer Shortcut
-  if (checkShortcut('prevAnswer', e)) {
-    const prevBtn = document.getElementById('prev-answer-btn');
-    if (prevBtn) prevBtn.click();
-    e.preventDefault();
-  }
-
-  // Next Question / Answer Shortcut
-  if (checkShortcut('nextAnswer', e)) {
-    const nextBtn = document.getElementById('next-answer-btn');
-    if (nextBtn) nextBtn.click();
-    e.preventDefault();
-  }
-
-  // Answer / Ask Shortcut
+  // Answer Shortcut
   if (checkShortcut('answer', e)) {
     const aiSendBtn = document.getElementById('ai-send');
     const aiAnswerBtn = document.getElementById('ai-answer-btn');
-    const aiInputEl = document.getElementById('ai-input');
-    const queryText = aiInputEl ? aiInputEl.value.trim() : '';
-    if (queryText !== '') {
+    const aiInput = document.getElementById('ai-input');
+    if (aiInput && document.activeElement === aiInput && aiInput.value.trim() !== '') {
       if (aiSendBtn) aiSendBtn.click();
     } else {
       if (aiAnswerBtn) aiAnswerBtn.click();
@@ -4745,9 +4247,7 @@ window.appShortcuts = {
   capture: { ctrl: true, shift: false, alt: false, key: 'Space' },
   answer: { ctrl: true, shift: false, alt: false, key: 'Enter' },
   scrollUp: { ctrl: true, shift: false, alt: false, key: 'ArrowUp' },
-  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' },
-  prevAnswer: { ctrl: true, shift: false, alt: false, key: 'ArrowLeft' },
-  nextAnswer: { ctrl: true, shift: false, alt: false, key: 'ArrowRight' }
+  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' }
 };
 
 function formatShortcut(config) {
@@ -4760,9 +4260,7 @@ function formatShortcut(config) {
   if (keyName === 'ArrowDown') keyName = '↓';
   if (keyName === 'ArrowLeft') keyName = '←';
   if (keyName === 'ArrowRight') keyName = '→';
-  if (!['↑', '↓', '←', '→'].includes(keyName)) {
-    keyName = keyName.charAt(0).toUpperCase() + keyName.slice(1);
-  }
+  keyName = keyName.charAt(0).toUpperCase() + keyName.slice(1);
   parts.push(keyName);
   return parts.join('+');
 }
@@ -4773,38 +4271,22 @@ function updateShortcutUI() {
   const answerBadge = document.getElementById('badge-answer');
   const askBadge = document.getElementById('badge-ask');
   const scrollBadge = document.getElementById('badge-scroll');
-  const prevBadge = document.getElementById('badge-prev-answer');
-  const nextBadge = document.getElementById('badge-next-answer');
 
   if (captureBadge) captureBadge.textContent = formatShortcut(window.appShortcuts.capture);
   if (answerBadge) answerBadge.textContent = formatShortcut(window.appShortcuts.answer);
-  if (askBadge) {
-    askBadge.textContent = formatShortcut(window.appShortcuts.answer);
-    askBadge.style.display = (typeof isAnswerExpanded !== 'undefined' && isAnswerExpanded) ? 'inline-block' : 'none';
-  }
-  if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)}/${formatShortcut(window.appShortcuts.scrollDown)}`;
-  if (prevBadge && window.appShortcuts.prevAnswer) prevBadge.textContent = formatShortcut(window.appShortcuts.prevAnswer);
-  if (nextBadge && window.appShortcuts.nextAnswer) nextBadge.textContent = formatShortcut(window.appShortcuts.nextAnswer);
+  if (askBadge) askBadge.textContent = formatShortcut(window.appShortcuts.answer);
+  if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)} / ${formatShortcut(window.appShortcuts.scrollDown)}`;
 
   // Update Recorders in Settings
   const recCapture = document.getElementById('set-shortcut-capture');
   const recAnswer = document.getElementById('set-shortcut-answer');
   const recScrollUp = document.getElementById('set-shortcut-scrollUp');
   const recScrollDown = document.getElementById('set-shortcut-scrollDown');
-  const recPrevAnswer = document.getElementById('set-shortcut-prevAnswer');
-  const recNextAnswer = document.getElementById('set-shortcut-nextAnswer');
 
   if (recCapture && !recCapture.classList.contains('recording')) recCapture.textContent = formatShortcut(window.appShortcuts.capture);
   if (recAnswer && !recAnswer.classList.contains('recording')) recAnswer.textContent = formatShortcut(window.appShortcuts.answer);
   if (recScrollUp && !recScrollUp.classList.contains('recording')) recScrollUp.textContent = formatShortcut(window.appShortcuts.scrollUp);
   if (recScrollDown && !recScrollDown.classList.contains('recording')) recScrollDown.textContent = formatShortcut(window.appShortcuts.scrollDown);
-  if (recPrevAnswer && !recPrevAnswer.classList.contains('recording') && window.appShortcuts.prevAnswer) recPrevAnswer.textContent = formatShortcut(window.appShortcuts.prevAnswer);
-  if (recNextAnswer && !recNextAnswer.classList.contains('recording') && window.appShortcuts.nextAnswer) recNextAnswer.textContent = formatShortcut(window.appShortcuts.nextAnswer);
-
-  // Sync OS-level system-wide global shortcuts
-  if (window.electronAPI && window.electronAPI.registerGlobalShortcuts) {
-    window.electronAPI.registerGlobalShortcuts(window.appShortcuts);
-  }
 }
 
 function loadShortcuts() {
@@ -4815,41 +4297,6 @@ function loadShortcuts() {
     } catch (e) { console.error('Failed to parse shortcuts', e); }
   }
   updateShortcutUI();
-}
-
-// Listen for system-wide background hotkey triggers
-if (window.electronAPI && window.electronAPI.onGlobalShortcutTriggered) {
-  window.electronAPI.onGlobalShortcutTriggered((action) => {
-    console.log('[Stealth Global Shortcut Triggered]:', action);
-    if (action === 'capture') {
-      const captureBtn = document.getElementById('capture-btn');
-      if (captureBtn) captureBtn.click();
-    } else if (action === 'answer') {
-      const aiSendBtn = document.getElementById('ai-send');
-      const aiAnswerBtn = document.getElementById('ai-answer-btn');
-      const aiInputEl = document.getElementById('ai-input');
-      const queryText = aiInputEl ? aiInputEl.value.trim() : '';
-      if (queryText !== '') {
-        if (aiSendBtn) aiSendBtn.click();
-      } else {
-        if (aiAnswerBtn) aiAnswerBtn.click();
-      }
-    } else if (action === 'scrollUp') {
-      const answerBlock = document.getElementById('answer-block');
-      if (answerBlock) answerBlock.scrollTop -= 80;
-    } else if (action === 'scrollDown') {
-      const answerBlock = document.getElementById('answer-block');
-      if (answerBlock) answerBlock.scrollTop += 80;
-    } else if (action === 'prevAnswer') {
-      const prevBtn = document.getElementById('prev-answer-btn');
-      if (prevBtn) prevBtn.click();
-    } else if (action === 'nextAnswer') {
-      const nextBtn = document.getElementById('next-answer-btn');
-      if (nextBtn) nextBtn.click();
-    } else if (action === 'assistant' || action === 'toggleAssistant') {
-      if (typeof toggleTab === 'function') toggleTab('ai');
-    }
-  });
 }
 
 // Bind Recorder logic
@@ -4899,6 +4346,79 @@ function setupRecorder(btnId, actionKey) {
   });
 }
 
+// ── Settings Popup Feature Handlers ──────────────────────────────────────────
+
+// Dev Stealth Mode Toggle
+let isDevStealthOn = true;
+
+if (devStealthToggleBtn) {
+  devStealthToggleBtn.addEventListener('click', () => {
+    isDevStealthOn = !isDevStealthOn;
+    if (window.electronAPI && window.electronAPI.setContentProtection) {
+      window.electronAPI.setContentProtection(isDevStealthOn);
+    }
+    if (isDevStealthOn) {
+      devStealthToggleBtn.textContent = 'ON';
+      devStealthToggleBtn.style.background = 'rgba(20, 184, 166, 0.15)';
+      devStealthToggleBtn.style.color = '#2dd4bf';
+      if (stealthModeLabel) {
+        stealthModeLabel.textContent = 'ON (Protected)';
+        stealthModeLabel.style.color = '#2dd4bf';
+      }
+    } else {
+      devStealthToggleBtn.textContent = 'OFF';
+      devStealthToggleBtn.style.background = 'rgba(239, 68, 68, 0.15)';
+      devStealthToggleBtn.style.color = '#fca5a5';
+      if (stealthModeLabel) {
+        stealthModeLabel.textContent = 'OFF (Visible)';
+        stealthModeLabel.style.color = '#fca5a5';
+      }
+    }
+  });
+}
+
+// Shortcuts Sub-Popup Navigation
+const settingsPopupEl = document.getElementById('settings-popup');
+
+if (openShortcutsBtn && settingsPopupEl && shortcutsSubpopup) {
+  openShortcutsBtn.addEventListener('click', () => {
+    settingsPopupEl.style.display = 'none';
+    shortcutsSubpopup.style.display = 'flex';
+  });
+}
+if (shortcutsBackBtn && settingsPopupEl && shortcutsSubpopup) {
+  shortcutsBackBtn.addEventListener('click', () => {
+    shortcutsSubpopup.style.display = 'none';
+    settingsPopupEl.style.display = 'flex';
+  });
+}
+if (settingsCloseBtn) {
+  settingsCloseBtn.addEventListener('click', () => {
+    if (settingsPopupEl) settingsPopupEl.style.display = 'none';
+    if (shortcutsSubpopup) shortcutsSubpopup.style.display = 'none';
+  });
+}
+
+// Dashboard Button
+if (settingsDashboardBtn) {
+  settingsDashboardBtn.addEventListener('click', async () => {
+    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    if (window.electronAPI && window.electronAPI.openExternalUrl) {
+      window.electronAPI.openExternalUrl(base);
+    } else {
+      window.open(base, '_blank');
+    }
+  });
+}
+
+// Logout Button
+if (settingsLogoutBtn) {
+  settingsLogoutBtn.addEventListener('click', () => {
+    if (settingsPopupEl) settingsPopupEl.style.display = 'none';
+    endLiveSession();
+  });
+}
+
 // Initialize on boot
 setTimeout(() => {
   loadShortcuts();
@@ -4906,32 +4426,11 @@ setTimeout(() => {
   setupRecorder('set-shortcut-answer', 'answer');
   setupRecorder('set-shortcut-scrollUp', 'scrollUp');
   setupRecorder('set-shortcut-scrollDown', 'scrollDown');
-  setupRecorder('set-shortcut-prevAnswer', 'prevAnswer');
-  setupRecorder('set-shortcut-nextAnswer', 'nextAnswer');
+
+  const savedFontSize = safeGetItem('stealth_font_size');
+  if (savedFontSize) applyFontSize(savedFontSize);
+
+  const savedOpacity = safeGetItem('stealth_opacity');
+  if (savedOpacity) applyOpacity(savedOpacity);
 }, 500);
-
-// ── Inactivity Auto-Kill / Session Safety Manager ─────────────────────────────
-let lastUserActivityTime = Date.now();
-
-function registerUserActivity() {
-  lastUserActivityTime = Date.now();
-}
-
-['mousemove', 'mousedown', 'keydown', 'pointerdown', 'touchstart'].forEach(evt => {
-  window.addEventListener(evt, registerUserActivity, { passive: true });
-});
-
-// Check inactivity every 30 seconds
-setInterval(() => {
-  const idleMs = Date.now() - lastUserActivityTime;
-  const isSessionActive = document.body.classList.contains('stealth-active');
-
-  if (isSessionActive && idleMs >= 15 * 60 * 1000) {
-    console.warn('[Inactivity Manager] Session idle for 15+ minutes — auto-ending active session...');
-    if (typeof stopSessionBtn !== 'undefined' && stopSessionBtn) stopSessionBtn.click();
-  } else if (!isSessionActive && idleMs >= 30 * 60 * 1000) {
-    console.warn('[Inactivity Manager] App idle for 30+ minutes — auto-closing application...');
-    if (window.electronAPI && window.electronAPI.quitApp) window.electronAPI.quitApp();
-  }
-}, 30000);
 
