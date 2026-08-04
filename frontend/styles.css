@@ -43,8 +43,18 @@ body {
   height: 100vh;
 }
 
-/* Enforce standard OS arrow cursor everywhere (inputs, textareas, dropdowns, options, buttons, settings popup) */
-*, input, textarea, select, select *, option, optgroup, button, [contenteditable], .setup-input, .setup-input *, .setup-textarea, #setup-resume-select, #setup-resume-select *, #setup-doc-select, #setup-doc-select *, .interactive, #settings-popup, #settings-popup *, #shortcuts-subpopup, #shortcuts-subpopup * {
+/* Enforce standard OS arrow cursor everywhere (inputs, textareas, dropdowns, options, buttons, settings, edit session, prompt modals) */
+*, input, textarea, select, select *, option, optgroup, button, [contenteditable], .setup-input, .setup-input *, .setup-textarea, #setup-resume-select, #setup-resume-select *, #setup-doc-select, #setup-doc-select *, #edit-session-modal, #edit-session-modal *, #prompt-modal, #prompt-modal *, #edit-company, #edit-role, #edit-jd, #edit-resume-select, #edit-doc-select, .interactive, #settings-popup, #settings-popup *, #shortcuts-subpopup, #shortcuts-subpopup * {
+  cursor: default !important;
+}
+
+#transcript-block {
+  height: 34px !important;
+  max-height: 34px !important;
+  white-space: nowrap !important;
+  word-break: normal !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
   cursor: default !important;
 }
 

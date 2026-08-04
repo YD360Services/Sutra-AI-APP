@@ -313,8 +313,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    if (offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
-    console.log('[Stealth] Populated setup form from local context successfully');
+    if (setupJd) setupJd.value = '';
+    console.log('[Stealth] Initialized setup form with empty Job Description');
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }

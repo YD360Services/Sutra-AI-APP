@@ -475,10 +475,10 @@
               <div style="display: flex; gap: 8px; align-items: stretch; width: 100%;">
                 <div id="transcript-block" class="scrollable-block custom-scrollbar" contenteditable="true"
                   spellcheck="false"
-                  style="flex: 1; height: 50px; max-height: 90px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px 10px; overflow-y: auto; overflow-x: hidden; font-size: 11px; color: var(--text-primary); line-height: 16px; word-break: break-word; white-space: pre-wrap; font-weight: 400; text-align: left; outline: none;">
+                  style="flex: 1; height: 34px; max-height: 34px; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 6px 10px; overflow-x: auto !important; overflow-y: hidden !important; font-size: 11.5px; color: var(--text-primary); line-height: 20px; word-break: normal !important; white-space: nowrap !important; font-weight: 400; text-align: left; outline: none; cursor: default !important;">
                 </div>
                 <button id="ai-answer-btn" class="interactive" data-tooltip="Get AI Answer"
-                  style="align-self: flex-start; margin-top: 0; background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255, 255, 255, 0.25); font-weight: 600;  border-radius: 4px; font-size: 10px; height: 38px; padding: 0 16px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);">Answer
+                  style="align-self: center; margin-top: 0; background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255, 255, 255, 0.25); font-weight: 600; border-radius: 6px; font-size: 10px; height: 34px; padding: 0 14px; box-shadow: 0 0 8px rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 6px;">Answer
                   <span id="badge-answer" class="shortcut-badge">Ctrl+Enter</span></button>
               </div>
             </div>
@@ -769,14 +769,14 @@
             <label
               style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Company</label>
             <input type="text" id="edit-company" class="setup-input" placeholder="e.g. Google"
-              style="padding: 9px 12px; font-size: 13px;" />
+              style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
           </div>
           <div style="display: flex; flex-direction: column; gap: 5px;">
             <label
               style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Target
               Role</label>
             <input type="text" id="edit-role" class="setup-input" placeholder="e.g. Senior SWE"
-              style="padding: 9px 12px; font-size: 13px;" />
+              style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
           </div>
         </div>
 
@@ -786,14 +786,14 @@
             style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Job
             Description</label>
           <textarea id="edit-jd" class="setup-textarea" placeholder="Paste job description here..."
-            style="height: 90px; font-size: 12px; resize: vertical;"></textarea>
+            style="height: 90px; font-size: 12px; resize: vertical; cursor: default !important;"></textarea>
         </div>
 
         <!-- Resume -->
         <div style="display: flex; flex-direction: column; gap: 5px;">
           <label
             style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Resume</label>
-          <select id="edit-resume-select" class="setup-input" style="font-size: 13px; padding: 9px 12px;"></select>
+          <select id="edit-resume-select" class="setup-input" style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
         </div>
 
         <!-- Extra Context Doc -->
@@ -801,7 +801,7 @@
           <label
             style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Extra
             Context Document</label>
-          <select id="edit-doc-select" class="setup-input" style="font-size: 13px; padding: 9px 12px;"></select>
+          <select id="edit-doc-select" class="setup-input" style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
         </div>
 
         <!-- Status message -->
