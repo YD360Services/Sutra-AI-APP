@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.1-8b-instant"
     
     # Databases
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/copilotx"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/copilotx"
     REDIS_URL: str = "redis://localhost:6379/0"
 
     class Config:

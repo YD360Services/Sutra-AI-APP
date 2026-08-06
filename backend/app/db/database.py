@@ -42,27 +42,26 @@ async def verify_and_initialize_db():
     
     async def run_schema_updates(conn):
         import sqlalchemy as sa
-        # Safe schema update for Resume table: add new columns if they do not exist
+        is_sqlite = str(conn.engine.url).startswith("sqlite")
         new_cols = ["introduction", "professional_summary", "career_journey", "strengths", "project_summary"]
         for col in new_cols:
             try:
-                # Execute raw SQL ALTER statement
-                await conn.execute(sa.text(f"ALTER TABLE resumes ADD COLUMN IF NOT EXISTS {col} TEXT"))
-            except Exception:
-                # SQLite fallback (no IF NOT EXISTS, ignore error if already exists)
-                try:
-                    await conn.execute(sa.text(f"ALTER TABLE resumes ADD COLUMN {col} TEXT"))
-                except Exception:
-                    pass
-        
-        # Safe schema update for Session table
-        try:
-            await conn.execute(sa.text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary TEXT"))
-        except Exception:
-            try:
-                await conn.execute(sa.text("ALTER TABLE sessions ADD COLUMN summary TEXT"))
+                async with conn.begin_nested():
+                    if is_sqlite:
+                        await conn.execute(sa.text(f"ALTER TABLE resumes ADD COLUMN {col} TEXT"))
+                    else:
+                        await conn.execute(sa.text(f"ALTER TABLE resumes ADD COLUMN IF NOT EXISTS {col} TEXT"))
             except Exception:
                 pass
+        
+        try:
+            async with conn.begin_nested():
+                if is_sqlite:
+                    await conn.execute(sa.text("ALTER TABLE sessions ADD COLUMN summary TEXT"))
+                else:
+                    await conn.execute(sa.text("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS summary TEXT"))
+        except Exception:
+            pass
 
     try:
         async with engine.begin() as conn:
