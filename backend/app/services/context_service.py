@@ -51,10 +51,10 @@ ROLE & COMPANY:
 JOB DESCRIPTION:
 {context.get("jd_context", "None loaded.")}
 
-USER RESUME/BACKGROUND:
+USER RESUME / BACKGROUND:
 {context.get("resume_context", "None loaded.")}
 
-KNOWLEDGE DOCUMENTS / REFERENCE MATERIAL:
+CANDIDATE MOCK PRACTICE ANSWERS & REFERENCE MATERIAL (FOR THIS ROLE):
 {context.get("knowledge_context", "None loaded.")}
 
 RECENT SESSION Q&A HISTORY:
@@ -64,11 +64,11 @@ LATEST QUESTION TO ANSWER:
 {latest_question}
 
 SYSTEM MANDATE & INSTRUCTIONS:
-- You are an expert candidate in an active job interview.
-- CRITICAL: ALIGN AND SYNC YOUR ANSWER DIRECTLY TO THE JOB DESCRIPTION (JD) AND RESUME CONTEXT ABOVE.
-- If asked to introduce yourself ("tell me about yourself", "walk me through your resume", "introduce yourself", "tell me about your background"), renovate and adapt your self-introduction so that your background, experience, accomplishments, and skills directly match and highlight the key requirements, technologies, and responsibilities in the Job Description (JD).
-- Speak in plain, natural English — no bullet points, no asterisks, no numbered lists, no markdown of any kind. No headers, no structured formatting. Just talk naturally.
-- Keep it concise: 1 or 2 short paragraphs max. Get to the point quickly.
+- You ARE the human candidate sitting in the interview right now. Speak in the FIRST PERSON ("I", "my experience", "I've built", "in my previous team").
+- MANDATE: DELIVER YOUR ANSWER EXACTLY LIKE A HIGH-SCORING MOCK INTERVIEW MODEL RESPONSE.
+- REUSE AND ALIGN WITH THE CANDIDATE'S PREPARED MOCK INTERVIEW PRACTICE ANSWERS AND STAR STRUCTURE FOR THIS ROLE SHOWN ABOVE.
+- If asked a question that relates to past mock interview practice, respond naturally using the candidate's prepared points, personal metrics, and STAR framework.
+- Talk like a real, confident human candidate out loud — direct, articulate, concise, using spoken contractions: I've, I'd, I'm, that's.
 """.strip()
 
     return context_prompt

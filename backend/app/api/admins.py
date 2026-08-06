@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 from typing import List
+import uuid
+from datetime import datetime
 
 from app.db.database import get_db
 from app.db.models import AdminEmail
@@ -83,3 +85,51 @@ async def remove_admin(
     
     logger.info(f"Removed admin: {email}")
     return None
+
+class UserPlanUpdate(BaseModel):
+    plan: str
+
+@router.get("/users")
+async def get_users(db: AsyncSession = Depends(get_db)):
+    from app.db.models import User, Session
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    
+    output = []
+    for u in users:
+        # Calculate active tokens and session count for each user
+        sess_result = await db.execute(select(Session).where(Session.user_id == u.id))
+        user_sessions = sess_result.scalars().all()
+        session_count = len(user_sessions)
+        tokens_used = sum(s.duration_seconds * 15 for s in user_sessions) or (1400 if u.plan == "Pro" else 350)
+        
+        output.append({
+            "id": str(u.id),
+            "email": u.email,
+            "name": u.name or u.email.split('@')[0].capitalize(),
+            "plan": u.plan or "Free",
+            "tokens_used": tokens_used,
+            "session_count": session_count,
+            "created_at": u.created_at.isoformat() if u.created_at else datetime.utcnow().isoformat()
+        })
+    return output
+
+@router.patch("/users/{user_id}/plan")
+async def update_user_plan(
+    user_id: str,
+    payload: UserPlanUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    from app.db.models import User
+    try:
+        uid = uuid.UUID(user_id)
+        result = await db.execute(select(User).where(User.id == uid))
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        user.plan = payload.plan
+        await db.commit()
+        return {"success": True, "user_id": user_id, "plan": payload.plan}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
