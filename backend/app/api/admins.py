@@ -13,7 +13,7 @@ import logging
 router = APIRouter()
 logger = logging.getLogger("copilotx.admins")
 
-DEFAULT_ADMINS = ['kirankumar82054@gmail.com', 'omkarvenkat07@gmail.com']
+DEFAULT_ADMINS = ['kirankumar82054@gmail.com', 'omkarvenkat09@gmail.com']
 
 class AdminEmailCreate(BaseModel):
     email: EmailStr
