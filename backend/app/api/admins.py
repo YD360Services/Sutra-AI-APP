@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
@@ -13,10 +13,31 @@ import logging
 router = APIRouter()
 logger = logging.getLogger("copilotx.admins")
 
-DEFAULT_ADMINS = ['kirankumar82054@gmail.com', 'omkarvenkat09@gmail.com']
+DEFAULT_ADMINS = ['kirankumar82054@gmail.com', 'omkarvenkat09@gmail.com', 'y.bhanuchandar360@gmail.com']
 
 class AdminEmailCreate(BaseModel):
     email: EmailStr
+
+async def verify_admin_user(
+    x_admin_email: Optional[str] = Header(None, alias="X-Admin-Email"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Security check: Validates if the requesting user's email is stored in the database admin_emails table.
+    """
+    if not x_admin_email:
+        return None
+        
+    target_email = x_admin_email.lower().strip()
+    result = await db.execute(select(AdminEmail).where(AdminEmail.email.ilike(target_email)))
+    admin = result.scalar_one_or_none()
+    
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized: User email is not registered in the admin database."
+        )
+    return target_email
 
 @router.get("/admins", response_model=List[str])
 async def get_admins(db: AsyncSession = Depends(get_db)):
