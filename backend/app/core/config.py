@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
     DEEPGRAM_MODEL: str = "nova-2"
     OPENAI_MODEL: str = "gpt-4o"
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "gpt-oss-20b"
     
     # Databases
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/copilotx"

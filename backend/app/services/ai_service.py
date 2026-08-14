@@ -148,7 +148,9 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
             ml = "gemini-2.5-flash"
         elif "gpt-5.5-mini" in ml:
             ml = "gpt-5.4-mini"
-        elif "gptoss" in ml or "o3-mini" in ml:
+        elif "gptoss" in ml or "gpt-oss" in ml or "gpt-oss-20b" in ml:
+            return "gpt-oss-20b"
+        elif "o3-mini" in ml:
             return "o3-mini"
 
         # Final API routing maps:
@@ -165,7 +167,7 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if "llama" in ml:
             if "3.3" in ml or "70b" in ml:
                 return "llama-3.3-70b-specdec"
-            return "llama-3.1-8b-instant"
+            return "gpt-oss-20b"
         return m
 
     # 1. Respect model_lower if explicitly requested
@@ -181,7 +183,7 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         elif settings.GEMINI_API_KEY:
             return "gemini-2.0-flash"
         elif settings.GROQ_API_KEY:
-            return "llama-3.3-70b-specdec"
+            return "gpt-oss-20b"
         return ""
     elif is_screenshot:
         if settings.OPENAI_API_KEY:
@@ -191,7 +193,7 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         return "gpt-4o-mini"
     else:
         if settings.GROQ_API_KEY:
-            return "llama-3.1-8b-instant"
+            return "gpt-oss-20b"
         elif settings.OPENAI_API_KEY:
             return "gpt-4o-mini"
         elif settings.GEMINI_API_KEY:
