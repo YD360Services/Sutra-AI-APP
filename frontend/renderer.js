@@ -1382,6 +1382,8 @@ function initCompanyAutocomplete(inputEl, dropdownEl, nextFocusEl) {
 
     if (localMatches.length > 0) {
       renderSuggestions(localMatches);
+    } else {
+      closeDropdown();
     }
 
     // 2. Fetch worldwide companies asynchronously from global Clearbit API
@@ -1401,10 +1403,17 @@ function initCompanyAutocomplete(inputEl, dropdownEl, nextFocusEl) {
           if (document.activeElement === inputEl && inputEl.value.trim().toLowerCase() === q) {
             renderSuggestions(merged);
           }
+        } else if (localMatches.length === 0) {
+          // If no global results match and no local matches, close dropdown immediately
+          closeDropdown();
         }
+      } else if (localMatches.length === 0) {
+        closeDropdown();
       }
     } catch (err) {
-      // Fallback silently to local matches
+      if (localMatches.length === 0) {
+        closeDropdown();
+      }
     }
   }
 
@@ -1421,6 +1430,9 @@ function initCompanyAutocomplete(inputEl, dropdownEl, nextFocusEl) {
     );
     if (localMatches.length > 0) {
       renderSuggestions(localMatches);
+    } else {
+      // Clear stale dropdown results immediately as user continues typing
+      closeDropdown();
     }
     debounceTimer = setTimeout(() => {
       fetchCompanies(val);
