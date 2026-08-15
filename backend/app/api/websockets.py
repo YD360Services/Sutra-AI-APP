@@ -224,26 +224,34 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                         msg_type = data.get("message")
                         if msg_type in ("AddTranscript", "AddPartialTranscript"):
                             transcript = data.get("metadata", {}).get("transcript", "").strip()
+                            if not transcript and data.get("results"):
+                                words = []
+                                for res_item in data.get("results", []):
+                                    alts = res_item.get("alternatives", [])
+                                    if alts and alts[0].get("content"):
+                                        words.append(alts[0]["content"])
+                                transcript = " ".join(words).strip()
+
                             if not transcript:
                                 continue
-                                
-                            is_final = msg_type == "AddTranscript"
+
+                            is_final = (msg_type == "AddTranscript")
                             logger.info(f"[Speechmatics] Session {session_id} - Transcript: '{transcript}', is_final={is_final}")
-                            
+
                             current = await redis_cache.get_transcript(session_id) or ""
                             updated = f"{current} {transcript}".strip()
-                            
+
                             if is_final:
                                 await redis_cache.set_transcript(session_id, updated)
-                                
+
                             asyncio.create_task(run_background_pipeline(session_id, updated, client_ws))
-                            
+
                             await client_ws.send_json({
                                 "type": "transcript",
                                 "text": transcript,
                                 "is_final": is_final,
                             })
-                            
+
                 await asyncio.gather(browser_to_speechmatics(), speechmatics_to_browser())
                 return
         except Exception as sm_err:
@@ -287,10 +295,10 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
 
                     is_final = bool(data.get("is_final") or data.get("speech_final"))
                     logger.info(f"[Deepgram] Session {session_id} - Transcript: '{transcript}', is_final={is_final}")
-                    
+
                     current = await redis_cache.get_transcript(session_id) or ""
                     updated = f"{current} {transcript}".strip()
-                    
+
                     if is_final:
                         await redis_cache.set_transcript(session_id, updated)
 
@@ -304,7 +312,7 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     })
 
             await asyncio.gather(browser_to_deepgram(), deepgram_to_browser())
-            
+
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected for session {session_id} cleanly.")
     except Exception as exc:
@@ -316,6 +324,15 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
             pass
     finally:
         await redis_cache.track_websocket(session_id, client_id, register=False)
+
+@router.websocket("/ws/transcribe/{session_id}")
+async def transcribe_session_ws(client_ws: WebSocket, session_id: str):
+    await run_websocket_proxy(client_ws, session_id)
+
+@router.websocket("/ws/transcribe")
+async def transcribe_default_ws(client_ws: WebSocket):
+    session_id = "default_session"
+    await run_websocket_proxy(client_ws, session_id)
 
 # Backward-compatible endpoint (current UI)
 @router.websocket("/ws/deepgram")

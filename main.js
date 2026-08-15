@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { exec } = require('child_process');
+const WebSocket = require('ws');
 
 // Helper to keep window bounds fully inside the screen workspace
 function clampBoundsToScreen(x, y, width, height) {
@@ -355,6 +356,11 @@ function createWindow() {
   mainWindow.setResizable(false);
   mainWindow.focus();
 
+  // Forward all renderer logs to the terminal
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer] ${message}`);
+  });
+
   // Prevent accidental reloads (Ctrl+R / F5) in production unless devtools are open
   mainWindow.webContents.on('before-input-event', (event, input) => {
     const isDev = !app.isPackaged;
@@ -428,7 +434,94 @@ function createWindow() {
 
   // Handle request for Deepgram key (offline mode)
   ipcMain.handle('get-deepgram-key', () => {
-    return env.DEEPGRAM_API_KEY || '';
+    return env.DEEPGRAM_API_KEY || 'b9c61b1ad44d1ecb8720eab6ded85c8fe5a8031a';
+  });
+
+  // ── Native Deepgram nova-3 Live Transcription Bridge ───
+  let liveSTTSocket = null;
+  let audioChunkCount = 0;
+
+  ipcMain.on('start-transcription', (event, config = {}) => {
+    const language = config.language || 'en';
+    const dgKey = env.DEEPGRAM_API_KEY || 'b9c61b1ad44d1ecb8720eab6ded85c8fe5a8031a';
+
+    // If socket is already open and ready, inform client immediately
+    if (liveSTTSocket && liveSTTSocket.readyState === WebSocket.OPEN) {
+      event.sender.send('transcription-status', { status: 'listening', provider: 'deepgram' });
+      return;
+    }
+
+    if (liveSTTSocket) {
+      try { liveSTTSocket.close(); } catch (e) { }
+      liveSTTSocket = null;
+    }
+
+    audioChunkCount = 0;
+    const langQuery = (language && language !== 'multi') ? `&language=${encodeURIComponent(language)}` : '';
+    // Use raw 16kHz linear PCM for zero-header stream reliability
+    const dgUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&encoding=linear16&sample_rate=16000&channels=1&smart_format=true&interim_results=true&endpointing=100${langQuery}`;
+
+    console.log(`[Deepgram STT] Connecting to live WebSocket: ${dgUrl}`);
+    try {
+      liveSTTSocket = new WebSocket(dgUrl, {
+        headers: { Authorization: `Token ${dgKey}` }
+      });
+
+      liveSTTSocket.on('open', () => {
+        console.log('[Deepgram STT] Connected successfully to Deepgram WebSocket (Linear16 PCM)!');
+        event.sender.send('transcription-status', { status: 'listening', provider: 'deepgram' });
+      });
+
+      liveSTTSocket.on('message', (msgBuffer) => {
+        try {
+          const data = JSON.parse(msgBuffer.toString());
+          const alt = (data.channel && data.channel.alternatives && data.channel.alternatives[0])
+            || (data.results && data.results.channels && data.results.channels[0] && data.results.channels[0].alternatives && data.results.channels[0].alternatives[0]);
+          const transcript = alt ? alt.transcript : '';
+          const isFinal = (data.is_final !== undefined) ? data.is_final : (data.speech_final || false);
+
+          if (transcript && transcript.trim()) {
+            console.log(`[Deepgram STT] Live Transcript: "${transcript.trim()}" (final: ${isFinal})`);
+            event.sender.send('transcription-chunk', { text: transcript.trim(), is_final: isFinal });
+          }
+        } catch (e) {
+          console.error('[Deepgram STT] Error parsing Deepgram message:', e.message);
+        }
+      });
+
+      liveSTTSocket.on('error', (err) => {
+        console.error('[Deepgram STT] WebSocket Error:', err.message || err);
+      });
+
+      liveSTTSocket.on('close', (code, reason) => {
+        console.log(`[Deepgram STT] WebSocket Closed (code: ${code}, reason: ${reason ? reason.toString() : 'none'})`);
+      });
+    } catch (err) {
+      console.error('[Deepgram STT] Failed to initialize connection:', err.message);
+    }
+  });
+
+  ipcMain.on('send-audio-chunk', (event, chunkBuffer) => {
+    if (liveSTTSocket && liveSTTSocket.readyState === WebSocket.OPEN) {
+      try {
+        const buf = Buffer.from(chunkBuffer);
+        liveSTTSocket.send(buf);
+        audioChunkCount++;
+        if (audioChunkCount === 1 || audioChunkCount % 40 === 0) {
+          console.log(`[Deepgram STT] Actively streaming audio... (${audioChunkCount} chunks sent, ${buf.length} bytes each)`);
+        }
+      } catch (e) {
+        console.error('[Deepgram STT] Error sending audio buffer:', e.message);
+      }
+    }
+  });
+
+  ipcMain.on('stop-transcription', () => {
+    if (liveSTTSocket) {
+      console.log('[Deepgram STT] Stopping transcription session...');
+      try { liveSTTSocket.close(); } catch (e) { }
+      liveSTTSocket = null;
+    }
   });
 
   ipcMain.handle('get-saved-bounds', () => {

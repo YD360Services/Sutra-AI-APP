@@ -57,18 +57,23 @@ app.add_middleware(
 
 import os
 from starlette.middleware.base import BaseHTTPMiddleware
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        # Allow WebSocket handshakes to pass through cleanly without HTTP interception
+        if request.scope.get("type") != "http":
+            return await call_next(request)
+
         method = request.method
         path = request.url.path
         log_msg = f"Request: {method} {path}"
         if request.query_params:
             log_msg += f" ?{request.query_params}"
-        
+
         os.makedirs("logs", exist_ok=True)
         with open("logs/request_debug.log", "a", encoding="utf-8") as f:
             f.write(f"{log_msg}\n")
-        
+
         try:
             response = await call_next(request)
             with open("logs/request_debug.log", "a", encoding="utf-8") as f:

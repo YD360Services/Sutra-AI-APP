@@ -632,7 +632,7 @@ async function loadRecentSessions() {
                     <div style="font-size: 10.5px; color: #2dd4bf; font-weight: 600; margin-bottom: 4px; line-height: 1.4;">
                       <span style="margin-right: 4px;">⭐️</span><strong>Answer:</strong>
                     </div>
-                    <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: #fff;">${b.answer}</div>
+                    <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: #fff;">${formatMathAndMarkdown(escapeHTML(b.answer || ''))}</div>
                   </div>
                 </div>
               `;
@@ -2483,6 +2483,83 @@ function flushTranscriptBuffer() {
 const micBtnAi = document.getElementById('mic-btn-ai');
 const micText = document.getElementById('mic-text');
 
+let isSTTListenersBound = false;
+let pcmProcessorNode = null;
+let mixedAudioGainNode = null;
+
+// High-fidelity downsampler & Float32 to 16-bit Linear PCM converter
+function downsampleAndConvertToInt16(inputBuffer, inputSampleRate, targetSampleRate = 16000) {
+  if (inputSampleRate === targetSampleRate) {
+    const l = inputBuffer.length;
+    const buf = new Int16Array(l);
+    for (let i = 0; i < l; i++) {
+      const s = Math.max(-1, Math.min(1, inputBuffer[i]));
+      buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return buf.buffer;
+  }
+
+  const sampleRateRatio = inputSampleRate / targetSampleRate;
+  const newLength = Math.round(inputBuffer.length / sampleRateRatio);
+  const result = new Int16Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < inputBuffer.length; i++) {
+      accum += inputBuffer[i];
+      count++;
+    }
+    const sample = count > 0 ? (accum / count) : 0;
+    const s = Math.max(-1, Math.min(1, sample));
+    result[offsetResult] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result.buffer;
+}
+
+// Function to ensure PCM Audio Processor is streaming mixed audio to Deepgram
+function ensureMediaRecorderRunning(forceRestart = false) {
+  if (!audioCtx || audioCtx.state === 'closed') return;
+
+  if (!mixedAudioGainNode) {
+    mixedAudioGainNode = audioCtx.createGain();
+  }
+
+  if (forceRestart && pcmProcessorNode) {
+    try { pcmProcessorNode.disconnect(); } catch (e) { }
+    pcmProcessorNode = null;
+  }
+
+  if (!pcmProcessorNode) {
+    try {
+      // 4096 buffer size at 48kHz produces smooth ~85ms PCM chunks
+      pcmProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      pcmProcessorNode.onaudioprocess = (event) => {
+        if (!isRecording) return;
+        const inputData = event.inputBuffer.getChannelData(0);
+        if (inputData && inputData.length > 0) {
+          const pcmBuffer = downsampleAndConvertToInt16(inputData, audioCtx.sampleRate, 16000);
+          window.electronAPI.sendAudioChunk(pcmBuffer);
+        }
+      };
+
+      const silentGain = audioCtx.createGain();
+      silentGain.gain.value = 0;
+      mixedAudioGainNode.connect(pcmProcessorNode);
+      pcmProcessorNode.connect(silentGain);
+      silentGain.connect(audioCtx.destination);
+      console.log(`[Audio Capture] Linear16 PCM audio streaming active (${audioCtx.sampleRate}Hz -> 16000Hz).`);
+    } catch (e) {
+      console.error('[Audio Capture] Failed to initialize PCM audio processor:', e);
+    }
+  }
+}
+
 // Toggle recording state for system capture
 async function toggleRecording() {
   await toggleSource('system');
@@ -2493,10 +2570,98 @@ async function toggleMicRecording() {
   await toggleSource('mic');
 }
 
+// Ensure Web Audio context, destination node, and Deepgram WebSocket are ready
+async function ensureAudioPipelineReady() {
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    mixedAudioGainNode = audioCtx.createGain();
+    audioDestNode = audioCtx.createMediaStreamDestination();
+    mixedAudioGainNode.connect(audioDestNode);
+  }
+  if (!mixedAudioGainNode) {
+    mixedAudioGainNode = audioCtx.createGain();
+    if (audioDestNode) mixedAudioGainNode.connect(audioDestNode);
+  }
+  if (audioCtx.state === 'suspended') {
+    try { await audioCtx.resume(); } catch (e) { }
+  }
+  if (!audioDestNode) {
+    audioDestNode = audioCtx.createMediaStreamDestination();
+    mixedAudioGainNode.connect(audioDestNode);
+  }
+
+  const selectedLanguage = document.getElementById('setup-language-select')?.value || 'en';
+  window.electronAPI.startTranscription({ language: selectedLanguage });
+
+  if (!isSTTListenersBound) {
+    isSTTListenersBound = true;
+
+    window.electronAPI.onTranscriptionStatus((data) => {
+      console.log(`[Deepgram STT] Status: ${data.status} (Provider: ${data.provider})`);
+      recordBtn.style.pointerEvents = 'auto';
+      if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
+      ensureMediaRecorderRunning(true);
+    });
+
+    window.electronAPI.onTranscriptChunk(({ text, is_final }) => {
+      if (!text || !text.trim()) return;
+      const cleanTranscript = text.trim();
+
+      const existingText = transcriptBlock.textContent.trim();
+      if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
+        transcriptBlock.textContent = '';
+        transcriptBlock.dataset.placeholder = 'false';
+      }
+
+      if (is_final) {
+        accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
+        transcriptBlock.textContent = accumulatedTranscript;
+        transcriptBlock.dataset.placeholder = 'false';
+
+        if (shouldSaveTranscript) {
+          const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
+          const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
+          safeSetItem('stealth_transcript_buffer', updatedBuffer);
+
+          if (sessionToken) {
+            transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
+            if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
+            transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+            const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
+            if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
+          }
+        }
+
+        const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
+        const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
+
+        if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
+          const score = questionScore(cleanTranscript);
+          if (score > 0) {
+            if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
+            queryAssistant(null, false);
+          } else {
+            if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+            autoAnswerTimeoutId = setTimeout(() => {
+              if (!answerBlock.classList.contains('loading')) {
+                queryAssistant(null, false);
+              }
+              autoAnswerTimeoutId = null;
+            }, 1000);
+          }
+        }
+      } else {
+        transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
+      }
+      transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
+    });
+  }
+
+  ensureMediaRecorderRunning(true);
+}
+
 // Toggle audio capture for a specific source ('system' or 'mic')
 async function toggleSource(source) {
-  const isCurrentlyRecordingAny = isRecordingSystem || isRecordingMic;
-
   if (source === 'system') {
     isRecordingSystem = !isRecordingSystem;
   } else if (source === 'mic') {
@@ -2511,141 +2676,17 @@ async function toggleSource(source) {
     return;
   }
 
-  // Case 2: First source starts → Initialize Speech-to-Text Socket and Audio Context
-  if (!isCurrentlyRecordingAny) {
-    try {
-      // Check if this is a live interview session
-      const isLiveSession = (selectedSessionType === 'Interview+Coding');
-
-      // Initialize Web Audio API nodes
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      audioDestNode = audioCtx.createMediaStreamDestination();
-
-      // Direct Deepgram WebSocket — no backend hop for minimum latency during live sessions
-      const dgKey = await window.electronAPI.getDeepgramKey();
-      if (!dgKey || dgKey.startsWith('your_')) {
-        showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
-        resetRecordButton();
-        isRecordingSystem = false;
-        isRecordingMic = false;
-        isRecording = false;
-        return;
-      }
-      const selectedLanguage = document.getElementById('setup-language-select')?.value || 'en';
-      const langQuery = (selectedLanguage && selectedLanguage !== 'multi') ? `&language=${encodeURIComponent(selectedLanguage)}` : '';
-      dgSocket = new WebSocket(`wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100${langQuery}`, ['token', dgKey]);
-      console.log(`[Stealth] Connecting direct to Deepgram for live session (Language: ${selectedLanguage})...`);
-
-      dgSocket.onopen = async () => {
-        console.log('[Deepgram Live] Connected successfully.');
-        if (audioCtx && audioCtx.state === 'suspended') {
-          try { await audioCtx.resume(); } catch (e) { }
-        }
-
-        recordBtn.style.pointerEvents = 'auto';
-        if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
-
-        const existingText = transcriptBlock.textContent.trim();
-        if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
-          transcriptBlock.textContent = '';
-          transcriptBlock.dataset.placeholder = 'false';
-        } else {
-          // User has typed something manually — keep it
-          accumulatedTranscript = existingText;
-        }
-
-        // Initialize MediaRecorder from mixed destination node
-        mediaRecorder = new MediaRecorder(audioDestNode.stream, { mimeType: 'audio/webm' });
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && dgSocket && dgSocket.readyState === WebSocket.OPEN) {
-            dgSocket.send(event.data);
-          }
-        };
-
-        // Stream audio slices in 250ms intervals
-        mediaRecorder.start(250);
-      };
-
-      dgSocket.onmessage = (message) => {
-        try {
-          const data = JSON.parse(message.data);
-          const transcript = data.channel?.alternatives?.[0]?.transcript;
-          if (transcript && transcript.trim()) {
-            const cleanTranscript = transcript.trim();
-            if (data.is_final) {
-              // Confirmed text: update accumulatedTranscript and show in white
-              accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
-              transcriptBlock.textContent = accumulatedTranscript;
-              transcriptBlock.dataset.placeholder = 'false';
-
-              // Save transcript block to backend and localStorage
-              if (shouldSaveTranscript) {
-                const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
-                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
-                safeSetItem('stealth_transcript_buffer', updatedBuffer);
-
-                if (sessionToken) {
-                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
-                  if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
-                  transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-                  const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
-                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
-                }
-              }
-
-              // --- AUTO ANSWER LOGIC ---
-              const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-              const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
-
-              if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-                const score = questionScore(cleanTranscript);
-                if (score > 0) {
-                  console.log(`[Auto-Answer] Question detected: "${cleanTranscript}". Querying AI...`);
-                  if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-                  queryAssistant(null, false);
-                } else {
-                  if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-                  autoAnswerTimeoutId = setTimeout(() => {
-                    if (!answerBlock.classList.contains('loading')) {
-                      console.log('[Auto-Answer] 1-second gap detected. Querying AI...');
-                      queryAssistant(null, false);
-                    }
-                    autoAnswerTimeoutId = null;
-                  }, 1000);
-                }
-              }
-            } else {
-              // Interim text: gray preview — does NOT update accumulatedTranscript
-              transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
-            }
-            transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
-          }
-        } catch (e) {
-          console.error('[Deepgram Live] Error parsing message:', e);
-        }
-      };
-
-      dgSocket.onerror = (err) => {
-        console.error('[Deepgram Live] Connection error:', err);
-        stopRecording();
-      };
-
-      dgSocket.onclose = () => {
-        console.log('[Deepgram Live] Connection closed.');
-        if (isRecordingSystem || isRecordingMic) stopRecording();
-      };
-
-
-    } catch (err) {
-      console.error('[Audio Capture] Failed to initialize:', err);
-      showInlineError(`Audio capture error: ${err.message}`, answerBlock);
-      resetRecordButton();
-      isRecordingSystem = false;
-      isRecordingMic = false;
-      isRecording = false;
-      return;
-    }
+  // Ensure Audio Context & Deepgram Socket are initialized
+  try {
+    await ensureAudioPipelineReady();
+  } catch (err) {
+    console.error('[Audio Capture] Failed to initialize audio pipeline:', err);
+    showInlineError(`Audio capture error: ${err.message}`, answerBlock);
+    resetRecordButton();
+    isRecordingSystem = false;
+    isRecordingMic = false;
+    isRecording = false;
+    return;
   }
 
   // Handle stream creation/destruction and UI updates for the active source
@@ -2657,36 +2698,54 @@ async function toggleSource(source) {
       try {
         console.log('[Audio Capture] Attempting loopback screen-audio capture...');
         const sources = await window.electronAPI.getDesktopSources();
-        const screenSource = (sources && sources.length > 0)
-          ? (sources.find(s => s.id.startsWith('screen')) || sources[0])
-          : null;
+        const screenSources = sources && sources.filter ? sources.filter(s => s.id.startsWith('screen')) : [];
+        const screenSource = screenSources.length > 0 ? screenSources[0] : (sources && sources[0] ? sources[0] : null);
 
         if (screenSource) {
-          activeSystemStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              mandatory: {
-                chromeMediaSource: 'desktop'
+          try {
+            activeSystemStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                mandatory: {
+                  chromeMediaSource: 'desktop'
+                }
+              },
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: screenSource.id
+                }
               }
-            },
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screenSource.id
-              }
+            });
+          } catch (deskErr) {
+            console.warn('[Audio Capture] Primary desktop capture failed, trying standard audio stream:', deskErr.message);
+            activeSystemStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
+
+          const audioTracks = activeSystemStream.getAudioTracks();
+          if (audioTracks.length > 0) {
+            const audioOnlyStream = new MediaStream(audioTracks);
+            if (!audioCtx || audioCtx.state === 'closed') {
+              audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              mixedAudioGainNode = audioCtx.createGain();
+              audioDestNode = audioCtx.createMediaStreamDestination();
+              mixedAudioGainNode.connect(audioDestNode);
             }
-          });
-          // Keep video tracks alive to prevent Chromium/Electron from closing the stream
-          console.log('[Audio Capture] Acquired system loopback tracks:', activeSystemStream.getTracks().map(t => `${t.kind}: state=${t.readyState}, enabled=${t.enabled}`));
+            systemSourceNode = audioCtx.createMediaStreamSource(audioOnlyStream);
+            systemSourceNode.connect(mixedAudioGainNode);
+            if (audioCtx && audioCtx.state === 'suspended') {
+              try { await audioCtx.resume(); } catch (e) { }
+            }
 
-          systemSourceNode = audioCtx.createMediaStreamSource(activeSystemStream);
-          systemSourceNode.connect(audioDestNode);
-          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
+            ensureMediaRecorderRunning(true);
 
-          recordBtn.style.pointerEvents = 'auto';
-          recordBtn.classList.add('recording');
-          recordDot.classList.add('recording');
-          recordText.textContent = 'Listening';
-          console.log('[Audio Capture] Successfully acquired system loopback stream.');
+            recordBtn.style.pointerEvents = 'auto';
+            recordBtn.classList.add('recording');
+            recordDot.classList.add('recording');
+            recordText.textContent = 'Listening';
+            console.log('[Audio Capture] Successfully connected system audio stream.');
+          } else {
+            throw new Error('No audio tracks detected in capture stream');
+          }
         } else {
           console.warn('[Audio Capture] No screen source found for loopback capture.');
           isRecordingSystem = false;
@@ -2724,9 +2783,17 @@ async function toggleSource(source) {
         console.log('[Audio Capture] Attempting hardware microphone capture...');
         activeMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+        if (!audioCtx || audioCtx.state === 'closed') {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          mixedAudioGainNode = audioCtx.createGain();
+          audioDestNode = audioCtx.createMediaStreamDestination();
+          mixedAudioGainNode.connect(audioDestNode);
+        }
         micSourceNode = audioCtx.createMediaStreamSource(activeMicStream);
-        micSourceNode.connect(audioDestNode);
+        micSourceNode.connect(mixedAudioGainNode);
         if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
+
+        ensureMediaRecorderRunning(true);
 
         if (micBtnAi) {
           micBtnAi.style.pointerEvents = 'auto';
@@ -2780,12 +2847,9 @@ function stopRecording() {
   }
   mediaRecorder = null;
 
-  if (dgSocket) {
-    try {
-      dgSocket.close();
-    } catch (e) { }
-  }
-  dgSocket = null;
+  try {
+    window.electronAPI.stopTranscription();
+  } catch (e) { }
 
   if (systemSourceNode) {
     try { systemSourceNode.disconnect(); } catch (e) { }
@@ -3788,6 +3852,92 @@ function escapeHTML(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function formatMathAndMarkdown(str) {
+  if (!str) return '';
+  let s = String(str);
+
+  // 1. Process display math blocks: \[ ... \] or $$ ... $$
+  s = s.replace(/(?:\\\[|\$\$)([\s\S]*?)(?:\\\]|\$\$)/g, (match, formula) => {
+    let cleanFormula = formatMathExpression(formula.trim());
+    return `<div class="math-display-block" style="margin: 8px 0; padding: 8px 14px; background: rgba(20, 184, 166, 0.08); border: 1px solid rgba(45, 212, 191, 0.25); border-radius: 7px; text-align: center; color: #5eead4; font-family: 'Cambria Math', 'KaTeX_Math', 'Times New Roman', serif; font-size: 1.08em; letter-spacing: 0.5px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);">${cleanFormula}</div>`;
+  });
+
+  // 2. Process inline math: \( ... \) or $ ... $
+  s = s.replace(/(?:\\\(|\$)([\s\S]*?)(?:\\\)|\$)/g, (match, formula) => {
+    let cleanFormula = formatMathExpression(formula.trim());
+    return `<span class="math-inline" style="display:inline-block; padding: 1px 4px; color: #5eead4; font-family: 'Cambria Math', 'KaTeX_Math', 'Times New Roman', serif; font-size: 1.03em;">${cleanFormula}</span>`;
+  });
+
+  // 3. Fallback for any standalone LaTeX math commands not enclosed in brackets
+  s = formatMathExpression(s);
+
+  // 4. Markdown bold: **text**
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#5eead4;font-weight:700;letter-spacing:0.01em;">$1</strong>');
+
+  return s;
+}
+
+function formatMathExpression(expr) {
+  if (!expr) return '';
+  let e = expr;
+
+  // Fractions: \frac{num}{den} -> visual styled fraction
+  e = e.replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, (m, num, den) => {
+    return `<span style="display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;line-height:1.1;padding:0 3px;font-family:serif;margin:0 2px;"><span style="border-bottom:1px solid #5eead4;padding:0 3px 1px 3px;color:#ffffff;font-size:0.95em;">${num.trim()}</span><span style="padding:1px 3px 0 3px;color:#5eead4;font-size:0.95em;">${den.trim()}</span></span>`;
+  });
+
+  // Second pass for nested fractions
+  e = e.replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, (m, num, den) => {
+    return `<span style="display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;line-height:1.1;padding:0 3px;font-family:serif;margin:0 2px;"><span style="border-bottom:1px solid #5eead4;padding:0 3px 1px 3px;color:#ffffff;font-size:0.95em;">${num.trim()}</span><span style="padding:1px 3px 0 3px;color:#5eead4;font-size:0.95em;">${den.trim()}</span></span>`;
+  });
+
+  // Common math symbols
+  const replacements = [
+    [/\\mu/g, 'μ'],
+    [/\\sigma/g, 'σ'],
+    [/\\alpha/g, 'α'],
+    [/\\beta/g, 'β'],
+    [/\\theta/g, 'θ'],
+    [/\\lambda/g, 'λ'],
+    [/\\pi/g, 'π'],
+    [/\\approx/g, '≈'],
+    [/\\le(?!a)\b|\\leq/g, '≤'],
+    [/\\ge(?!a)\b|\\geq/g, '≥'],
+    [/\\neq|\\ne\b/g, '≠'],
+    [/\\times/g, '×'],
+    [/\\cdot/g, '·'],
+    [/\\pm/g, '±'],
+    [/\\infty/g, '∞'],
+    [/\\sum/g, '∑'],
+    [/\\int/g, '∫'],
+    [/\\in(?![a-zA-Z])/g, '∈'],
+    [/\\subset/g, '⊂'],
+    [/\\cup/g, '∪'],
+    [/\\cap/g, '∩'],
+    [/\\forall/g, '∀'],
+    [/\\exists/g, '∃'],
+    [/\\to\b|\\rightarrow/g, '→'],
+    [/\\leftarrow/g, '←'],
+    [/\\implies|\\Rightarrow/g, '⇒'],
+    [/\\sqrt\{([^}]+)\}/g, '√($1)'],
+    [/\\text\{([^}]+)\}/g, '$1'],
+    [/\\left\(/g, '('],
+    [/\\right\)/g, ')'],
+    [/\\left\[/g, '['],
+    [/\\right\]/g, ']'],
+    [/\\\[/g, ''],
+    [/\\\]/g, ''],
+    [/\\\(/g, ''],
+    [/\\\)/g, '']
+  ];
+
+  for (const [regex, rep] of replacements) {
+    e = e.replace(regex, rep);
+  }
+
+  return e;
+}
+
 function renderAnswerToDOM(container, text, questionText = '') {
   container.innerHTML = '';
 
@@ -3914,12 +4064,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
 
           // Strip leading dash/bullet char
           let content = trimmed.startsWith('- ') ? trimmed.slice(2) : trimmed.slice(2);
-          // Render **heading:** in purple bold, rest in normal text
-          let html = escapeHTML(content).replace(
-            /\*\*([^*]+)\*\*/g,
-            '<strong style="color:#5eead4;font-weight:700;letter-spacing:0.01em;">$1</strong>'
-          );
-          bulletContent.innerHTML = html;
+          bulletContent.innerHTML = formatMathAndMarkdown(escapeHTML(content));
 
           bulletRow.appendChild(dot);
           bulletRow.appendChild(bulletContent);
@@ -3934,11 +4079,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
           const lineDiv = document.createElement('div');
           lineDiv.style.marginBottom = '4px';
           lineDiv.style.lineHeight = '1.6';
-          let html = escapeHTML(trimmed).replace(
-            /\*\*([^*]+)\*\*/g,
-            '<strong style="color:#5eead4;font-weight:700;">$1</strong>'
-          );
-          lineDiv.innerHTML = html;
+          lineDiv.innerHTML = formatMathAndMarkdown(escapeHTML(trimmed));
           textDiv.appendChild(lineDiv);
         }
       });

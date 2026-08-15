@@ -24,8 +24,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   registerGlobalShortcuts: (shortcuts) => ipcRenderer.send('register-global-shortcuts', shortcuts),
   onGlobalShortcutTriggered: (cb) => ipcRenderer.on('global-shortcut-triggered', (_, action) => cb(action)),
 
-  // ── Device / Media ────────────────────────────────────────────────
+  // ── Device / Media / Native Transcription ──────────────────────────
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
+  startTranscription: (config) => ipcRenderer.send('start-transcription', config),
+  sendAudioChunk: (buffer) => ipcRenderer.send('send-audio-chunk', buffer),
+  stopTranscription: () => ipcRenderer.send('stop-transcription'),
+  onTranscriptChunk: (cb) => ipcRenderer.on('transcription-chunk', (_, data) => cb(data)),
+  onTranscriptionStatus: (cb) => ipcRenderer.on('transcription-status', (_, data) => cb(data)),
+  removeTranscriptionListeners: () => {
+    ipcRenderer.removeAllListeners('transcription-chunk');
+    ipcRenderer.removeAllListeners('transcription-status');
+  },
 
   // ── Offline mode (direct API calls — used when no backend URL set) ─
   getDeepgramKey: () => ipcRenderer.invoke('get-deepgram-key'),
