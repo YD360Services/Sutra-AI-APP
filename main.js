@@ -284,19 +284,29 @@ function createWindow() {
       const contextData = {
         resume: config.resume_id || config.resume || '',
         resume_id: config.resume_id || '',
-        job_description: config.jd || '',
+        job_description: config.jd || config.job_description || '',
         code_context: '',
         company: config.company || '',
         role: config.role || '',
         model: config.model || '',
+        language: config.language || '',
         doc_id: config.doc_id || '',
-        auto_start: true
+        auto_start: true,
+        is_web_launch: true
       };
       fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
       console.log('[Stealth Config] Successfully initialized active resume, JD, company, and role context:', contextData);
     } catch (e) {
       console.error('[Stealth Config] Failed to write context data:', e.message);
     }
+  } else {
+    // Normal desktop app launch: remove stale context so wizard starts fresh without prefilled data
+    try {
+      const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+      }
+    } catch (e) { }
   }
 
   // Always boot directly in setup wizard configuration dimensions
@@ -1284,11 +1294,16 @@ const server = http.createServer((req, res) => {
           const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
           const contextData = {
             resume: config.resume_id || config.resume || '',
-            job_description: config.jd || '',
+            resume_id: config.resume_id || '',
+            job_description: config.jd || config.job_description || '',
             code_context: '',
-            company: config.company || 'Stealth Practice',
-            role: config.role || 'Software Engineer',
-            model: config.model || ''
+            company: config.company || '',
+            role: config.role || '',
+            model: config.model || '',
+            language: config.language || '',
+            doc_id: config.doc_id || '',
+            auto_start: true,
+            is_web_launch: true
           };
           fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
           console.log('[Stealth Server] Updated session context on port 48999:', contextData);
@@ -1299,7 +1314,7 @@ const server = http.createServer((req, res) => {
               session_name: config.session_name,
               company: config.company,
               role: config.role,
-              jd: config.jd,
+              jd: config.jd || config.job_description,
               type: config.type,
               model: config.model,
               language: config.language,
@@ -1307,7 +1322,9 @@ const server = http.createServer((req, res) => {
               doc_id: config.doc_id,
               prompt_id: config.prompt_id,
               auto_answer: config.auto_answer,
-              save_transcript: config.save_transcript
+              save_transcript: config.save_transcript,
+              auto_start: true,
+              is_web_launch: true
             };
             mainWindow.webContents.send('deep-link-session', mappedConfig);
           }
@@ -1339,6 +1356,7 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('company'))      config.company       = params.get('company');
     if (params.get('role'))         config.role          = params.get('role');
     if (params.get('jd'))           config.jd            = params.get('jd');
+    if (params.get('job_description')) config.jd        = params.get('job_description');
     if (params.get('type'))         config.type          = params.get('type');
     if (params.get('model'))        config.model         = params.get('model');
     if (params.get('language'))     config.language      = params.get('language');
@@ -1347,7 +1365,12 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('prompt_id'))    config.prompt_id     = params.get('prompt_id');
     if (params.get('auto_answer'))  config.auto_answer   = params.get('auto_answer') === 'true';
     if (params.get('save_transcript')) config.save_transcript = params.get('save_transcript') === 'true';
-    return Object.keys(config).length > 0 ? config : null;
+    if (Object.keys(config).length > 0) {
+      config.auto_start = true;
+      config.is_web_launch = true;
+      return config;
+    }
+    return null;
   } catch (e) {
     console.error('[DeepLink] Failed to parse URL:', urlStr, e.message);
     return null;

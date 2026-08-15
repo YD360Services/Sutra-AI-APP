@@ -313,14 +313,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    if (setupJd) setupJd.value = '';
-    if (offlineUserContext.company) setupCompany.value = offlineUserContext.company;
-    if (offlineUserContext.role) setupRole.value = offlineUserContext.role;
-    if (offlineUserContext.model) {
-      const modelSelect = document.getElementById('setup-model-select');
-      if (modelSelect) modelSelect.value = offlineUserContext.model;
+    
+    // Only prefill form if this is an explicit web launch
+    if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
+      if (setupCompany && offlineUserContext.company) setupCompany.value = offlineUserContext.company;
+      if (setupRole && offlineUserContext.role) setupRole.value = offlineUserContext.role;
+      if (setupJd && offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
+      if (offlineUserContext.model) {
+        const modelSelect = document.getElementById('setup-model-select');
+        if (modelSelect) modelSelect.value = offlineUserContext.model;
+      }
+      if (offlineUserContext.language) {
+        const langSelect = document.getElementById('setup-language-select');
+        if (langSelect) langSelect.value = offlineUserContext.language;
+      }
+      // Populate liveSessionData so Edit Session is immediately pre-filled with web data
+      liveSessionData = {
+        company: offlineUserContext.company || '',
+        role: offlineUserContext.role || '',
+        jd: offlineUserContext.job_description || '',
+        resumeId: offlineUserContext.resume_id || '',
+        docId: offlineUserContext.doc_id || ''
+      };
+    } else {
+      // Normal desktop launch: clear form fields completely (no stale auto-populating)
+      if (setupCompany) setupCompany.value = '';
+      if (setupRole) setupRole.value = '';
+      if (setupJd) setupJd.value = '';
+      liveSessionData = { company: '', role: '', jd: '', resumeId: '', docId: '' };
     }
-    console.log('[Stealth] Initialized setup form with empty Job Description:', offlineUserContext);
+    console.log('[Stealth] Initialized setup form:', offlineUserContext);
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
@@ -328,11 +350,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load dropdown options
   await loadDropdowns();
 
-  if (offlineUserContext.resume_id) {
-    if (setupResumeSelect) setupResumeSelect.value = offlineUserContext.resume_id;
-  }
-  if (offlineUserContext.doc_id) {
-    if (setupDocSelect) {
+  if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
+    if (offlineUserContext.resume_id && setupResumeSelect) {
+      setupResumeSelect.value = offlineUserContext.resume_id;
+    }
+    if (offlineUserContext.doc_id && setupDocSelect) {
       const ids = String(offlineUserContext.doc_id).split(',');
       Array.from(setupDocSelect.options).forEach(opt => {
         opt.selected = ids.includes(opt.value);
@@ -358,12 +380,12 @@ document.addEventListener('DOMContentLoaded', () => {
   toolbarView.style.display = 'none';
   updateWizardView();
 
-  // Auto-start session ONLY if explicitly requested from web launch
-  if (offlineUserContext.auto_start === true) {
+  // Auto-start session ONLY if launched from web
+  if (offlineUserContext.is_web_launch || offlineUserContext.auto_start === true) {
     setTimeout(() => {
       const startBtn = document.getElementById('start-session-btn');
       if (startBtn && !startBtn.disabled) {
-        console.log('[Stealth UI] Auto-launching live session with web parameters...');
+        console.log('[Stealth UI] Web launch detected — directly starting live session with web parameters...');
         startBtn.click();
       }
     }, 150);
@@ -425,14 +447,18 @@ async function loadRecentSessions() {
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-    const res = await fetch(`${base}/api/sessions?user_id=${USER_ID}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const sessions = await res.json();
+    let res = await fetch(`${base}/api/sessions?user_id=${encodeURIComponent(normalizeUserId(USER_ID))}`).catch(() => null);
+    if (!res || !res.ok) {
+      res = await fetch(`${base}/api/sessions`).catch(() => null);
+    }
+    if (!res || !res.ok) throw new Error(res ? `HTTP ${res.status}` : 'Backend unreachable');
+    let sessions = await res.json();
+    if (!Array.isArray(sessions)) sessions = [];
 
     if (sessionsCountBadge) sessionsCountBadge.textContent = `${sessions.length} total`;
 
-    if (!sessions || sessions.length === 0) {
-      recentSessionsTable.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:12px;">No sessions found.</div>`;
+    if (sessions.length === 0) {
+      recentSessionsTable.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:12px;">No recent sessions found. Start a new session from the wizard!</div>`;
       return;
     }
 
@@ -453,7 +479,7 @@ async function loadRecentSessions() {
       const description = `${s.role_name || ''}${s.company_name ? ` (${s.company_name})` : ''}`;
 
       const row = document.createElement('div');
-      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:6px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.03);transition:background 0.15s;cursor:pointer;';
+      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:7px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01);transition:all 0.15s;cursor:pointer;';
       row.innerHTML = `
         <div style="font-size:11px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${title}">${title}</div>
         <div style="font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${description}">${description || '—'}</div>
@@ -472,7 +498,7 @@ async function loadRecentSessions() {
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
             <!-- Edit Button -->
-            <button class="session-edit-btn interactive" data-id="${s.id}" title="Edit Config" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-edit-btn interactive" data-id="${s.id}" title="Load into Wizard" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </button>
             <!-- Delete Button -->
@@ -483,13 +509,23 @@ async function loadRecentSessions() {
         </div>
       `;
 
-      row.addEventListener('mouseenter', () => row.style.background = 'rgba(255,255,255,0.04)');
-      row.addEventListener('mouseleave', () => row.style.background = '');
+      row.addEventListener('mouseenter', () => {
+        row.style.background = 'rgba(255,255,255,0.06)';
+        row.style.borderColor = 'rgba(20, 184, 166, 0.3)';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.background = 'rgba(255,255,255,0.01)';
+        row.style.borderColor = 'rgba(255,255,255,0.04)';
+      });
 
-      // Helper to pre-fill wizard
-      const prefillWizard = () => {
+      // Helper to pre-fill wizard from this session
+      const prefillWizard = async () => {
         if (s.company_name && setupCompany) setupCompany.value = s.company_name;
         if (s.role_name && setupRole) setupRole.value = s.role_name;
+        if (s.language) {
+          const langSelect = document.getElementById('setup-language-select');
+          if (langSelect) langSelect.value = s.language;
+        }
         // Match session type badge
         document.querySelectorAll('.type-badge').forEach(b => {
           b.classList.remove('active');
@@ -500,10 +536,28 @@ async function loadRecentSessions() {
         if (!document.querySelector('.type-badge.active')) {
           document.querySelector('.type-badge')?.classList.add('active');
         }
+
+        // If session has job_description_id, fetch JD content
+        if (s.job_description_id) {
+          try {
+            const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+            const jdRes = await fetch(`${base}/api/job-descriptions/${s.job_description_id}`);
+            if (jdRes.ok) {
+              const jdData = await jdRes.json();
+              if (jdData && jdData.raw_text && setupJd) setupJd.value = jdData.raw_text;
+            }
+          } catch (_) { }
+        }
+
         hideRecentSessionsPage();
         currentStep = 1;
         updateWizardView();
       };
+
+      // Clicking anywhere on row pre-fills the wizard
+      row.addEventListener('click', () => {
+        prefillWizard();
+      });
 
       // Edit button click
       row.querySelector('.session-edit-btn').addEventListener('click', (e) => {
@@ -600,10 +654,14 @@ async function loadRecentSessions() {
             }
           }).join('\n\n');
 
-          // Create container with a Copy Button at the top
+          // Create container with Copy & Download buttons at the top
           const wrapperHtml = `
             <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
-              <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 4px;">
+                <button id="download-timeline-btn" class="interactive" style="display: flex; align-items: center; gap: 5px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Download (.txt)
+                </button>
                 <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
                   Copy Raw Timeline
                 </button>
@@ -615,6 +673,31 @@ async function loadRecentSessions() {
           `;
 
           showModalOverlay(`Transcript — ${title}`, wrapperHtml);
+
+          // Add download click listener
+          const downloadBtn = document.getElementById('download-timeline-btn');
+          if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+              const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const safeName = (title || 'session').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+              a.download = `${safeName}_transcript.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              downloadBtn.innerHTML = 'Downloaded!';
+              downloadBtn.style.color = '#34d399';
+              downloadBtn.style.borderColor = 'rgba(52, 211, 153, 0.4)';
+              setTimeout(() => {
+                downloadBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download (.txt)`;
+                downloadBtn.style.color = '#60a5fa';
+                downloadBtn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+              }, 2000);
+            });
+          }
 
           // Add copy click listener
           const copyBtn = document.getElementById('copy-timeline-btn');
@@ -651,12 +734,57 @@ async function loadRecentSessions() {
           const summaryText = sessionDetail.summary || `No summary generated yet for this session. Complete the session or generate one from the web dashboard.`;
 
           const html = `
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px;">
-              <div style="font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: rgba(255,255,255,0.95);">${summaryText}</div>
+            <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 4px;">
+                <button id="download-summary-btn" class="interactive" style="display: flex; align-items: center; gap: 5px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Download (.txt)
+                </button>
+                <button id="copy-summary-btn" class="interactive" style="background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); color: #4ade80; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  Copy Summary
+                </button>
+              </div>
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px; flex: 1;">
+                <div style="font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: rgba(255,255,255,0.95);">${summaryText}</div>
+              </div>
             </div>
           `;
 
           showModalOverlay(`Session Summary — ${title}`, html);
+
+          const downloadSumBtn = document.getElementById('download-summary-btn');
+          if (downloadSumBtn) {
+            downloadSumBtn.addEventListener('click', () => {
+              const blob = new Blob([summaryText], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const safeName = (title || 'session').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+              a.download = `${safeName}_summary.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              downloadSumBtn.innerHTML = 'Downloaded!';
+              downloadSumBtn.style.color = '#34d399';
+              downloadSumBtn.style.borderColor = 'rgba(52, 211, 153, 0.4)';
+              setTimeout(() => {
+                downloadSumBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download (.txt)`;
+                downloadSumBtn.style.color = '#60a5fa';
+                downloadSumBtn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+              }, 2000);
+            });
+          }
+
+          const copySumBtn = document.getElementById('copy-summary-btn');
+          if (copySumBtn) {
+            copySumBtn.addEventListener('click', () => {
+              navigator.clipboard.writeText(summaryText).then(() => {
+                copySumBtn.textContent = 'Copied!';
+                setTimeout(() => { copySumBtn.textContent = 'Copy Summary'; }, 2000);
+              });
+            });
+          }
         } catch (err) {
           showInlineError('Failed to load session summary: ' + err.message, recentSessionsTable);
         }
@@ -743,32 +871,50 @@ function showModalOverlay(title, contentHtml) {
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(10, 10, 12, 0.95);
-      backdrop-filter: blur(10px);
+      background: rgba(10, 10, 12, 0.96);
+      backdrop-filter: blur(16px);
       z-index: 10000;
       display: flex;
       flex-direction: column;
-      padding: 16px;
+      padding: 18px 20px;
       box-sizing: border-box;
       animation: fadeIn 0.15s ease-out;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.7);
     `;
     document.body.appendChild(modal);
   }
 
+  // Expand the window to 800x580 so the entire transcript / summary modal is fully visible and readable
+  pendingProgrammaticResizes++;
+  window.electronAPI.resizeWindow(800, 580, toolbarPosition, false);
+  window.electronAPI.setIgnoreMouseEvents(false);
+
   modal.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0;">
-      <h3 style="margin: 0; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">${title}</h3>
-      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: background 0.2s;">
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; margin-bottom: 12px; flex-shrink: 0; -webkit-app-region: drag !important;">
+      <h3 style="margin: 0; font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">${title}</h3>
+      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 14px; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; transition: background 0.2s; -webkit-app-region: no-drag !important;">
         Close
       </button>
     </div>
-    <div style="flex: 1; overflow-y: auto; font-size: 11px; color: rgba(255,255,255,0.85); line-height: 1.5; padding-right: 4px;">
+    <div style="flex: 1; overflow-y: auto; font-size: 11.5px; color: rgba(255,255,255,0.9); line-height: 1.6; padding-right: 6px;" class="custom-scrollbar">
       ${contentHtml}
     </div>
   `;
 
   modal.querySelector('#modal-close-btn').addEventListener('click', () => {
     modal.remove();
+    // Restore window dimensions when modal closes
+    if (toolbarView && toolbarView.style.display !== 'none') {
+      updateWindowSize();
+    } else if (recentSessionsView && recentSessionsView.style.display !== 'none') {
+      pendingProgrammaticResizes++;
+      window.electronAPI.resizeWindow(800, 580, 'top', false);
+    } else {
+      pendingProgrammaticResizes++;
+      window.electronAPI.resizeWindow(600, 580, 'top', false);
+    }
   });
 }
 
@@ -1852,6 +1998,17 @@ function updateWindowSize(reposition = false) {
 
   // If in setup wizard view, do not resize the window (keep 600x580 bounds)
   if (setupView && setupView.style.display !== 'none') {
+    return;
+  }
+
+  // If in recent sessions view, do not resize the window (keep 800x580 bounds)
+  if (recentSessionsView && recentSessionsView.style.display !== 'none') {
+    return;
+  }
+
+  // If a full modal overlay (transcript, summary) is open, do not resize/collapse the window
+  const modalOverlayEl = document.getElementById('stealth-modal-overlay');
+  if (modalOverlayEl) {
     return;
   }
 
@@ -4473,22 +4630,22 @@ setTimeout(() => {
 
 // Deep Link / Session Update event listener
 if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'function') {
-  window.electronAPI.onDeepLinkSession((config) => {
+  window.electronAPI.onDeepLinkSession(async (config) => {
     console.log('[Stealth UI] Received deep link session configuration update:', config);
     if (!config) return;
 
-    // Fill form fields
-    if (config.company) {
+    // Fill form fields with web-entered configuration
+    if (config.company !== undefined) {
       const companyInput = document.getElementById('setup-company');
       if (companyInput) companyInput.value = config.company;
     }
-    if (config.role) {
+    if (config.role !== undefined) {
       const roleInput = document.getElementById('setup-role');
       if (roleInput) roleInput.value = config.role;
     }
-    if (config.jd) {
+    if (config.jd !== undefined || config.job_description !== undefined) {
       const jdInput = document.getElementById('setup-jd');
-      if (jdInput) jdInput.value = config.jd;
+      if (jdInput) jdInput.value = config.jd || config.job_description || '';
     }
     if (config.model) {
       const modelSelect = document.getElementById('setup-model-select');
@@ -4498,6 +4655,20 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
       const languageSelect = document.getElementById('setup-language-select');
       if (languageSelect) languageSelect.value = config.language;
     }
+
+    // Bind directly to liveSessionData so Edit Session modal has the exact web-entered content
+    liveSessionData = {
+      company: config.company || '',
+      role: config.role || '',
+      jd: config.jd || config.job_description || '',
+      resumeId: config.resume_id || '',
+      docId: config.doc_id || ''
+    };
+
+    // Ensure dropdown options are loaded and selected
+    if (!backendResumes.length || !backendDocs.length) {
+      await loadDropdowns();
+    }
     if (config.resume_id) {
       const resumeSelect = document.getElementById('setup-resume-select');
       if (resumeSelect) resumeSelect.value = config.resume_id;
@@ -4505,7 +4676,6 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
     if (config.doc_id) {
       const docSelect = document.getElementById('setup-doc-select');
       if (docSelect) {
-        // Multi-select handling
         const ids = String(config.doc_id).split(',');
         Array.from(docSelect.options).forEach(opt => {
           opt.selected = ids.includes(opt.value);
@@ -4521,15 +4691,14 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
       if (saveTranscriptInput) saveTranscriptInput.checked = Boolean(config.save_transcript);
     }
 
-    // Trigger session launch automatically ONLY if auto_start is explicitly true
-    if (config.auto_start === true) {
-      setTimeout(() => {
-        const startBtn = document.getElementById('start-session-btn');
-        if (startBtn && !startBtn.disabled) {
-          startBtn.click();
-        }
-      }, 100);
-    }
+    // Directly start live session with the web-entered data
+    setTimeout(() => {
+      const startBtn = document.getElementById('start-session-btn');
+      if (startBtn && !startBtn.disabled) {
+        console.log('[Stealth UI] Direct launch to live session from web payload...');
+        startBtn.click();
+      }
+    }, 100);
   });
 }
 

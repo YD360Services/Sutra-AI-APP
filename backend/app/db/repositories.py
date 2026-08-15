@@ -37,7 +37,11 @@ class SessionRepository(BaseRepository):
 
     async def list_by_user(self, user_id: Optional[uuid.UUID], limit: int = 500) -> List[Session]:
         from sqlalchemy.orm import selectinload
-        stmt = select(Session).where(Session.user_id == user_id).options(selectinload(Session.question_answers)).order_by(Session.created_at.desc()).limit(limit)
+        from sqlalchemy import or_
+        if user_id:
+            stmt = select(Session).where(or_(Session.user_id == user_id, Session.user_id.is_(None))).options(selectinload(Session.question_answers)).order_by(Session.created_at.desc()).limit(limit)
+        else:
+            stmt = select(Session).options(selectinload(Session.question_answers)).order_by(Session.created_at.desc()).limit(limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
