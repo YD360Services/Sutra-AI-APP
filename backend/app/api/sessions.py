@@ -44,6 +44,90 @@ async def list_sessions(
     sessions = await repo.list_by_user(user_id=normalized_user_id)
     return sessions
 
+async def generate_session_summary_if_needed(session_id: uuid.UUID, db: AsyncSession, repo: SessionRepository) -> Optional[str]:
+    import logging
+    logger = logging.getLogger("copilotx.sessions")
+    try:
+        from app.cache.redis import redis_cache
+        from app.db.repositories import TranscriptRepository, QARepository
+        from app.services.ai_service import call_llm
+
+        db_session = await repo.get_by_id(session_id)
+        if not db_session:
+            return None
+
+        company = db_session.company_name or "Target Company"
+        role = db_session.role_name or "Software Engineer"
+
+        # 1. Retrieve Redis transcript if available
+        transcript_text = ""
+        try:
+            redis_transcript = await redis_cache.get_transcript(str(session_id))
+            if redis_transcript and redis_transcript.strip():
+                transcript_text = redis_transcript.strip()
+        except Exception:
+            pass
+
+        # 2. Retrieve PostgreSQL database transcripts
+        t_repo = TranscriptRepository(db)
+        qa_repo = QARepository(db)
+
+        db_transcripts = await t_repo.list_by_session(session_id)
+        db_qas = await qa_repo.list_by_session(session_id)
+
+        combined_log_parts = []
+        if transcript_text:
+            combined_log_parts.append(f"Full Audio Stream Transcript:\n{transcript_text}")
+        elif db_transcripts:
+            for t in db_transcripts:
+                speaker_label = "Interviewer" if t.speaker == "interviewer" else ("Candidate" if t.speaker == "you" else ("Session Audio" if t.speaker == "full_session" else t.speaker))
+                combined_log_parts.append(f"[{speaker_label}]: {t.content}")
+
+        if db_qas:
+            combined_log_parts.append("\nQuestions & Answers Exchanged:")
+            for qa in db_qas:
+                combined_log_parts.append(f"Question: {qa.question}\nAnswer Given: {qa.answer}")
+
+        full_session_log = "\n\n".join(combined_log_parts).strip()
+
+        if not full_session_log:
+            logger.info(f"No transcript or QA logs available to generate summary for session {session_id}")
+            return None
+
+        summary_prompt = f"""
+Analyze the following interview preparation session for a {role} position at {company}.
+Create a high-impact, professional summary and performance breakdown of the session.
+
+Session Transcript & Questions Log:
+{full_session_log}
+
+Please format the summary with the following clear markdown structure:
+### 1. Executive Summary
+- Brief 2-sentence overview of the session scope and performance.
+
+### 2. Key Questions & Topics Covered
+- Bulleted list of primary technical and behavioral interview questions asked.
+
+### 3. Key Strengths Demonstrated
+- Highlights of strong responses, algorithmic concepts, and system architecture depth.
+
+### 4. Actionable Improvements & Next Steps
+- Constructive feedback on edge cases to cover, clearer explanations, and areas for improvement in future rounds.
+"""
+        system_prompt = "You are a Principal Software Engineer and hiring manager. Generate an actionable, structured, professional markdown summary of this interview session."
+        summary_text = await call_llm(
+            prompt=summary_prompt,
+            system_prompt=system_prompt,
+            temperature=0.3
+        )
+        if summary_text and summary_text.strip():
+            updated = await repo.update(session_id, summary=summary_text.strip())
+            await db.commit()
+            return summary_text.strip()
+    except Exception as err:
+        logger.error(f"Error generating session summary: {err}", exc_info=True)
+    return None
+
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
 async def get_session(
     session_id: uuid.UUID,
@@ -56,6 +140,25 @@ async def get_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found"
         )
+    # If summary is missing, attempt to generate it dynamically
+    if not session.summary:
+        generated_summary = await generate_session_summary_if_needed(session_id, db, repo)
+        if generated_summary:
+            session.summary = generated_summary
+    return session
+
+@router.post("/sessions/{session_id}/generate-summary", response_model=SessionResponse)
+async def trigger_generate_summary(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    repo = SessionRepository(db)
+    session = await repo.get_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    generated_summary = await generate_session_summary_if_needed(session_id, db, repo)
+    if generated_summary:
+        session.summary = generated_summary
     return session
 
 @router.patch("/sessions/{session_id}", response_model=SessionResponse)
@@ -66,66 +169,22 @@ async def update_session(
 ):
     repo = SessionRepository(db)
     update_data = payload.dict(exclude_unset=True)
-    
-    # Generate summary & save transcripts if completing the session
-    if payload.status == "completed":
-        try:
-            from app.cache.redis import redis_cache
-            from app.db.repositories import TranscriptRepository
-            
-            # 1. Retrieve full transcript text from Redis cache
-            redis_transcript = await redis_cache.get_transcript(str(session_id))
-            if redis_transcript and redis_transcript.strip():
-                # 2. Save the transcript as a block in the PostgreSQL database
-                t_repo = TranscriptRepository(db)
-                await t_repo.create(
-                    session_id=session_id,
-                    speaker="interview",
-                    content=redis_transcript,
-                    source="websocket"
-                )
-                
-                # 3. Generate a session summary with the LLM API
-                try:
-                    from app.services.ai_service import call_llm
-                    db_session = await repo.get_by_id(session_id)
-                    company = db_session.company_name if db_session else "Unknown"
-                    role = db_session.role_name if db_session else "Unknown"
-                    
-                    summary_prompt = f"""
-Analyze the following transcript of an interview prep session for a {role} position at {company}.
-Create a professional, highly readable summary of the session.
-Focus on:
-- Key questions and topics discussed (e.g. databases, system design, coding questions).
-- Technologies mentioned.
-- Areas of strength and areas needing improvement.
-
-Transcript:
-{redis_transcript}
-"""
-                    system_prompt = "You are an expert technical interviewer. Generate a concise, clear, bulleted summary of the interview prep session."
-                    summary_text = await call_llm(
-                        prompt=summary_prompt,
-                        system_prompt=system_prompt,
-                        temperature=0.3
-                    )
-                    if summary_text:
-                        update_data["summary"] = summary_text
-                except Exception as ai_err:
-                    import logging
-                    logging.getLogger("copilotx.sessions").warning(f"Failed to generate AI session summary: {ai_err}")
-        except Exception as e:
-            import logging
-            logging.getLogger("copilotx.sessions").error(f"Failed during session completion pipeline: {e}")
 
     session = await repo.update(session_id, **update_data)
     if not session:
-      raise HTTPException(
-          status_code=status.HTTP_404_NOT_FOUND,
-          detail="Session not found"
-      )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
     await db.commit()
     await db.refresh(session)
+
+    # Generate summary & save transcripts if completing the session
+    if payload.status == "completed" and not session.summary:
+        generated_summary = await generate_session_summary_if_needed(session_id, db, repo)
+        if generated_summary:
+            session.summary = generated_summary
+
     return session
 
 @router.delete("/sessions/{session_id}")

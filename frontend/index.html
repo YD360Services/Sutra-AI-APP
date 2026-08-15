@@ -153,9 +153,10 @@
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
-            <div class="setup-form-group" style="margin: 0;">
+            <div class="setup-form-group" style="margin: 0; position: relative;">
               <label class="setup-label">Company Name <span style="color: #ef4444;">*</span></label>
-              <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..." autofocus style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
+              <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..." autocomplete="off" autofocus style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
+              <div id="setup-company-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
             </div>
             <div class="setup-form-group" style="margin: 0;">
               <label class="setup-label">Target Role <span style="color: #ef4444;">*</span></label>
@@ -819,11 +820,12 @@
 
         <!-- Company & Role -->
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div style="display: flex; flex-direction: column; gap: 5px;">
+          <div style="display: flex; flex-direction: column; gap: 5px; position: relative;">
             <label
               style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Company <span style="color: #ef4444;">*</span></label>
-            <input type="text" id="edit-company" class="setup-input" placeholder="e.g. Google"
+            <input type="text" id="edit-company" class="setup-input" placeholder="e.g. Google" autocomplete="off"
               style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
+            <div id="edit-company-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
           </div>
           <div style="display: flex; flex-direction: column; gap: 5px;">
             <label

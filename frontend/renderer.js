@@ -726,12 +726,19 @@ async function loadRecentSessions() {
       row.querySelector('.session-summary-btn').addEventListener('click', async (e) => {
         e.stopPropagation();
         try {
+          showModalOverlay(`Session Summary — ${title}`, `
+            <div style="text-align:center;padding:40px 0;color:var(--text-secondary);font-size:12px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:10px;animation:spin 1s linear infinite;color:#2dd4bf;display:block;margin:0 auto 10px;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              Analyzing session transcripts and generating comprehensive summary...
+            </div>
+          `);
+
           const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
           const res = await fetch(`${base}/api/sessions/${s.id}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const sessionDetail = await res.json();
 
-          const summaryText = sessionDetail.summary || `No summary generated yet for this session. Complete the session or generate one from the web dashboard.`;
+          const summaryText = sessionDetail.summary || `No transcript or questions were recorded during this session to generate a summary.`;
 
           const html = `
             <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
@@ -744,7 +751,7 @@ async function loadRecentSessions() {
                   Copy Summary
                 </button>
               </div>
-              <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px; flex: 1;">
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 14px; border-radius: 8px; flex: 1;">
                 <div style="font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: rgba(255,255,255,0.95);">${summaryText}</div>
               </div>
             </div>
@@ -1249,6 +1256,209 @@ function updateWizardView() {
     startSessionBtn.style.display = 'block';
   }
 }
+
+// ── Worldwide Dynamic Company Autocomplete ────────────────────────────────────
+const POPULAR_GLOBAL_COMPANIES = [
+  { name: 'Google', domain: 'google.com' },
+  { name: 'Microsoft', domain: 'microsoft.com' },
+  { name: 'Amazon', domain: 'amazon.com' },
+  { name: 'Apple', domain: 'apple.com' },
+  { name: 'Meta', domain: 'meta.com' },
+  { name: 'Netflix', domain: 'netflix.com' },
+  { name: 'Nvidia', domain: 'nvidia.com' },
+  { name: 'OpenAI', domain: 'openai.com' },
+  { name: 'Anthropic', domain: 'anthropic.com' },
+  { name: 'Stripe', domain: 'stripe.com' },
+  { name: 'Uber', domain: 'uber.com' },
+  { name: 'Airbnb', domain: 'airbnb.com' },
+  { name: 'Spotify', domain: 'spotify.com' },
+  { name: 'Adobe', domain: 'adobe.com' },
+  { name: 'Salesforce', domain: 'salesforce.com' },
+  { name: 'Oracle', domain: 'oracle.com' },
+  { name: 'IBM', domain: 'ibm.com' },
+  { name: 'Cisco', domain: 'cisco.com' },
+  { name: 'Intel', domain: 'intel.com' },
+  { name: 'AMD', domain: 'amd.com' },
+  { name: 'Qualcomm', domain: 'qualcomm.com' },
+  { name: 'Tesla', domain: 'tesla.com' },
+  { name: 'SpaceX', domain: 'spacex.com' },
+  { name: 'Twitter / X', domain: 'x.com' },
+  { name: 'LinkedIn', domain: 'linkedin.com' },
+  { name: 'ByteDance', domain: 'bytedance.com' },
+  { name: 'Tencent', domain: 'tencent.com' },
+  { name: 'Alibaba', domain: 'alibaba.com' },
+  { name: 'Infosys', domain: 'infosys.com' },
+  { name: 'Tata Consultancy Services', domain: 'tcs.com' },
+  { name: 'Wipro', domain: 'wipro.com' },
+  { name: 'HCL Technologies', domain: 'hcltech.com' },
+  { name: 'Accenture', domain: 'accenture.com' },
+  { name: 'Cognizant', domain: 'cognizant.com' },
+  { name: 'Capgemini', domain: 'capgemini.com' },
+  { name: 'Deloitte', domain: 'deloitte.com' },
+  { name: 'PwC', domain: 'pwc.com' },
+  { name: 'EY (Ernst & Young)', domain: 'ey.com' },
+  { name: 'KPMG', domain: 'kpmg.com' },
+  { name: 'Goldman Sachs', domain: 'goldmansachs.com' },
+  { name: 'JPMorgan Chase', domain: 'jpmorgan.com' },
+  { name: 'Morgan Stanley', domain: 'morganstanley.com' },
+  { name: 'Citadel', domain: 'citadel.com' },
+  { name: 'Jane Street', domain: 'janestreet.com' },
+  { name: 'Two Sigma', domain: 'twosigma.com' },
+  { name: 'Palantir', domain: 'palantir.com' },
+  { name: 'Snowflake', domain: 'snowflake.com' },
+  { name: 'Databricks', domain: 'databricks.com' },
+  { name: 'Canva', domain: 'canva.com' },
+  { name: 'Figma', domain: 'figma.com' },
+  { name: 'Atlassian', domain: 'atlassian.com' },
+  { name: 'DoorDash', domain: 'doordash.com' },
+  { name: 'Instacart', domain: 'instacart.com' },
+  { name: 'Robinhood', domain: 'robinhood.com' },
+  { name: 'Coinbase', domain: 'coinbase.com' },
+  { name: 'Shopify', domain: 'shopify.com' },
+  { name: 'Twilio', domain: 'twilio.com' },
+  { name: 'Zoom', domain: 'zoom.us' },
+  { name: 'Slack', domain: 'slack.com' }
+];
+
+function initCompanyAutocomplete(inputEl, dropdownEl, nextFocusEl) {
+  if (!inputEl || !dropdownEl) return;
+
+  let debounceTimer = null;
+  let activeIndex = -1;
+  let currentSuggestions = [];
+
+  function closeDropdown() {
+    dropdownEl.style.display = 'none';
+    dropdownEl.innerHTML = '';
+    activeIndex = -1;
+    currentSuggestions = [];
+  }
+
+  function selectItem(item) {
+    inputEl.value = item.name;
+    closeDropdown();
+    if (nextFocusEl) {
+      nextFocusEl.focus();
+    }
+  }
+
+  function renderSuggestions(items) {
+    currentSuggestions = items;
+    activeIndex = -1;
+    if (!items || items.length === 0) {
+      closeDropdown();
+      return;
+    }
+
+    dropdownEl.innerHTML = '';
+    items.slice(0, 7).forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'autocomplete-item interactive';
+      row.innerHTML = `
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${item.name}</span>
+        ${item.domain ? `<span class="autocomplete-item-domain">${item.domain}</span>` : ''}
+      `;
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        selectItem(item);
+      });
+      dropdownEl.appendChild(row);
+    });
+
+    dropdownEl.style.display = 'flex';
+  }
+
+  async function fetchCompanies(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      closeDropdown();
+      return;
+    }
+
+    // 1. Instant match from local curated list (0ms delay)
+    const localMatches = POPULAR_GLOBAL_COMPANIES.filter(c =>
+      c.name.toLowerCase().includes(q) || (c.domain && c.domain.toLowerCase().includes(q))
+    );
+
+    if (localMatches.length > 0) {
+      renderSuggestions(localMatches);
+    }
+
+    // 2. Fetch worldwide companies asynchronously from global Clearbit API
+    try {
+      const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(query.trim())}`);
+      if (res.ok) {
+        const apiResults = await res.json();
+        if (Array.isArray(apiResults) && apiResults.length > 0) {
+          const merged = [...localMatches];
+          const seen = new Set(localMatches.map(m => m.name.toLowerCase()));
+          apiResults.forEach(r => {
+            if (r && r.name && !seen.has(r.name.toLowerCase())) {
+              seen.add(r.name.toLowerCase());
+              merged.push({ name: r.name, domain: r.domain || '' });
+            }
+          });
+          if (document.activeElement === inputEl && inputEl.value.trim().toLowerCase() === q) {
+            renderSuggestions(merged);
+          }
+        }
+      }
+    } catch (err) {
+      // Fallback silently to local matches
+    }
+  }
+
+  inputEl.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const val = inputEl.value;
+    if (!val || val.trim().length === 0) {
+      closeDropdown();
+      return;
+    }
+    const q = val.trim().toLowerCase();
+    const localMatches = POPULAR_GLOBAL_COMPANIES.filter(c =>
+      c.name.toLowerCase().includes(q) || (c.domain && c.domain.toLowerCase().includes(q))
+    );
+    if (localMatches.length > 0) {
+      renderSuggestions(localMatches);
+    }
+    debounceTimer = setTimeout(() => {
+      fetchCompanies(val);
+    }, 120);
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    const items = dropdownEl.querySelectorAll('.autocomplete-item');
+    if (!items || items.length === 0 || dropdownEl.style.display === 'none') return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % items.length;
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + items.length) % items.length;
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && activeIndex < currentSuggestions.length) {
+        e.preventDefault();
+        selectItem(currentSuggestions[activeIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      closeDropdown();
+    }
+  });
+
+  inputEl.addEventListener('blur', () => {
+    setTimeout(closeDropdown, 180);
+  });
+}
+
+// Initialize autocomplete on Setup Wizard and Edit Session modals
+initCompanyAutocomplete(setupCompany, document.getElementById('setup-company-autocomplete'), setupRole);
+initCompanyAutocomplete(document.getElementById('edit-company'), document.getElementById('edit-company-autocomplete'), document.getElementById('edit-role'));
 
 setupNextBtn.addEventListener('click', () => {
   if (currentStep === 1) {
