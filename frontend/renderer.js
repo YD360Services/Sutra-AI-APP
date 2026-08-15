@@ -358,12 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
   toolbarView.style.display = 'none';
   updateWizardView();
 
-  // Auto-start session if company, role, or job_description were provided from web launch
-  const hasParams = (offlineUserContext.company && offlineUserContext.company.trim() !== '') ||
-    (offlineUserContext.role && offlineUserContext.role.trim() !== '') ||
-    (offlineUserContext.job_description && offlineUserContext.job_description.trim() !== '');
-
-  if (hasParams && offlineUserContext.auto_start !== false) {
+  // Auto-start session ONLY if explicitly requested from web launch
+  if (offlineUserContext.auto_start === true) {
     setTimeout(() => {
       const startBtn = document.getElementById('start-session-btn');
       if (startBtn && !startBtn.disabled) {
@@ -1345,6 +1341,7 @@ startSessionBtn.addEventListener('click', async () => {
 
   // Options from step 3
   const preferredModel = document.getElementById('setup-model-select').value;
+  const preferredLanguage = document.getElementById('setup-language-select')?.value || 'en';
   const autoAnswer = document.getElementById('setup-auto-answer').checked;
   const saveTranscript = document.getElementById('setup-save-transcript').checked;
   shouldSaveTranscript = saveTranscript;
@@ -1379,7 +1376,7 @@ startSessionBtn.addEventListener('click', async () => {
         session_name: `${company} (${selectedSessionType})`,
         company_name: company,
         role_name: role,
-        language: 'English',
+        language: preferredLanguage,
         audio_source: 'browser_tab_audio',
         model: preferredModel,
         auto_answer: autoAnswer,
@@ -2155,8 +2152,10 @@ async function toggleSource(source) {
         isRecording = false;
         return;
       }
-      dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
-      console.log('[Stealth] Connecting direct to Deepgram for live session...');
+      const selectedLanguage = document.getElementById('setup-language-select')?.value || 'en';
+      const langQuery = (selectedLanguage && selectedLanguage !== 'multi') ? `&language=${encodeURIComponent(selectedLanguage)}` : '';
+      dgSocket = new WebSocket(`wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100${langQuery}`, ['token', dgKey]);
+      console.log(`[Stealth] Connecting direct to Deepgram for live session (Language: ${selectedLanguage})...`);
 
       dgSocket.onopen = async () => {
         console.log('[Deepgram Live] Connected successfully.');
@@ -2279,13 +2278,15 @@ async function toggleSource(source) {
       try {
         console.log('[Audio Capture] Attempting loopback screen-audio capture...');
         const sources = await window.electronAPI.getDesktopSources();
-        const screenSource = sources.find(s => s.id.startsWith('screen'));
+        const screenSource = (sources && sources.length > 0)
+          ? (sources.find(s => s.id.startsWith('screen')) || sources[0])
+          : null;
+
         if (screenSource) {
           activeSystemStream = await navigator.mediaDevices.getUserMedia({
             audio: {
               mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screenSource.id
+                chromeMediaSource: 'desktop'
               }
             },
             video: {
@@ -2312,12 +2313,14 @@ async function toggleSource(source) {
           isRecordingSystem = false;
           recordBtn.style.pointerEvents = 'auto';
           recordText.textContent = 'Speaker';
+          showInlineError('No display screen source detected for speaker audio.', answerBlock);
         }
       } catch (sysErr) {
         console.warn('[Audio Capture] Loopback capture failed:', sysErr.message);
         isRecordingSystem = false;
         recordBtn.style.pointerEvents = 'auto';
         recordText.textContent = 'Speaker';
+        showInlineError(`Speaker capture error: ${sysErr.message}`, answerBlock);
       }
     } else {
       // Stop system loopback
@@ -4518,13 +4521,15 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
       if (saveTranscriptInput) saveTranscriptInput.checked = Boolean(config.save_transcript);
     }
 
-    // Trigger session launch automatically after a brief delay to ensure dropdowns are populated
-    setTimeout(() => {
-      const startBtn = document.getElementById('start-session-btn');
-      if (startBtn && !startBtn.disabled) {
-        startBtn.click();
-      }
-    }, 100);
+    // Trigger session launch automatically ONLY if auto_start is explicitly true
+    if (config.auto_start === true) {
+      setTimeout(() => {
+        const startBtn = document.getElementById('start-session-btn');
+        if (startBtn && !startBtn.disabled) {
+          startBtn.click();
+        }
+      }, 100);
+    }
   });
 }
 
