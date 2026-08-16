@@ -382,6 +382,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Auto-start session ONLY if launched from web
   if (offlineUserContext.is_web_launch || offlineUserContext.auto_start === true) {
+    // Consume auto-start flags so subsequent app restarts open normally without auto-triggering
+    delete offlineUserContext.auto_start;
+    delete offlineUserContext.is_web_launch;
+    window.electronAPI.saveL4Context({
+      ...offlineUserContext,
+      auto_start: false,
+      is_web_launch: false
+    }).catch(() => {});
+
     setTimeout(() => {
       const startBtn = document.getElementById('start-session-btn');
       if (startBtn && !startBtn.disabled) {
@@ -1770,6 +1779,9 @@ startSessionBtn.addEventListener('click', async () => {
   // 3. Switch views and collapse window to toolbar size
   setupView.style.display = 'none';
   toolbarView.style.display = 'flex';
+  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+    window.electronAPI.setFocusable(false);
+  }
   // Initialize transcript block placeholder state
   if (transcriptBlock) {
     transcriptBlock.textContent = '';
@@ -2321,17 +2333,21 @@ function updateWindowSize(reposition = false) {
 
     setTimeout(() => {
       const appContainer = document.querySelector('.app-container');
+      const panelsContainer = document.getElementById('panels');
+      if (panelsContainer && !window.isCustomResized) {
+        panelsContainer.style.height = 'auto';
+      }
       const rect = appContainer ? appContainer.getBoundingClientRect() : { height: 0 };
       const settingsPopupEl = document.getElementById('settings-popup');
       const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
       const settingsBuffer = settingsOpen ? 180 : 0;
 
-      // Use scrollHeight to capture the full unclipped content height
+      // Use exact content height without preserving stale expanded heights
       let targetHeight;
       if (window.isCustomResized) {
         targetHeight = currentHeight;
       } else {
-        const contentHeight = appContainer ? Math.max(appContainer.scrollHeight, Math.round(rect.height)) : Math.round(rect.height);
+        const contentHeight = appContainer ? appContainer.scrollHeight : Math.round(rect.height);
         targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
       }
 
@@ -2600,64 +2616,126 @@ async function ensureAudioPipelineReady() {
       console.log(`[Deepgram STT] Status: ${data.status} (Provider: ${data.provider})`);
       recordBtn.style.pointerEvents = 'auto';
       if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
-      ensureMediaRecorderRunning(true);
+      
+      if (data.status === 'listening') {
+        ensureMediaRecorderRunning(true);
+      } else if (data.status === 'error' || data.status === 'closed') {
+        const errMsg = data.error || data.reason || '401 Unauthorized';
+        console.warn(`[Deepgram STT] Connection ${data.status}: ${errMsg}`);
+        if (errMsg.includes('401') || data.status === 'error') {
+          showInlineError('Deepgram API Key is invalid or out of credits (401 Unauthorized). Please update DEEPGRAM_API_KEY in .env file.', transcriptBlock);
+        }
+      }
     });
 
     window.electronAPI.onTranscriptChunk(({ text, is_final }) => {
-      if (!text || !text.trim()) return;
-      const cleanTranscript = text.trim();
-
-      const existingText = transcriptBlock.textContent.trim();
-      if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
-        transcriptBlock.textContent = '';
-        transcriptBlock.dataset.placeholder = 'false';
-      }
-
-      if (is_final) {
-        accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
-        transcriptBlock.textContent = accumulatedTranscript;
-        transcriptBlock.dataset.placeholder = 'false';
-
-        if (shouldSaveTranscript) {
-          const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
-          const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
-          safeSetItem('stealth_transcript_buffer', updatedBuffer);
-
-          if (sessionToken) {
-            transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
-            if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
-            transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-            const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
-            if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
-          }
-        }
-
-        const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-        const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
-
-        if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-          const score = questionScore(cleanTranscript);
-          if (score > 0) {
-            if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-            queryAssistant(null, false);
-          } else {
-            if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-            autoAnswerTimeoutId = setTimeout(() => {
-              if (!answerBlock.classList.contains('loading')) {
-                queryAssistant(null, false);
-              }
-              autoAnswerTimeoutId = null;
-            }, 1000);
-          }
-        }
-      } else {
-        transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
-      }
-      transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
+      handleTranscriptChunk(text, is_final);
     });
   }
+}
 
-  ensureMediaRecorderRunning(true);
+let localSpeechRecognition = null;
+
+function handleTranscriptChunk(text, is_final) {
+  if (!text || !text.trim()) return;
+  const cleanTranscript = text.trim();
+
+  const existingText = transcriptBlock.textContent.trim();
+  if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
+    transcriptBlock.textContent = '';
+    transcriptBlock.dataset.placeholder = 'false';
+  }
+
+  if (is_final) {
+    accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
+    transcriptBlock.textContent = accumulatedTranscript;
+    transcriptBlock.dataset.placeholder = 'false';
+
+    if (shouldSaveTranscript) {
+      const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
+      const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
+      safeSetItem('stealth_transcript_buffer', updatedBuffer);
+
+      if (sessionToken) {
+        transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
+        if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
+        transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+        const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
+        if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
+      }
+    }
+
+    const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
+    const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
+
+    if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
+      const score = questionScore(cleanTranscript);
+      if (score > 0) {
+        if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
+        queryAssistant(null, false);
+      } else {
+        if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+        autoAnswerTimeoutId = setTimeout(() => {
+          if (!answerBlock.classList.contains('loading')) {
+            queryAssistant(null, false);
+          }
+          autoAnswerTimeoutId = null;
+        }, 1000);
+      }
+    }
+  } else {
+    transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
+  }
+  transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
+}
+
+function startLocalSpeechRecognition() {
+  if (isWebSpeechDisabled) return;
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn('[STT Fallback] WebkitSpeechRecognition is not supported in this browser environment.');
+    return;
+  }
+  if (localSpeechRecognition) {
+    try { localSpeechRecognition.stop(); } catch(e) {}
+  }
+  try {
+    localSpeechRecognition = new SpeechRecognition();
+    localSpeechRecognition.continuous = true;
+    localSpeechRecognition.interimResults = true;
+    const selectedLanguage = document.getElementById('setup-language-select')?.value || 'en';
+    localSpeechRecognition.lang = selectedLanguage === 'en' ? 'en-US' : selectedLanguage;
+
+    localSpeechRecognition.onresult = (event) => {
+      webSpeechErrorCount = 0;
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const text = event.results[i][0].transcript;
+        const isFinal = event.results[i].isFinal;
+        if (text && text.trim()) {
+          console.log(`[WebSpeech STT Fallback] Live transcript: "${text.trim()}" (final: ${isFinal})`);
+          handleTranscriptChunk(text.trim(), isFinal);
+        }
+      }
+    };
+
+    localSpeechRecognition.onerror = (e) => {
+      console.warn('[WebSpeech STT Fallback] Error:', e.error);
+      isWebSpeechDisabled = true;
+      try { localSpeechRecognition.stop(); } catch(err) {}
+    };
+
+    localSpeechRecognition.onend = () => {
+      if (isRecording && !isWebSpeechDisabled) {
+        try { localSpeechRecognition.start(); } catch(e) {}
+      }
+    };
+
+    localSpeechRecognition.start();
+    console.log('[STT Engine] WebSpeech API fallback active.');
+  } catch (e) {
+    console.error('[WebSpeech STT Fallback] Failed to start:', e.message);
+  }
 }
 
 // Toggle audio capture for a specific source ('system' or 'mic')
@@ -2962,6 +3040,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
   try {
     let answer;
     let currentQuestion = '';
+    let newEntry;
 
     if (backendUrl && sessionToken) {
       // Resolve the current question on the frontend to display it at the top
@@ -2977,7 +3056,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
       }
 
       // Add new entry to history
-      const newEntry = { question: currentQuestion, answer: '', totalTimeSec: '' };
+      newEntry = { question: currentQuestion, answer: '', totalTimeSec: '' };
       answerHistory.push(newEntry);
       currentAnswerIndex = answerHistory.length - 1;
       updateAnswerNav();
@@ -3123,7 +3202,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
       currentQuestion = latestQuestion;
 
       // Add to history
-      const newEntry = { question: currentQuestion, answer: '', totalTimeSec: '' };
+      newEntry = { question: currentQuestion, answer: '', totalTimeSec: '' };
       answerHistory.push(newEntry);
       currentAnswerIndex = answerHistory.length - 1;
       updateAnswerNav();
@@ -4785,6 +4864,13 @@ window.addEventListener('keydown', (e) => {
     }
   }
 });
+
+// Stealth Focus Lock: Enforce setFocusable(false) on all mouse events to guarantee 0% OS window activation / focus theft on background proctor window
+document.addEventListener('mousedown', () => {
+  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+    window.electronAPI.setFocusable(false);
+  }
+}, true);
 
 // Capture override: Ctrl + click on any button
 document.addEventListener('click', (e) => {

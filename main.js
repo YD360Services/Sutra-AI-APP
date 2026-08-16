@@ -101,11 +101,12 @@ if (env.DEEPGRAM_API_KEY) {
   console.warn('[Stealth Init] Warning: DEEPGRAM_API_KEY is missing in .env');
 }
 
-const defaultModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro'];
+const defaultModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro'];
 
 // Native HTTPS request to Gemini API
 function makeGeminiRequest(key, prompt, base64Image = null, modelIndex = 0) {
-  const model = env.GEMINI_MODEL || defaultModels[modelIndex] || 'gemini-1.5-flash';
+  let model = env.GEMINI_MODEL || defaultModels[modelIndex] || 'gemini-1.5-flash';
+  if (model === 'gemini-2.0-flash') model = 'gemini-2.5-flash';
   return new Promise((resolve, reject) => {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
@@ -167,8 +168,9 @@ function makeGeminiRequest(key, prompt, base64Image = null, modelIndex = 0) {
             const parsedErr = JSON.parse(responseBody);
             if (parsedErr.error && parsedErr.error.message) {
               const errMsg = parsedErr.error.message;
-              // If the model was not found/recognized, attempt next fallback model index
-              if (!env.GEMINI_MODEL && (errMsg.includes('not found') || errMsg.includes('NotFound') || errMsg.includes('not recognized') || errMsg.includes('Model')) && modelIndex < defaultModels.length - 1) {
+              const errLower = errMsg.toLowerCase();
+              // If the model was not found/recognized/no longer available, attempt next fallback model index
+              if ((!env.GEMINI_MODEL || env.GEMINI_MODEL === 'gemini-2.0-flash') && (errLower.includes('not found') || errLower.includes('not recognized') || errLower.includes('no longer available') || errLower.includes('model')) && modelIndex < defaultModels.length - 1) {
                 console.warn(`[Gemini API] Model ${model} failed with: ${errMsg}. Trying fallback ${defaultModels[modelIndex + 1]}...`);
                 makeGeminiRequest(key, prompt, base64Image, modelIndex + 1).then(resolve).catch(reject);
                 return;
@@ -253,6 +255,9 @@ function loadSavedBounds() {
 }
 
 function saveSavedBounds(bounds) {
+  if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number') {
+    return;
+  }
   const filePath = path.join(app.getPath('userData'), 'stealth_window_state.json');
   try {
     let existing = {};
@@ -354,7 +359,6 @@ function createWindow() {
 
   mainWindow.show();
   mainWindow.setResizable(false);
-  mainWindow.focus();
 
   // Forward all renderer logs to the terminal
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -388,12 +392,6 @@ function createWindow() {
     if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
       const shouldFocus = Boolean(focusable);
       win.setFocusable(shouldFocus);
-      if (shouldFocus) {
-        win.focus();
-        if (win.webContents) {
-          win.webContents.focus();
-        }
-      }
     }
   });
 
@@ -434,7 +432,7 @@ function createWindow() {
 
   // Handle request for Deepgram key (offline mode)
   ipcMain.handle('get-deepgram-key', () => {
-    return env.DEEPGRAM_API_KEY || 'b9c61b1ad44d1ecb8720eab6ded85c8fe5a8031a';
+    return env.DEEPGRAM_API_KEY || '3cad982200a3b1b6be970a367c19c5032092d982';
   });
 
   // ── Native Deepgram nova-3 Live Transcription Bridge ───
@@ -443,7 +441,7 @@ function createWindow() {
 
   ipcMain.on('start-transcription', (event, config = {}) => {
     const language = config.language || 'en';
-    const dgKey = env.DEEPGRAM_API_KEY || 'b9c61b1ad44d1ecb8720eab6ded85c8fe5a8031a';
+    const dgKey = env.DEEPGRAM_API_KEY || '3cad982200a3b1b6be970a367c19c5032092d982';
 
     // If socket is already open and ready, inform client immediately
     if (liveSTTSocket && liveSTTSocket.readyState === WebSocket.OPEN) {
@@ -491,13 +489,17 @@ function createWindow() {
 
       liveSTTSocket.on('error', (err) => {
         console.error('[Deepgram STT] WebSocket Error:', err.message || err);
+        event.sender.send('transcription-status', { status: 'error', provider: 'deepgram', error: err.message || '401 Unauthorized' });
       });
 
       liveSTTSocket.on('close', (code, reason) => {
-        console.log(`[Deepgram STT] WebSocket Closed (code: ${code}, reason: ${reason ? reason.toString() : 'none'})`);
+        const reasonStr = reason ? reason.toString() : '';
+        console.log(`[Deepgram STT] WebSocket Closed (code: ${code}, reason: ${reasonStr})`);
+        event.sender.send('transcription-status', { status: 'closed', provider: 'deepgram', code, reason: reasonStr });
       });
     } catch (err) {
       console.error('[Deepgram STT] Failed to initialize connection:', err.message);
+      event.sender.send('transcription-status', { status: 'error', provider: 'deepgram', error: err.message });
     }
   });
 
@@ -1043,7 +1045,9 @@ function createWindow() {
         doc_type: typeof doc_type === 'string' ? doc_type.substring(0, 50) : '',
         company: typeof company === 'string' ? company.substring(0, MAX_SHORT) : '',
         role: typeof role === 'string' ? role.substring(0, MAX_SHORT) : '',
-        model: typeof model === 'string' ? model.substring(0, 100) : ''
+        model: typeof model === 'string' ? model.substring(0, 100) : '',
+        auto_start: false,
+        is_web_launch: false
       };
       fs.writeFileSync(localPath, JSON.stringify(data, null, 2), 'utf8');
       return { success: true };
@@ -1300,8 +1304,7 @@ function triggerLaunchToolbar() {
     // 4. Force screen capture protection
     mainWindow.setContentProtection(true);
 
-    mainWindow.show();
-    mainWindow.focus();
+    mainWindow.showInactive();
     mainWindow.restore();
   }
 }
@@ -1515,7 +1518,6 @@ if (!gotTheLock) {
     }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
     }
   });
 
@@ -1541,7 +1543,6 @@ if (!gotTheLock) {
         const config = parseDeepLinkUrl(url);
         if (config) mainWindow.webContents.send('deep-link-session', config);
         if (mainWindow.isMinimized()) mainWindow.restore();
-        mainWindow.focus();
       }
     });
 
