@@ -1827,6 +1827,10 @@ startSessionBtn.addEventListener('click', async () => {
     window.electronAPI.resizeWindow(WIDTH, COLLAPSED_HEIGHT, 'top', true);
   }
 
+  // ── 3-LAYER HUD: Open the AI panel so the intro answer has a visible home ──
+  openPanel('ai');
+
+
   // Clear answerBlock and show Intro message
   const chatBlock = document.getElementById('answer-block');
   const dbIntroduction = resumeObj ? resumeObj.introduction : '';
@@ -1841,6 +1845,7 @@ startSessionBtn.addEventListener('click', async () => {
       queryAssistant(introPrompt, true);
     }, 500);
   }
+
 
   // Start live session ticking timer
   startSessionTimer();
@@ -2037,6 +2042,8 @@ function updateClickThrough(clientX, clientY) {
     el.closest('.setup-view-container') ||
     el.closest('#settings-popup') ||
     el.closest('.panels-container') ||
+    el.closest('#transcript-layer') ||
+    el.closest('#ai-layer') ||
     el.tagName === 'BUTTON' ||
     el.tagName === 'INPUT' ||
     el.tagName === 'TEXTAREA' ||
@@ -2082,40 +2089,29 @@ window.addEventListener('pointerup', (e) => {
     isResizingPanel = false;
     document.body.classList.remove('resizing');
 
-    // Save panel width from CSS variable
-    const panelWidthStr = document.documentElement.style.getPropertyValue('--panel-width');
-    let finalPanelWidth = 620;
-    if (panelWidthStr) {
-      finalPanelWidth = parseFloat(panelWidthStr);
-      safeSetItem('stealth_panelWidth', finalPanelWidth);
-    }
-
+    const currentWinWidth = isAnswerExpanded ? 840 : WIDTH;
     safeSetItem('stealth_panelHeight', currentHeight);
     safeSetItem('stealth_windowX', window.screenX);
     safeSetItem('stealth_windowY', window.screenY);
 
-    const finalWinWidth = Math.max(WIDTH, finalPanelWidth + 20);
-
     // Save full bounds (size + position) to main process JSON store
     if (window.electronAPI && window.electronAPI.saveWindowBounds) {
       window.electronAPI.saveWindowBounds({
-        width: finalWinWidth,
+        width: currentWinWidth,
         height: currentHeight,
         x: window.screenX,
         y: window.screenY,
-        panelWidth: finalPanelWidth,
         panelHeight: currentHeight
       });
     }
 
-    // Perform final, unthrottled resize to align the window boundaries exactly
+    // Perform final unthrottled resize locked to startX (0 horizontal wobble)
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(finalWinWidth, currentHeight, toolbarPosition, false, startX, startY);
+    window.electronAPI.resizeWindow(currentWinWidth, currentHeight, toolbarPosition, false, startX, startY);
 
-    // Release pointer capture
-    const expandAnswerBtn = document.getElementById('expand-answer-btn');
-    if (expandAnswerBtn) {
-      try { expandAnswerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
+    const aiLayerResizer = document.getElementById('ai-layer-resizer');
+    if (aiLayerResizer) {
+      try { aiLayerResizer.releasePointerCapture(e.pointerId); } catch (err) { }
     }
 
     // Re-evaluate click-through after resize ends so buttons don't freeze
@@ -2125,7 +2121,6 @@ window.addEventListener('pointerup', (e) => {
   isDraggingSlider = false;
 
   // After any pointer release, re-evaluate click-through using last known position
-  // This fixes the case where OS-level drag ends and pointermove never fires
   requestAnimationFrame(() => updateClickThrough());
 });
 
@@ -2134,60 +2129,46 @@ window.addEventListener('pointermove', (e) => {
   _lastClientX = e.clientX;
   _lastClientY = e.clientY;
 
-  // Handle panel resizing
+  // Handle panel resizing — purely vertical height adjustment (0 horizontal movement, 0 navbar shaking)
   if (isResizingPanel) {
-    const dx = e.screenX - startMouseX;
     const dy = e.screenY - startMouseY;
 
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    if (Math.abs(dy) > 3) {
       isDragClick = true;
     }
 
     // Scale delta direction depending on where the toolbar is docked
-    let dxSigned = dx;
     let dySigned = dy;
     if (toolbarPosition === 'bottom') {
       dySigned = -dy;
     }
-    if (toolbarPosition === 'right') {
-      dxSigned = -dx;
-    }
 
-    // Resize only height during drag; panel width grows to the right from startX (toolbar stays static)
-    const screenWidth = window.screen.availWidth || 1920;
     const screenHeight = window.screen.availHeight || 1080;
     const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
-    const newPanelWidth = Math.max(300, Math.min(screenWidth - 40, startPanelWidth + dxSigned));
-    const newHeight = Math.max(300, Math.min(maxWinHeight, startHeight + dySigned));
-
-    // Update the panel width CSS variable dynamically
-    document.documentElement.style.setProperty('--panel-width', newPanelWidth + 'px');
+    const newHeight = Math.max(160, Math.min(maxWinHeight, startHeight + dySigned));
     currentHeight = newHeight;
-
-    const panelsContainer = document.getElementById('panels');
-    if (panelsContainer) {
-      panelsContainer.style.height = (newHeight - COLLAPSED_HEIGHT - 12) + 'px';
-      panelsContainer.style.maxHeight = 'none';
-    }
 
     const answerBlock = document.getElementById('answer-block');
     if (answerBlock) {
-      const headerHeight = 45;
-      const navHeight = 35;
-      const inputHeight = 55;
-      const computedAnswerHeight = newHeight - COLLAPSED_HEIGHT - 12 - headerHeight - navHeight - inputHeight;
-      answerBlock.style.height = Math.max(100, computedAnswerHeight) + 'px';
+      const aiLayerExtended = document.getElementById('ai-layer-extended');
+      const isInputVisible = aiLayerExtended && aiLayerExtended.classList.contains('active');
+      const inputH = isInputVisible ? 50 : 0;
+      // 56px navbar + 42px transcript + 6px margin + 30px answer header + inputH + 28px padding/resizer
+      const otherElementsH = 56 + 42 + 6 + 30 + inputH + 28;
+      const computedAnswerHeight = Math.max(60, newHeight - otherElementsH);
+      answerBlock.style.height = computedAnswerHeight + 'px';
       answerBlock.style.maxHeight = 'none';
+      answerBlock.style.overflowY = 'auto';
     }
 
     // Throttle the native OS window resizing IPC calls to prevent DWM thread blocks
     const now = Date.now();
     if (now - lastResizeTime > 30) {
       lastResizeTime = now;
-      const newWinWidth = Math.max(WIDTH, newPanelWidth + 20);
-      // Lock X to startX — toolbar position never shifts during resize
+      const currentWinWidth = isAnswerExpanded ? 840 : WIDTH;
+      // Lock X to startX and width to currentWinWidth — 100% shake-free!
       pendingProgrammaticResizes++;
-      window.electronAPI.resizeWindow(newWinWidth, newHeight, toolbarPosition, false, startX, startY);
+      window.electronAPI.resizeWindow(currentWinWidth, newHeight, toolbarPosition, false, startX, startY);
     }
     return;
   }
@@ -2249,21 +2230,43 @@ function updateWindowSize(reposition = false) {
   // Detect and update the toolbar position dynamically based on window location
   updateDynamicToolbarPosition();
 
-  if (!activeTab) {
+  // ── 3-LAYER HUD: always measure the full content of all visible layer strips ──
+  {
     const settingsPopupEl = document.getElementById('settings-popup');
     const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
     const editModalEl = document.getElementById('edit-session-modal');
     const editModalOpen = editModalEl && editModalEl.style.display === 'flex';
 
-    let targetHeight = COLLAPSED_HEIGHT;
-    if (settingsOpen || editModalOpen) {
-      targetHeight = 480;
-    } else if (isMouseInsideWindow) {
-      targetHeight = 140;
+    // Base = toolbar (48px) + transcript layer (36px) + margins (6+6px)
+    const toolbarH = 56;       // toolbar 48px + 8px top margin
+    const transcriptH = 42;   // transcript layer 36px + 6px margin
+
+    // AI layer height: only count if #ai-layer is visible
+    const aiLayerEl = document.getElementById('ai-layer');
+    const aiLayerVisible = aiLayerEl && aiLayerEl.style.display !== 'none' && aiLayerEl.offsetParent !== null;
+    let aiLayerH = 0;
+    if (aiLayerVisible) {
+      aiLayerH = aiLayerEl.getBoundingClientRect().height + 6; // +6 margin
     }
+
+    let targetHeight;
+    if (settingsOpen || editModalOpen) {
+      targetHeight = Math.max(480, toolbarH + transcriptH + aiLayerH);
+    } else if (!isMouseInsideWindow && !aiLayerVisible) {
+      targetHeight = toolbarH; // just the navbar when nothing else is visible
+    } else {
+      targetHeight = toolbarH + transcriptH + aiLayerH + 8; // 8px bottom buffer
+    }
+
+    const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || (isAnswerExpanded ? '820' : '620'));
+    document.documentElement.style.setProperty('--panel-width', currentPanelWidth + 'px');
+    const targetWinWidth = aiLayerVisible ? Math.max(WIDTH, currentPanelWidth + 20) : WIDTH;
+
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(WIDTH, targetHeight, toolbarPosition, reposition);
-  } else {
+    window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition);
+  }
+
+  if (false) { // legacy branch: never reached, kept for structural reference
     const answerBlock = document.getElementById('answer-block');
     const codeDisplayPre = document.getElementById('code-display');
 
@@ -2362,7 +2365,6 @@ function updateWindowSize(reposition = false) {
 
 function closeAllPanels() {
   activeTab = null;
-  hasActiveAnswer = false;
   isAnswerExpanded = false;
 
   // Deactivate buttons
@@ -2377,38 +2379,47 @@ function closeAllPanels() {
     expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
   }
 
-  // Hide panel content
-  panelsContainer.classList.remove('active');
-  aiPanel.classList.remove('active');
+  // ── 3-LAYER HUD: hide the entire #ai-layer strip when Assistant is closed ──
+  const aiLayerEl = document.getElementById('ai-layer');
+  if (aiLayerEl) aiLayerEl.style.display = 'none';
 
-  // Reset heights
-  const answerBlock = document.getElementById('answer-block');
-  const codeDisplayPre = document.getElementById('code-display');
-  if (answerBlock) answerBlock.style.height = '110px';
-  if (codeDisplayPre) codeDisplayPre.style.height = '310px';
+  // Legacy panel compat (panels container is hidden by CSS)
+  panelsContainer.classList.remove('active');
+  if (aiPanel) aiPanel.classList.remove('active');
 
   // Save to localStorage
   safeSetItem('stealth_activeTab', '');
 
-  // Resize window
+  // Resize window to fit remaining visible layers
   updateWindowSize();
 }
 
 function openPanel(tabName) {
   activeTab = tabName;
 
-  // Deactivate all buttons
+  // Activate matching nav button
   aiBtn.classList.toggle('active', tabName === 'ai');
   captureBtn.classList.toggle('active', tabName === 'code');
 
-  // Show target panel content
-  panelsContainer.classList.add('active');
-  aiPanel.classList.toggle('active', tabName === 'ai');
+  // ── 3-LAYER HUD: show the entire #ai-layer strip; extended input row is always visible inside it ──
+  const aiLayerEl = document.getElementById('ai-layer');
+  const aiLayerExtended = document.getElementById('ai-layer-extended');
+  if (tabName === 'ai') {
+    if (aiLayerEl) aiLayerEl.style.display = 'flex';
+    if (aiLayerExtended) aiLayerExtended.classList.add('active');
+  } else {
+    // For other tabs (e.g. 'code'), keep ai-layer as-is
+    if (aiLayerExtended) aiLayerExtended.classList.remove('active');
+  }
+
+  // Legacy panel compat — keep panels-container hidden
+  panelsContainer.classList.remove('active');
+  if (aiPanel) aiPanel.classList.remove('active');
 
   // Save to localStorage
   safeSetItem('stealth_activeTab', tabName);
 
-  // Resize window
+  // Resize window to fit new layer heights
   updateWindowSize();
 }
 
@@ -3346,11 +3357,26 @@ function updateAnswerNav() {
 }
 
 function renderActiveAnswer() {
+  const aiLayer = document.getElementById('ai-layer');
+
   if (currentAnswerIndex < 0 || currentAnswerIndex >= answerHistory.length) {
     answerBlock.innerHTML = 'Click the "Answer" button to extract the latest question from the transcript and get an instant response...';
     updateAnswerNav();
+    // Hide ai-layer when there are no answers
+    if (aiLayer && answerHistory.length === 0) {
+      aiLayer.style.display = 'none';
+      hasActiveAnswer = false;
+    }
+    updateWindowSize();
     return;
   }
+
+  // Show #ai-layer on first answer
+  if (aiLayer && aiLayer.style.display === 'none') {
+    aiLayer.style.display = 'flex';
+    hasActiveAnswer = true;
+  }
+
   const entry = answerHistory[currentAnswerIndex];
   renderAnswerToDOM(answerBlock, entry.answer, entry.question);
 
@@ -4677,10 +4703,43 @@ if (diamondBtn) {
 }
 
 const expandAnswerBtn = document.getElementById('expand-answer-btn');
-let isDragClick = false;
 
 if (expandAnswerBtn) {
-  expandAnswerBtn.addEventListener('pointerdown', (e) => {
+  expandAnswerBtn.addEventListener('click', (e) => {
+
+    isAnswerExpanded = !isAnswerExpanded;
+    expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
+    const expandBtnText = document.getElementById('expand-btn-text');
+    if (expandBtnText) {
+      expandBtnText.textContent = isAnswerExpanded ? 'Compact' : 'Expand';
+    }
+
+    const answerBlock = document.getElementById('answer-block');
+    if (isAnswerExpanded) {
+      safeSetItem('stealth_panelWidth', 820);
+      document.documentElement.style.setProperty('--panel-width', '820px');
+      if (answerBlock) {
+        answerBlock.style.height = 'auto';
+        answerBlock.style.maxHeight = '360px';
+        answerBlock.style.overflowY = 'auto';
+      }
+    } else {
+      safeSetItem('stealth_panelWidth', 620);
+      document.documentElement.style.setProperty('--panel-width', '620px');
+      if (answerBlock) {
+        answerBlock.style.height = '110px';
+        answerBlock.style.maxHeight = '220px';
+        answerBlock.style.overflowY = 'auto';
+      }
+    }
+    updateWindowSize();
+  });
+}
+
+// ── Bottom Resizer Handle for #ai-layer ─────────────────────────────────────
+const aiLayerResizer = document.getElementById('ai-layer-resizer');
+if (aiLayerResizer) {
+  aiLayerResizer.addEventListener('pointerdown', (e) => {
     isResizingPanel = true;
     window.isCustomResized = true;
     document.body.classList.add('resizing');
@@ -4694,51 +4753,12 @@ if (expandAnswerBtn) {
     isDragClick = false;
     e.preventDefault();
 
-    // Capture pointer events globally to allow dragging outside window boundaries
-    expandAnswerBtn.setPointerCapture(e.pointerId);
-
+    // Capture pointer events globally so dragging works smoothly even if pointer moves outside the strip
+    aiLayerResizer.setPointerCapture(e.pointerId);
     window.electronAPI.setIgnoreMouseEvents(false);
   });
-
-  expandAnswerBtn.addEventListener('click', (e) => {
-    if (isDragClick) {
-      isDragClick = false;
-      return;
-    }
-    window.isCustomResized = false;
-    isAnswerExpanded = !isAnswerExpanded;
-    expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
-    if (isAnswerExpanded) {
-      expandAnswerBtn.style.color = 'var(--accent-ai)';
-      expandAnswerBtn.style.borderColor = 'rgba(20, 184, 166, 0.4)';
-      expandAnswerBtn.style.background = 'rgba(20, 184, 166, 0.08)';
-
-      // Default large dimensions
-      currentWidth = Math.max(currentWidth, WIDTH);
-      currentHeight = Math.max(currentHeight, 664);
-    } else {
-      expandAnswerBtn.style.color = 'var(--text-secondary)';
-      expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-      expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
-
-      // Default collapsed dimensions
-      currentWidth = WIDTH;
-      currentHeight = 664;
-
-      const panelsContainer = document.getElementById('panels');
-      if (panelsContainer) {
-        panelsContainer.style.height = 'auto';
-        panelsContainer.style.maxHeight = '1450px';
-      }
-      const answerBlock = document.getElementById('answer-block');
-      if (answerBlock) {
-        answerBlock.style.height = 'auto';
-        answerBlock.style.maxHeight = '250px';
-      }
-    }
-    updateWindowSize();
-  });
 }
+
 
 
 const clearAnswerBtn = document.getElementById('clear-answer-btn');
