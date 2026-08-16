@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { exec } = require('child_process');
+const WebSocket = require('ws');
 
 // Helper to keep window bounds fully inside the screen workspace
 function clampBoundsToScreen(x, y, width, height) {
@@ -284,19 +285,29 @@ function createWindow() {
       const contextData = {
         resume: config.resume_id || config.resume || '',
         resume_id: config.resume_id || '',
-        job_description: config.jd || '',
+        job_description: config.jd || config.job_description || '',
         code_context: '',
         company: config.company || '',
         role: config.role || '',
         model: config.model || '',
+        language: config.language || '',
         doc_id: config.doc_id || '',
-        auto_start: true
+        auto_start: true,
+        is_web_launch: true
       };
       fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
       console.log('[Stealth Config] Successfully initialized active resume, JD, company, and role context:', contextData);
     } catch (e) {
       console.error('[Stealth Config] Failed to write context data:', e.message);
     }
+  } else {
+    // Normal desktop app launch: remove stale context so wizard starts fresh without prefilled data
+    try {
+      const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+      }
+    } catch (e) { }
   }
 
   // Always boot directly in setup wizard configuration dimensions
@@ -344,6 +355,11 @@ function createWindow() {
   mainWindow.show();
   mainWindow.setResizable(false);
   mainWindow.focus();
+
+  // Forward all renderer logs to the terminal
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer] ${message}`);
+  });
 
   // Prevent accidental reloads (Ctrl+R / F5) in production unless devtools are open
   mainWindow.webContents.on('before-input-event', (event, input) => {
@@ -418,7 +434,94 @@ function createWindow() {
 
   // Handle request for Deepgram key (offline mode)
   ipcMain.handle('get-deepgram-key', () => {
-    return env.DEEPGRAM_API_KEY || '';
+    return env.DEEPGRAM_API_KEY || 'b9c61b1ad44d1ecb8720eab6ded85c8fe5a8031a';
+  });
+
+  // ── Native Deepgram nova-3 Live Transcription Bridge ───
+  let liveSTTSocket = null;
+  let audioChunkCount = 0;
+
+  ipcMain.on('start-transcription', (event, config = {}) => {
+    const language = config.language || 'en';
+    const dgKey = env.DEEPGRAM_API_KEY || 'b9c61b1ad44d1ecb8720eab6ded85c8fe5a8031a';
+
+    // If socket is already open and ready, inform client immediately
+    if (liveSTTSocket && liveSTTSocket.readyState === WebSocket.OPEN) {
+      event.sender.send('transcription-status', { status: 'listening', provider: 'deepgram' });
+      return;
+    }
+
+    if (liveSTTSocket) {
+      try { liveSTTSocket.close(); } catch (e) { }
+      liveSTTSocket = null;
+    }
+
+    audioChunkCount = 0;
+    const langQuery = (language && language !== 'multi') ? `&language=${encodeURIComponent(language)}` : '';
+    // Use raw 16kHz linear PCM for zero-header stream reliability
+    const dgUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&encoding=linear16&sample_rate=16000&channels=1&smart_format=true&interim_results=true&endpointing=100${langQuery}`;
+
+    console.log(`[Deepgram STT] Connecting to live WebSocket: ${dgUrl}`);
+    try {
+      liveSTTSocket = new WebSocket(dgUrl, {
+        headers: { Authorization: `Token ${dgKey}` }
+      });
+
+      liveSTTSocket.on('open', () => {
+        console.log('[Deepgram STT] Connected successfully to Deepgram WebSocket (Linear16 PCM)!');
+        event.sender.send('transcription-status', { status: 'listening', provider: 'deepgram' });
+      });
+
+      liveSTTSocket.on('message', (msgBuffer) => {
+        try {
+          const data = JSON.parse(msgBuffer.toString());
+          const alt = (data.channel && data.channel.alternatives && data.channel.alternatives[0])
+            || (data.results && data.results.channels && data.results.channels[0] && data.results.channels[0].alternatives && data.results.channels[0].alternatives[0]);
+          const transcript = alt ? alt.transcript : '';
+          const isFinal = (data.is_final !== undefined) ? data.is_final : (data.speech_final || false);
+
+          if (transcript && transcript.trim()) {
+            console.log(`[Deepgram STT] Live Transcript: "${transcript.trim()}" (final: ${isFinal})`);
+            event.sender.send('transcription-chunk', { text: transcript.trim(), is_final: isFinal });
+          }
+        } catch (e) {
+          console.error('[Deepgram STT] Error parsing Deepgram message:', e.message);
+        }
+      });
+
+      liveSTTSocket.on('error', (err) => {
+        console.error('[Deepgram STT] WebSocket Error:', err.message || err);
+      });
+
+      liveSTTSocket.on('close', (code, reason) => {
+        console.log(`[Deepgram STT] WebSocket Closed (code: ${code}, reason: ${reason ? reason.toString() : 'none'})`);
+      });
+    } catch (err) {
+      console.error('[Deepgram STT] Failed to initialize connection:', err.message);
+    }
+  });
+
+  ipcMain.on('send-audio-chunk', (event, chunkBuffer) => {
+    if (liveSTTSocket && liveSTTSocket.readyState === WebSocket.OPEN) {
+      try {
+        const buf = Buffer.from(chunkBuffer);
+        liveSTTSocket.send(buf);
+        audioChunkCount++;
+        if (audioChunkCount === 1 || audioChunkCount % 40 === 0) {
+          console.log(`[Deepgram STT] Actively streaming audio... (${audioChunkCount} chunks sent, ${buf.length} bytes each)`);
+        }
+      } catch (e) {
+        console.error('[Deepgram STT] Error sending audio buffer:', e.message);
+      }
+    }
+  });
+
+  ipcMain.on('stop-transcription', () => {
+    if (liveSTTSocket) {
+      console.log('[Deepgram STT] Stopping transcription session...');
+      try { liveSTTSocket.close(); } catch (e) { }
+      liveSTTSocket = null;
+    }
   });
 
   ipcMain.handle('get-saved-bounds', () => {
@@ -1284,11 +1387,16 @@ const server = http.createServer((req, res) => {
           const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
           const contextData = {
             resume: config.resume_id || config.resume || '',
-            job_description: config.jd || '',
+            resume_id: config.resume_id || '',
+            job_description: config.jd || config.job_description || '',
             code_context: '',
-            company: config.company || 'Stealth Practice',
-            role: config.role || 'Software Engineer',
-            model: config.model || ''
+            company: config.company || '',
+            role: config.role || '',
+            model: config.model || '',
+            language: config.language || '',
+            doc_id: config.doc_id || '',
+            auto_start: true,
+            is_web_launch: true
           };
           fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
           console.log('[Stealth Server] Updated session context on port 48999:', contextData);
@@ -1299,7 +1407,7 @@ const server = http.createServer((req, res) => {
               session_name: config.session_name,
               company: config.company,
               role: config.role,
-              jd: config.jd,
+              jd: config.jd || config.job_description,
               type: config.type,
               model: config.model,
               language: config.language,
@@ -1307,7 +1415,9 @@ const server = http.createServer((req, res) => {
               doc_id: config.doc_id,
               prompt_id: config.prompt_id,
               auto_answer: config.auto_answer,
-              save_transcript: config.save_transcript
+              save_transcript: config.save_transcript,
+              auto_start: true,
+              is_web_launch: true
             };
             mainWindow.webContents.send('deep-link-session', mappedConfig);
           }
@@ -1339,6 +1449,7 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('company'))      config.company       = params.get('company');
     if (params.get('role'))         config.role          = params.get('role');
     if (params.get('jd'))           config.jd            = params.get('jd');
+    if (params.get('job_description')) config.jd        = params.get('job_description');
     if (params.get('type'))         config.type          = params.get('type');
     if (params.get('model'))        config.model         = params.get('model');
     if (params.get('language'))     config.language      = params.get('language');
@@ -1347,7 +1458,12 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('prompt_id'))    config.prompt_id     = params.get('prompt_id');
     if (params.get('auto_answer'))  config.auto_answer   = params.get('auto_answer') === 'true';
     if (params.get('save_transcript')) config.save_transcript = params.get('save_transcript') === 'true';
-    return Object.keys(config).length > 0 ? config : null;
+    if (Object.keys(config).length > 0) {
+      config.auto_start = true;
+      config.is_web_launch = true;
+      return config;
+    }
+    return null;
   } catch (e) {
     console.error('[DeepLink] Failed to parse URL:', urlStr, e.message);
     return null;

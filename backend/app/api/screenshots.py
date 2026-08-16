@@ -74,8 +74,9 @@ UNIVERSAL 360-DEGREE EXHAUSTIVE ANALYSIS MANDATES:
    - Predict the immediate next steps in the operational sequence or execution flow.
    - Provide potential failure points, diagnostic checks, or recommended next actions for troubleshooting.
 
-6. DIRECT SOLUTION, CALCULATIONS & OPTIMAL CODE:
+7. DIRECT SOLUTION, CALCULATIONS & OPTIMAL CODE:
    - Answer any specific question, calculation, or exercise with exact values and step-by-step math.
+   - For mathematical equations, write clean human-readable formulas e.g., 'z = (42 - 50) / 8 = -1' and formatted arithmetic.
    - For coding/algorithms, detect the EXACT programming language shown or implied (Java, C++, C, Python, Verilog/VHDL, JS, SQL, Rust, Go) and write the complete, optimal, bug-free code solution.
    - Highlight correct options for MCQs.
 

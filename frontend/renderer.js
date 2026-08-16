@@ -313,14 +313,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    if (setupJd) setupJd.value = '';
-    if (offlineUserContext.company) setupCompany.value = offlineUserContext.company;
-    if (offlineUserContext.role) setupRole.value = offlineUserContext.role;
-    if (offlineUserContext.model) {
-      const modelSelect = document.getElementById('setup-model-select');
-      if (modelSelect) modelSelect.value = offlineUserContext.model;
+    
+    // Only prefill form if this is an explicit web launch
+    if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
+      if (setupCompany && offlineUserContext.company) setupCompany.value = offlineUserContext.company;
+      if (setupRole && offlineUserContext.role) setupRole.value = offlineUserContext.role;
+      if (setupJd && offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
+      if (offlineUserContext.model) {
+        const modelSelect = document.getElementById('setup-model-select');
+        if (modelSelect) modelSelect.value = offlineUserContext.model;
+      }
+      if (offlineUserContext.language) {
+        const langSelect = document.getElementById('setup-language-select');
+        if (langSelect) langSelect.value = offlineUserContext.language;
+      }
+      // Populate liveSessionData so Edit Session is immediately pre-filled with web data
+      liveSessionData = {
+        company: offlineUserContext.company || '',
+        role: offlineUserContext.role || '',
+        jd: offlineUserContext.job_description || '',
+        resumeId: offlineUserContext.resume_id || '',
+        docId: offlineUserContext.doc_id || ''
+      };
+    } else {
+      // Normal desktop launch: clear form fields completely (no stale auto-populating)
+      if (setupCompany) setupCompany.value = '';
+      if (setupRole) setupRole.value = '';
+      if (setupJd) setupJd.value = '';
+      liveSessionData = { company: '', role: '', jd: '', resumeId: '', docId: '' };
     }
-    console.log('[Stealth] Initialized setup form with empty Job Description:', offlineUserContext);
+    console.log('[Stealth] Initialized setup form:', offlineUserContext);
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
@@ -328,11 +350,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load dropdown options
   await loadDropdowns();
 
-  if (offlineUserContext.resume_id) {
-    if (setupResumeSelect) setupResumeSelect.value = offlineUserContext.resume_id;
-  }
-  if (offlineUserContext.doc_id) {
-    if (setupDocSelect) {
+  if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
+    if (offlineUserContext.resume_id && setupResumeSelect) {
+      setupResumeSelect.value = offlineUserContext.resume_id;
+    }
+    if (offlineUserContext.doc_id && setupDocSelect) {
       const ids = String(offlineUserContext.doc_id).split(',');
       Array.from(setupDocSelect.options).forEach(opt => {
         opt.selected = ids.includes(opt.value);
@@ -358,16 +380,12 @@ document.addEventListener('DOMContentLoaded', () => {
   toolbarView.style.display = 'none';
   updateWizardView();
 
-  // Auto-start session if company, role, or job_description were provided from web launch
-  const hasParams = (offlineUserContext.company && offlineUserContext.company.trim() !== '') ||
-    (offlineUserContext.role && offlineUserContext.role.trim() !== '') ||
-    (offlineUserContext.job_description && offlineUserContext.job_description.trim() !== '');
-
-  if (hasParams && offlineUserContext.auto_start !== false) {
+  // Auto-start session ONLY if launched from web
+  if (offlineUserContext.is_web_launch || offlineUserContext.auto_start === true) {
     setTimeout(() => {
       const startBtn = document.getElementById('start-session-btn');
       if (startBtn && !startBtn.disabled) {
-        console.log('[Stealth UI] Auto-launching live session with web parameters...');
+        console.log('[Stealth UI] Web launch detected — directly starting live session with web parameters...');
         startBtn.click();
       }
     }, 150);
@@ -429,14 +447,18 @@ async function loadRecentSessions() {
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-    const res = await fetch(`${base}/api/sessions?user_id=${USER_ID}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const sessions = await res.json();
+    let res = await fetch(`${base}/api/sessions?user_id=${encodeURIComponent(normalizeUserId(USER_ID))}`).catch(() => null);
+    if (!res || !res.ok) {
+      res = await fetch(`${base}/api/sessions`).catch(() => null);
+    }
+    if (!res || !res.ok) throw new Error(res ? `HTTP ${res.status}` : 'Backend unreachable');
+    let sessions = await res.json();
+    if (!Array.isArray(sessions)) sessions = [];
 
     if (sessionsCountBadge) sessionsCountBadge.textContent = `${sessions.length} total`;
 
-    if (!sessions || sessions.length === 0) {
-      recentSessionsTable.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:12px;">No sessions found.</div>`;
+    if (sessions.length === 0) {
+      recentSessionsTable.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:12px;">No recent sessions found. Start a new session from the wizard!</div>`;
       return;
     }
 
@@ -457,7 +479,7 @@ async function loadRecentSessions() {
       const description = `${s.role_name || ''}${s.company_name ? ` (${s.company_name})` : ''}`;
 
       const row = document.createElement('div');
-      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:6px 6px;border-radius:7px;border:1px solid rgba(255,255,255,0.03);transition:background 0.15s;cursor:pointer;';
+      row.style.cssText = 'display:grid;grid-template-columns:2fr 2.3fr 1.5fr 1fr 0.8fr 1.2fr 2.2fr;gap:4px;align-items:center;padding:7px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01);transition:all 0.15s;cursor:pointer;';
       row.innerHTML = `
         <div style="font-size:11px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${title}">${title}</div>
         <div style="font-size:10px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${description}">${description || '—'}</div>
@@ -476,7 +498,7 @@ async function loadRecentSessions() {
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             </button>
             <!-- Edit Button -->
-            <button class="session-edit-btn interactive" data-id="${s.id}" title="Edit Config" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);cursor:pointer;outline:none;transition:all 0.15s;">
+            <button class="session-edit-btn interactive" data-id="${s.id}" title="Load into Wizard" style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.7);cursor:pointer;outline:none;transition:all 0.15s;">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </button>
             <!-- Delete Button -->
@@ -487,13 +509,23 @@ async function loadRecentSessions() {
         </div>
       `;
 
-      row.addEventListener('mouseenter', () => row.style.background = 'rgba(255,255,255,0.04)');
-      row.addEventListener('mouseleave', () => row.style.background = '');
+      row.addEventListener('mouseenter', () => {
+        row.style.background = 'rgba(255,255,255,0.06)';
+        row.style.borderColor = 'rgba(20, 184, 166, 0.3)';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.background = 'rgba(255,255,255,0.01)';
+        row.style.borderColor = 'rgba(255,255,255,0.04)';
+      });
 
-      // Helper to pre-fill wizard
-      const prefillWizard = () => {
+      // Helper to pre-fill wizard from this session
+      const prefillWizard = async () => {
         if (s.company_name && setupCompany) setupCompany.value = s.company_name;
         if (s.role_name && setupRole) setupRole.value = s.role_name;
+        if (s.language) {
+          const langSelect = document.getElementById('setup-language-select');
+          if (langSelect) langSelect.value = s.language;
+        }
         // Match session type badge
         document.querySelectorAll('.type-badge').forEach(b => {
           b.classList.remove('active');
@@ -504,10 +536,28 @@ async function loadRecentSessions() {
         if (!document.querySelector('.type-badge.active')) {
           document.querySelector('.type-badge')?.classList.add('active');
         }
+
+        // If session has job_description_id, fetch JD content
+        if (s.job_description_id) {
+          try {
+            const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+            const jdRes = await fetch(`${base}/api/job-descriptions/${s.job_description_id}`);
+            if (jdRes.ok) {
+              const jdData = await jdRes.json();
+              if (jdData && jdData.raw_text && setupJd) setupJd.value = jdData.raw_text;
+            }
+          } catch (_) { }
+        }
+
         hideRecentSessionsPage();
         currentStep = 1;
         updateWizardView();
       };
+
+      // Clicking anywhere on row pre-fills the wizard
+      row.addEventListener('click', () => {
+        prefillWizard();
+      });
 
       // Edit button click
       row.querySelector('.session-edit-btn').addEventListener('click', (e) => {
@@ -582,7 +632,7 @@ async function loadRecentSessions() {
                     <div style="font-size: 10.5px; color: #2dd4bf; font-weight: 600; margin-bottom: 4px; line-height: 1.4;">
                       <span style="margin-right: 4px;">⭐️</span><strong>Answer:</strong>
                     </div>
-                    <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: #fff;">${b.answer}</div>
+                    <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: #fff;">${formatMathAndMarkdown(escapeHTML(b.answer || ''))}</div>
                   </div>
                 </div>
               `;
@@ -604,10 +654,14 @@ async function loadRecentSessions() {
             }
           }).join('\n\n');
 
-          // Create container with a Copy Button at the top
+          // Create container with Copy & Download buttons at the top
           const wrapperHtml = `
             <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
-              <div style="display: flex; justify-content: flex-end; margin-bottom: 4px;">
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 4px;">
+                <button id="download-timeline-btn" class="interactive" style="display: flex; align-items: center; gap: 5px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Download (.txt)
+                </button>
                 <button id="copy-timeline-btn" class="interactive" style="background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #5eead4; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
                   Copy Raw Timeline
                 </button>
@@ -619,6 +673,31 @@ async function loadRecentSessions() {
           `;
 
           showModalOverlay(`Transcript — ${title}`, wrapperHtml);
+
+          // Add download click listener
+          const downloadBtn = document.getElementById('download-timeline-btn');
+          if (downloadBtn) {
+            downloadBtn.addEventListener('click', () => {
+              const blob = new Blob([rawText], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const safeName = (title || 'session').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+              a.download = `${safeName}_transcript.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              downloadBtn.innerHTML = 'Downloaded!';
+              downloadBtn.style.color = '#34d399';
+              downloadBtn.style.borderColor = 'rgba(52, 211, 153, 0.4)';
+              setTimeout(() => {
+                downloadBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download (.txt)`;
+                downloadBtn.style.color = '#60a5fa';
+                downloadBtn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+              }, 2000);
+            });
+          }
 
           // Add copy click listener
           const copyBtn = document.getElementById('copy-timeline-btn');
@@ -647,20 +726,72 @@ async function loadRecentSessions() {
       row.querySelector('.session-summary-btn').addEventListener('click', async (e) => {
         e.stopPropagation();
         try {
+          showModalOverlay(`Session Summary — ${title}`, `
+            <div style="text-align:center;padding:40px 0;color:var(--text-secondary);font-size:12px;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-bottom:10px;animation:spin 1s linear infinite;color:#2dd4bf;display:block;margin:0 auto 10px;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              Analyzing session transcripts and generating comprehensive summary...
+            </div>
+          `);
+
           const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
           const res = await fetch(`${base}/api/sessions/${s.id}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const sessionDetail = await res.json();
 
-          const summaryText = sessionDetail.summary || `No summary generated yet for this session. Complete the session or generate one from the web dashboard.`;
+          const summaryText = sessionDetail.summary || `No transcript or questions were recorded during this session to generate a summary.`;
 
           const html = `
-            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px;">
-              <div style="font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: rgba(255,255,255,0.95);">${summaryText}</div>
+            <div style="display: flex; flex-direction: column; gap: 12px; height: 100%;">
+              <div style="display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 4px;">
+                <button id="download-summary-btn" class="interactive" style="display: flex; align-items: center; gap: 5px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60a5fa; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  Download (.txt)
+                </button>
+                <button id="copy-summary-btn" class="interactive" style="background: rgba(34,197,94,0.15); border: 1px solid rgba(34,197,94,0.3); color: #4ade80; border-radius: 6px; padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: all 0.2s; -webkit-app-region: no-drag;">
+                  Copy Summary
+                </button>
+              </div>
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 14px; border-radius: 8px; flex: 1;">
+                <div style="font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: rgba(255,255,255,0.95);">${summaryText}</div>
+              </div>
             </div>
           `;
 
           showModalOverlay(`Session Summary — ${title}`, html);
+
+          const downloadSumBtn = document.getElementById('download-summary-btn');
+          if (downloadSumBtn) {
+            downloadSumBtn.addEventListener('click', () => {
+              const blob = new Blob([summaryText], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              const safeName = (title || 'session').replace(/[^a-z0-9_-]/gi, '_').toLowerCase();
+              a.download = `${safeName}_summary.txt`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              downloadSumBtn.innerHTML = 'Downloaded!';
+              downloadSumBtn.style.color = '#34d399';
+              downloadSumBtn.style.borderColor = 'rgba(52, 211, 153, 0.4)';
+              setTimeout(() => {
+                downloadSumBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Download (.txt)`;
+                downloadSumBtn.style.color = '#60a5fa';
+                downloadSumBtn.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+              }, 2000);
+            });
+          }
+
+          const copySumBtn = document.getElementById('copy-summary-btn');
+          if (copySumBtn) {
+            copySumBtn.addEventListener('click', () => {
+              navigator.clipboard.writeText(summaryText).then(() => {
+                copySumBtn.textContent = 'Copied!';
+                setTimeout(() => { copySumBtn.textContent = 'Copy Summary'; }, 2000);
+              });
+            });
+          }
         } catch (err) {
           showInlineError('Failed to load session summary: ' + err.message, recentSessionsTable);
         }
@@ -747,32 +878,50 @@ function showModalOverlay(title, contentHtml) {
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(10, 10, 12, 0.95);
-      backdrop-filter: blur(10px);
+      background: rgba(10, 10, 12, 0.96);
+      backdrop-filter: blur(16px);
       z-index: 10000;
       display: flex;
       flex-direction: column;
-      padding: 16px;
+      padding: 18px 20px;
       box-sizing: border-box;
       animation: fadeIn 0.15s ease-out;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 10px 40px rgba(0,0,0,0.7);
     `;
     document.body.appendChild(modal);
   }
 
+  // Expand the window to 800x580 so the entire transcript / summary modal is fully visible and readable
+  pendingProgrammaticResizes++;
+  window.electronAPI.resizeWindow(800, 580, toolbarPosition, false);
+  window.electronAPI.setIgnoreMouseEvents(false);
+
   modal.innerHTML = `
-    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px; margin-bottom: 12px; flex-shrink: 0;">
-      <h3 style="margin: 0; font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">${title}</h3>
-      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; padding: 4px 10px; font-size: 10px; font-weight: 600; cursor: pointer; outline: none; transition: background 0.2s;">
+    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px; margin-bottom: 12px; flex-shrink: 0; -webkit-app-region: drag !important;">
+      <h3 style="margin: 0; font-size: 12px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.05em;">${title}</h3>
+      <button id="modal-close-btn" class="interactive" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 6px; padding: 4px 14px; font-size: 11px; font-weight: 600; cursor: pointer; outline: none; transition: background 0.2s; -webkit-app-region: no-drag !important;">
         Close
       </button>
     </div>
-    <div style="flex: 1; overflow-y: auto; font-size: 11px; color: rgba(255,255,255,0.85); line-height: 1.5; padding-right: 4px;">
+    <div style="flex: 1; overflow-y: auto; font-size: 11.5px; color: rgba(255,255,255,0.9); line-height: 1.6; padding-right: 6px;" class="custom-scrollbar">
       ${contentHtml}
     </div>
   `;
 
   modal.querySelector('#modal-close-btn').addEventListener('click', () => {
     modal.remove();
+    // Restore window dimensions when modal closes
+    if (toolbarView && toolbarView.style.display !== 'none') {
+      updateWindowSize();
+    } else if (recentSessionsView && recentSessionsView.style.display !== 'none') {
+      pendingProgrammaticResizes++;
+      window.electronAPI.resizeWindow(800, 580, 'top', false);
+    } else {
+      pendingProgrammaticResizes++;
+      window.electronAPI.resizeWindow(600, 580, 'top', false);
+    }
   });
 }
 
@@ -1108,6 +1257,221 @@ function updateWizardView() {
   }
 }
 
+// ── Worldwide Dynamic Company Autocomplete ────────────────────────────────────
+const POPULAR_GLOBAL_COMPANIES = [
+  { name: 'Google', domain: 'google.com' },
+  { name: 'Microsoft', domain: 'microsoft.com' },
+  { name: 'Amazon', domain: 'amazon.com' },
+  { name: 'Apple', domain: 'apple.com' },
+  { name: 'Meta', domain: 'meta.com' },
+  { name: 'Netflix', domain: 'netflix.com' },
+  { name: 'Nvidia', domain: 'nvidia.com' },
+  { name: 'OpenAI', domain: 'openai.com' },
+  { name: 'Anthropic', domain: 'anthropic.com' },
+  { name: 'Stripe', domain: 'stripe.com' },
+  { name: 'Uber', domain: 'uber.com' },
+  { name: 'Airbnb', domain: 'airbnb.com' },
+  { name: 'Spotify', domain: 'spotify.com' },
+  { name: 'Adobe', domain: 'adobe.com' },
+  { name: 'Salesforce', domain: 'salesforce.com' },
+  { name: 'Oracle', domain: 'oracle.com' },
+  { name: 'IBM', domain: 'ibm.com' },
+  { name: 'Cisco', domain: 'cisco.com' },
+  { name: 'Intel', domain: 'intel.com' },
+  { name: 'AMD', domain: 'amd.com' },
+  { name: 'Qualcomm', domain: 'qualcomm.com' },
+  { name: 'Tesla', domain: 'tesla.com' },
+  { name: 'SpaceX', domain: 'spacex.com' },
+  { name: 'Twitter / X', domain: 'x.com' },
+  { name: 'LinkedIn', domain: 'linkedin.com' },
+  { name: 'ByteDance', domain: 'bytedance.com' },
+  { name: 'Tencent', domain: 'tencent.com' },
+  { name: 'Alibaba', domain: 'alibaba.com' },
+  { name: 'Infosys', domain: 'infosys.com' },
+  { name: 'Tata Consultancy Services', domain: 'tcs.com' },
+  { name: 'Wipro', domain: 'wipro.com' },
+  { name: 'HCL Technologies', domain: 'hcltech.com' },
+  { name: 'Accenture', domain: 'accenture.com' },
+  { name: 'Cognizant', domain: 'cognizant.com' },
+  { name: 'Capgemini', domain: 'capgemini.com' },
+  { name: 'Deloitte', domain: 'deloitte.com' },
+  { name: 'PwC', domain: 'pwc.com' },
+  { name: 'EY (Ernst & Young)', domain: 'ey.com' },
+  { name: 'KPMG', domain: 'kpmg.com' },
+  { name: 'Goldman Sachs', domain: 'goldmansachs.com' },
+  { name: 'JPMorgan Chase', domain: 'jpmorgan.com' },
+  { name: 'Morgan Stanley', domain: 'morganstanley.com' },
+  { name: 'Citadel', domain: 'citadel.com' },
+  { name: 'Jane Street', domain: 'janestreet.com' },
+  { name: 'Two Sigma', domain: 'twosigma.com' },
+  { name: 'Palantir', domain: 'palantir.com' },
+  { name: 'Snowflake', domain: 'snowflake.com' },
+  { name: 'Databricks', domain: 'databricks.com' },
+  { name: 'Canva', domain: 'canva.com' },
+  { name: 'Figma', domain: 'figma.com' },
+  { name: 'Atlassian', domain: 'atlassian.com' },
+  { name: 'DoorDash', domain: 'doordash.com' },
+  { name: 'Instacart', domain: 'instacart.com' },
+  { name: 'Robinhood', domain: 'robinhood.com' },
+  { name: 'Coinbase', domain: 'coinbase.com' },
+  { name: 'Shopify', domain: 'shopify.com' },
+  { name: 'Twilio', domain: 'twilio.com' },
+  { name: 'Zoom', domain: 'zoom.us' },
+  { name: 'Slack', domain: 'slack.com' }
+];
+
+function initCompanyAutocomplete(inputEl, dropdownEl, nextFocusEl) {
+  if (!inputEl || !dropdownEl) return;
+
+  let debounceTimer = null;
+  let activeIndex = -1;
+  let currentSuggestions = [];
+
+  function closeDropdown() {
+    dropdownEl.style.display = 'none';
+    dropdownEl.innerHTML = '';
+    activeIndex = -1;
+    currentSuggestions = [];
+  }
+
+  function selectItem(item) {
+    inputEl.value = item.name;
+    closeDropdown();
+    if (nextFocusEl) {
+      nextFocusEl.focus();
+    }
+  }
+
+  function renderSuggestions(items) {
+    currentSuggestions = items;
+    activeIndex = -1;
+    if (!items || items.length === 0) {
+      closeDropdown();
+      return;
+    }
+
+    dropdownEl.innerHTML = '';
+    items.slice(0, 7).forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'autocomplete-item interactive';
+      row.innerHTML = `
+        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${item.name}</span>
+        ${item.domain ? `<span class="autocomplete-item-domain">${item.domain}</span>` : ''}
+      `;
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        selectItem(item);
+      });
+      dropdownEl.appendChild(row);
+    });
+
+    dropdownEl.style.display = 'flex';
+  }
+
+  async function fetchCompanies(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      closeDropdown();
+      return;
+    }
+
+    // 1. Instant match from local curated list (0ms delay)
+    const localMatches = POPULAR_GLOBAL_COMPANIES.filter(c =>
+      c.name.toLowerCase().includes(q) || (c.domain && c.domain.toLowerCase().includes(q))
+    );
+
+    if (localMatches.length > 0) {
+      renderSuggestions(localMatches);
+    } else {
+      closeDropdown();
+    }
+
+    // 2. Fetch worldwide companies asynchronously from global Clearbit API
+    try {
+      const res = await fetch(`https://autocomplete.clearbit.com/v1/companies/suggest?query=${encodeURIComponent(query.trim())}`);
+      if (res.ok) {
+        const apiResults = await res.json();
+        if (Array.isArray(apiResults) && apiResults.length > 0) {
+          const merged = [...localMatches];
+          const seen = new Set(localMatches.map(m => m.name.toLowerCase()));
+          apiResults.forEach(r => {
+            if (r && r.name && !seen.has(r.name.toLowerCase())) {
+              seen.add(r.name.toLowerCase());
+              merged.push({ name: r.name, domain: r.domain || '' });
+            }
+          });
+          if (document.activeElement === inputEl && inputEl.value.trim().toLowerCase() === q) {
+            renderSuggestions(merged);
+          }
+        } else if (localMatches.length === 0) {
+          // If no global results match and no local matches, close dropdown immediately
+          closeDropdown();
+        }
+      } else if (localMatches.length === 0) {
+        closeDropdown();
+      }
+    } catch (err) {
+      if (localMatches.length === 0) {
+        closeDropdown();
+      }
+    }
+  }
+
+  inputEl.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const val = inputEl.value;
+    if (!val || val.trim().length === 0) {
+      closeDropdown();
+      return;
+    }
+    const q = val.trim().toLowerCase();
+    const localMatches = POPULAR_GLOBAL_COMPANIES.filter(c =>
+      c.name.toLowerCase().includes(q) || (c.domain && c.domain.toLowerCase().includes(q))
+    );
+    if (localMatches.length > 0) {
+      renderSuggestions(localMatches);
+    } else {
+      // Clear stale dropdown results immediately as user continues typing
+      closeDropdown();
+    }
+    debounceTimer = setTimeout(() => {
+      fetchCompanies(val);
+    }, 120);
+  });
+
+  inputEl.addEventListener('keydown', (e) => {
+    const items = dropdownEl.querySelectorAll('.autocomplete-item');
+    if (!items || items.length === 0 || dropdownEl.style.display === 'none') return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % items.length;
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = (activeIndex - 1 + items.length) % items.length;
+      items.forEach((it, i) => it.classList.toggle('active', i === activeIndex));
+      items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      if (activeIndex >= 0 && activeIndex < currentSuggestions.length) {
+        e.preventDefault();
+        selectItem(currentSuggestions[activeIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      closeDropdown();
+    }
+  });
+
+  inputEl.addEventListener('blur', () => {
+    setTimeout(closeDropdown, 180);
+  });
+}
+
+// Initialize autocomplete on Setup Wizard and Edit Session modals
+initCompanyAutocomplete(setupCompany, document.getElementById('setup-company-autocomplete'), setupRole);
+initCompanyAutocomplete(document.getElementById('edit-company'), document.getElementById('edit-company-autocomplete'), document.getElementById('edit-role'));
+
 setupNextBtn.addEventListener('click', () => {
   if (currentStep === 1) {
     if (!setupCompany.value.trim()) {
@@ -1345,6 +1709,7 @@ startSessionBtn.addEventListener('click', async () => {
 
   // Options from step 3
   const preferredModel = document.getElementById('setup-model-select').value;
+  const preferredLanguage = document.getElementById('setup-language-select')?.value || 'en';
   const autoAnswer = document.getElementById('setup-auto-answer').checked;
   const saveTranscript = document.getElementById('setup-save-transcript').checked;
   shouldSaveTranscript = saveTranscript;
@@ -1379,7 +1744,7 @@ startSessionBtn.addEventListener('click', async () => {
         session_name: `${company} (${selectedSessionType})`,
         company_name: company,
         role_name: role,
-        language: 'English',
+        language: preferredLanguage,
         audio_source: 'browser_tab_audio',
         model: preferredModel,
         auto_answer: autoAnswer,
@@ -1858,6 +2223,17 @@ function updateWindowSize(reposition = false) {
     return;
   }
 
+  // If in recent sessions view, do not resize the window (keep 800x580 bounds)
+  if (recentSessionsView && recentSessionsView.style.display !== 'none') {
+    return;
+  }
+
+  // If a full modal overlay (transcript, summary) is open, do not resize/collapse the window
+  const modalOverlayEl = document.getElementById('stealth-modal-overlay');
+  if (modalOverlayEl) {
+    return;
+  }
+
   // Detect and update the toolbar position dynamically based on window location
   updateDynamicToolbarPosition();
 
@@ -2107,6 +2483,83 @@ function flushTranscriptBuffer() {
 const micBtnAi = document.getElementById('mic-btn-ai');
 const micText = document.getElementById('mic-text');
 
+let isSTTListenersBound = false;
+let pcmProcessorNode = null;
+let mixedAudioGainNode = null;
+
+// High-fidelity downsampler & Float32 to 16-bit Linear PCM converter
+function downsampleAndConvertToInt16(inputBuffer, inputSampleRate, targetSampleRate = 16000) {
+  if (inputSampleRate === targetSampleRate) {
+    const l = inputBuffer.length;
+    const buf = new Int16Array(l);
+    for (let i = 0; i < l; i++) {
+      const s = Math.max(-1, Math.min(1, inputBuffer[i]));
+      buf[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return buf.buffer;
+  }
+
+  const sampleRateRatio = inputSampleRate / targetSampleRate;
+  const newLength = Math.round(inputBuffer.length / sampleRateRatio);
+  const result = new Int16Array(newLength);
+  let offsetResult = 0;
+  let offsetBuffer = 0;
+
+  while (offsetResult < result.length) {
+    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetBuffer; i < nextOffsetBuffer && i < inputBuffer.length; i++) {
+      accum += inputBuffer[i];
+      count++;
+    }
+    const sample = count > 0 ? (accum / count) : 0;
+    const s = Math.max(-1, Math.min(1, sample));
+    result[offsetResult] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    offsetResult++;
+    offsetBuffer = nextOffsetBuffer;
+  }
+  return result.buffer;
+}
+
+// Function to ensure PCM Audio Processor is streaming mixed audio to Deepgram
+function ensureMediaRecorderRunning(forceRestart = false) {
+  if (!audioCtx || audioCtx.state === 'closed') return;
+
+  if (!mixedAudioGainNode) {
+    mixedAudioGainNode = audioCtx.createGain();
+  }
+
+  if (forceRestart && pcmProcessorNode) {
+    try { pcmProcessorNode.disconnect(); } catch (e) { }
+    pcmProcessorNode = null;
+  }
+
+  if (!pcmProcessorNode) {
+    try {
+      // 4096 buffer size at 48kHz produces smooth ~85ms PCM chunks
+      pcmProcessorNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      pcmProcessorNode.onaudioprocess = (event) => {
+        if (!isRecording) return;
+        const inputData = event.inputBuffer.getChannelData(0);
+        if (inputData && inputData.length > 0) {
+          const pcmBuffer = downsampleAndConvertToInt16(inputData, audioCtx.sampleRate, 16000);
+          window.electronAPI.sendAudioChunk(pcmBuffer);
+        }
+      };
+
+      const silentGain = audioCtx.createGain();
+      silentGain.gain.value = 0;
+      mixedAudioGainNode.connect(pcmProcessorNode);
+      pcmProcessorNode.connect(silentGain);
+      silentGain.connect(audioCtx.destination);
+      console.log(`[Audio Capture] Linear16 PCM audio streaming active (${audioCtx.sampleRate}Hz -> 16000Hz).`);
+    } catch (e) {
+      console.error('[Audio Capture] Failed to initialize PCM audio processor:', e);
+    }
+  }
+}
+
 // Toggle recording state for system capture
 async function toggleRecording() {
   await toggleSource('system');
@@ -2117,10 +2570,98 @@ async function toggleMicRecording() {
   await toggleSource('mic');
 }
 
+// Ensure Web Audio context, destination node, and Deepgram WebSocket are ready
+async function ensureAudioPipelineReady() {
+  if (!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    mixedAudioGainNode = audioCtx.createGain();
+    audioDestNode = audioCtx.createMediaStreamDestination();
+    mixedAudioGainNode.connect(audioDestNode);
+  }
+  if (!mixedAudioGainNode) {
+    mixedAudioGainNode = audioCtx.createGain();
+    if (audioDestNode) mixedAudioGainNode.connect(audioDestNode);
+  }
+  if (audioCtx.state === 'suspended') {
+    try { await audioCtx.resume(); } catch (e) { }
+  }
+  if (!audioDestNode) {
+    audioDestNode = audioCtx.createMediaStreamDestination();
+    mixedAudioGainNode.connect(audioDestNode);
+  }
+
+  const selectedLanguage = document.getElementById('setup-language-select')?.value || 'en';
+  window.electronAPI.startTranscription({ language: selectedLanguage });
+
+  if (!isSTTListenersBound) {
+    isSTTListenersBound = true;
+
+    window.electronAPI.onTranscriptionStatus((data) => {
+      console.log(`[Deepgram STT] Status: ${data.status} (Provider: ${data.provider})`);
+      recordBtn.style.pointerEvents = 'auto';
+      if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
+      ensureMediaRecorderRunning(true);
+    });
+
+    window.electronAPI.onTranscriptChunk(({ text, is_final }) => {
+      if (!text || !text.trim()) return;
+      const cleanTranscript = text.trim();
+
+      const existingText = transcriptBlock.textContent.trim();
+      if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
+        transcriptBlock.textContent = '';
+        transcriptBlock.dataset.placeholder = 'false';
+      }
+
+      if (is_final) {
+        accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
+        transcriptBlock.textContent = accumulatedTranscript;
+        transcriptBlock.dataset.placeholder = 'false';
+
+        if (shouldSaveTranscript) {
+          const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
+          const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
+          safeSetItem('stealth_transcript_buffer', updatedBuffer);
+
+          if (sessionToken) {
+            transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
+            if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
+            transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
+            const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
+            if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
+          }
+        }
+
+        const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
+        const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
+
+        if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
+          const score = questionScore(cleanTranscript);
+          if (score > 0) {
+            if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
+            queryAssistant(null, false);
+          } else {
+            if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+            autoAnswerTimeoutId = setTimeout(() => {
+              if (!answerBlock.classList.contains('loading')) {
+                queryAssistant(null, false);
+              }
+              autoAnswerTimeoutId = null;
+            }, 1000);
+          }
+        }
+      } else {
+        transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
+      }
+      transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
+    });
+  }
+
+  ensureMediaRecorderRunning(true);
+}
+
 // Toggle audio capture for a specific source ('system' or 'mic')
 async function toggleSource(source) {
-  const isCurrentlyRecordingAny = isRecordingSystem || isRecordingMic;
-
   if (source === 'system') {
     isRecordingSystem = !isRecordingSystem;
   } else if (source === 'mic') {
@@ -2135,139 +2676,17 @@ async function toggleSource(source) {
     return;
   }
 
-  // Case 2: First source starts → Initialize Speech-to-Text Socket and Audio Context
-  if (!isCurrentlyRecordingAny) {
-    try {
-      // Check if this is a live interview session
-      const isLiveSession = (selectedSessionType === 'Interview+Coding');
-
-      // Initialize Web Audio API nodes
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      audioDestNode = audioCtx.createMediaStreamDestination();
-
-      // Direct Deepgram WebSocket — no backend hop for minimum latency during live sessions
-      const dgKey = await window.electronAPI.getDeepgramKey();
-      if (!dgKey || dgKey.startsWith('your_')) {
-        showInlineError('Deepgram API key is missing — define DEEPGRAM_API_KEY in your .env file.', answerBlock);
-        resetRecordButton();
-        isRecordingSystem = false;
-        isRecordingMic = false;
-        isRecording = false;
-        return;
-      }
-      dgSocket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-3&interim_results=true&smart_format=true&endpointing=100', ['token', dgKey]);
-      console.log('[Stealth] Connecting direct to Deepgram for live session...');
-
-      dgSocket.onopen = async () => {
-        console.log('[Deepgram Live] Connected successfully.');
-        if (audioCtx && audioCtx.state === 'suspended') {
-          try { await audioCtx.resume(); } catch (e) { }
-        }
-
-        recordBtn.style.pointerEvents = 'auto';
-        if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
-
-        const existingText = transcriptBlock.textContent.trim();
-        if (!existingText || transcriptBlock.dataset.placeholder === 'true') {
-          transcriptBlock.textContent = '';
-          transcriptBlock.dataset.placeholder = 'false';
-        } else {
-          // User has typed something manually — keep it
-          accumulatedTranscript = existingText;
-        }
-
-        // Initialize MediaRecorder from mixed destination node
-        mediaRecorder = new MediaRecorder(audioDestNode.stream, { mimeType: 'audio/webm' });
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && dgSocket && dgSocket.readyState === WebSocket.OPEN) {
-            dgSocket.send(event.data);
-          }
-        };
-
-        // Stream audio slices in 250ms intervals
-        mediaRecorder.start(250);
-      };
-
-      dgSocket.onmessage = (message) => {
-        try {
-          const data = JSON.parse(message.data);
-          const transcript = data.channel?.alternatives?.[0]?.transcript;
-          if (transcript && transcript.trim()) {
-            const cleanTranscript = transcript.trim();
-            if (data.is_final) {
-              // Confirmed text: update accumulatedTranscript and show in white
-              accumulatedTranscript += (accumulatedTranscript ? ' ' : '') + cleanTranscript;
-              transcriptBlock.textContent = accumulatedTranscript;
-              transcriptBlock.dataset.placeholder = 'false';
-
-              // Save transcript block to backend and localStorage
-              if (shouldSaveTranscript) {
-                const existingBuffer = safeGetItem('stealth_transcript_buffer') || '';
-                const updatedBuffer = existingBuffer ? existingBuffer + ' ' + cleanTranscript : cleanTranscript;
-                safeSetItem('stealth_transcript_buffer', updatedBuffer);
-
-                if (sessionToken) {
-                  transcriptChunkBuffer += (transcriptChunkBuffer ? ' ' : '') + cleanTranscript;
-                  if (transcriptFlushTimer) clearTimeout(transcriptFlushTimer);
-                  transcriptFlushTimer = setTimeout(flushTranscriptBuffer, TRANSCRIPT_FLUSH_SILENCE_MS);
-                  const wordCount = transcriptChunkBuffer.split(/\s+/).filter(Boolean).length;
-                  if (wordCount >= TRANSCRIPT_FLUSH_WORD_THRESHOLD) flushTranscriptBuffer();
-                }
-              }
-
-              // --- AUTO ANSWER LOGIC ---
-              const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-              const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
-
-              if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-                const score = questionScore(cleanTranscript);
-                if (score > 0) {
-                  console.log(`[Auto-Answer] Question detected: "${cleanTranscript}". Querying AI...`);
-                  if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-                  queryAssistant(null, false);
-                } else {
-                  if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-                  autoAnswerTimeoutId = setTimeout(() => {
-                    if (!answerBlock.classList.contains('loading')) {
-                      console.log('[Auto-Answer] 1-second gap detected. Querying AI...');
-                      queryAssistant(null, false);
-                    }
-                    autoAnswerTimeoutId = null;
-                  }, 1000);
-                }
-              }
-            } else {
-              // Interim text: gray preview — does NOT update accumulatedTranscript
-              transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
-            }
-            transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
-          }
-        } catch (e) {
-          console.error('[Deepgram Live] Error parsing message:', e);
-        }
-      };
-
-      dgSocket.onerror = (err) => {
-        console.error('[Deepgram Live] Connection error:', err);
-        stopRecording();
-      };
-
-      dgSocket.onclose = () => {
-        console.log('[Deepgram Live] Connection closed.');
-        if (isRecordingSystem || isRecordingMic) stopRecording();
-      };
-
-
-    } catch (err) {
-      console.error('[Audio Capture] Failed to initialize:', err);
-      showInlineError(`Audio capture error: ${err.message}`, answerBlock);
-      resetRecordButton();
-      isRecordingSystem = false;
-      isRecordingMic = false;
-      isRecording = false;
-      return;
-    }
+  // Ensure Audio Context & Deepgram Socket are initialized
+  try {
+    await ensureAudioPipelineReady();
+  } catch (err) {
+    console.error('[Audio Capture] Failed to initialize audio pipeline:', err);
+    showInlineError(`Audio capture error: ${err.message}`, answerBlock);
+    resetRecordButton();
+    isRecordingSystem = false;
+    isRecordingMic = false;
+    isRecording = false;
+    return;
   }
 
   // Handle stream creation/destruction and UI updates for the active source
@@ -2279,45 +2698,67 @@ async function toggleSource(source) {
       try {
         console.log('[Audio Capture] Attempting loopback screen-audio capture...');
         const sources = await window.electronAPI.getDesktopSources();
-        const screenSource = sources.find(s => s.id.startsWith('screen'));
+        const screenSources = sources && sources.filter ? sources.filter(s => s.id.startsWith('screen')) : [];
+        const screenSource = screenSources.length > 0 ? screenSources[0] : (sources && sources[0] ? sources[0] : null);
+
         if (screenSource) {
-          activeSystemStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screenSource.id
+          try {
+            activeSystemStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                mandatory: {
+                  chromeMediaSource: 'desktop'
+                }
+              },
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: screenSource.id
+                }
               }
-            },
-            video: {
-              mandatory: {
-                chromeMediaSource: 'desktop',
-                chromeMediaSourceId: screenSource.id
-              }
+            });
+          } catch (deskErr) {
+            console.warn('[Audio Capture] Primary desktop capture failed, trying standard audio stream:', deskErr.message);
+            activeSystemStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
+
+          const audioTracks = activeSystemStream.getAudioTracks();
+          if (audioTracks.length > 0) {
+            const audioOnlyStream = new MediaStream(audioTracks);
+            if (!audioCtx || audioCtx.state === 'closed') {
+              audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              mixedAudioGainNode = audioCtx.createGain();
+              audioDestNode = audioCtx.createMediaStreamDestination();
+              mixedAudioGainNode.connect(audioDestNode);
             }
-          });
-          // Keep video tracks alive to prevent Chromium/Electron from closing the stream
-          console.log('[Audio Capture] Acquired system loopback tracks:', activeSystemStream.getTracks().map(t => `${t.kind}: state=${t.readyState}, enabled=${t.enabled}`));
+            systemSourceNode = audioCtx.createMediaStreamSource(audioOnlyStream);
+            systemSourceNode.connect(mixedAudioGainNode);
+            if (audioCtx && audioCtx.state === 'suspended') {
+              try { await audioCtx.resume(); } catch (e) { }
+            }
 
-          systemSourceNode = audioCtx.createMediaStreamSource(activeSystemStream);
-          systemSourceNode.connect(audioDestNode);
-          if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
+            ensureMediaRecorderRunning(true);
 
-          recordBtn.style.pointerEvents = 'auto';
-          recordBtn.classList.add('recording');
-          recordDot.classList.add('recording');
-          recordText.textContent = 'Listening';
-          console.log('[Audio Capture] Successfully acquired system loopback stream.');
+            recordBtn.style.pointerEvents = 'auto';
+            recordBtn.classList.add('recording');
+            recordDot.classList.add('recording');
+            recordText.textContent = 'Listening';
+            console.log('[Audio Capture] Successfully connected system audio stream.');
+          } else {
+            throw new Error('No audio tracks detected in capture stream');
+          }
         } else {
           console.warn('[Audio Capture] No screen source found for loopback capture.');
           isRecordingSystem = false;
           recordBtn.style.pointerEvents = 'auto';
           recordText.textContent = 'Speaker';
+          showInlineError('No display screen source detected for speaker audio.', answerBlock);
         }
       } catch (sysErr) {
         console.warn('[Audio Capture] Loopback capture failed:', sysErr.message);
         isRecordingSystem = false;
         recordBtn.style.pointerEvents = 'auto';
         recordText.textContent = 'Speaker';
+        showInlineError(`Speaker capture error: ${sysErr.message}`, answerBlock);
       }
     } else {
       // Stop system loopback
@@ -2342,9 +2783,17 @@ async function toggleSource(source) {
         console.log('[Audio Capture] Attempting hardware microphone capture...');
         activeMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
+        if (!audioCtx || audioCtx.state === 'closed') {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          mixedAudioGainNode = audioCtx.createGain();
+          audioDestNode = audioCtx.createMediaStreamDestination();
+          mixedAudioGainNode.connect(audioDestNode);
+        }
         micSourceNode = audioCtx.createMediaStreamSource(activeMicStream);
-        micSourceNode.connect(audioDestNode);
+        micSourceNode.connect(mixedAudioGainNode);
         if (audioCtx && audioCtx.state === 'suspended') { try { await audioCtx.resume(); } catch (e) { } }
+
+        ensureMediaRecorderRunning(true);
 
         if (micBtnAi) {
           micBtnAi.style.pointerEvents = 'auto';
@@ -2398,12 +2847,9 @@ function stopRecording() {
   }
   mediaRecorder = null;
 
-  if (dgSocket) {
-    try {
-      dgSocket.close();
-    } catch (e) { }
-  }
-  dgSocket = null;
+  try {
+    window.electronAPI.stopTranscription();
+  } catch (e) { }
 
   if (systemSourceNode) {
     try { systemSourceNode.disconnect(); } catch (e) { }
@@ -3406,6 +3852,92 @@ function escapeHTML(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function formatMathAndMarkdown(str) {
+  if (!str) return '';
+  let s = String(str);
+
+  // 1. Process display math blocks: \[ ... \] or $$ ... $$
+  s = s.replace(/(?:\\\[|\$\$)([\s\S]*?)(?:\\\]|\$\$)/g, (match, formula) => {
+    let cleanFormula = formatMathExpression(formula.trim());
+    return `<div class="math-display-block" style="margin: 8px 0; padding: 8px 14px; background: rgba(20, 184, 166, 0.08); border: 1px solid rgba(45, 212, 191, 0.25); border-radius: 7px; text-align: center; color: #5eead4; font-family: 'Cambria Math', 'KaTeX_Math', 'Times New Roman', serif; font-size: 1.08em; letter-spacing: 0.5px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);">${cleanFormula}</div>`;
+  });
+
+  // 2. Process inline math: \( ... \) or $ ... $
+  s = s.replace(/(?:\\\(|\$)([\s\S]*?)(?:\\\)|\$)/g, (match, formula) => {
+    let cleanFormula = formatMathExpression(formula.trim());
+    return `<span class="math-inline" style="display:inline-block; padding: 1px 4px; color: #5eead4; font-family: 'Cambria Math', 'KaTeX_Math', 'Times New Roman', serif; font-size: 1.03em;">${cleanFormula}</span>`;
+  });
+
+  // 3. Fallback for any standalone LaTeX math commands not enclosed in brackets
+  s = formatMathExpression(s);
+
+  // 4. Markdown bold: **text**
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong style="color:#5eead4;font-weight:700;letter-spacing:0.01em;">$1</strong>');
+
+  return s;
+}
+
+function formatMathExpression(expr) {
+  if (!expr) return '';
+  let e = expr;
+
+  // Fractions: \frac{num}{den} -> visual styled fraction
+  e = e.replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, (m, num, den) => {
+    return `<span style="display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;line-height:1.1;padding:0 3px;font-family:serif;margin:0 2px;"><span style="border-bottom:1px solid #5eead4;padding:0 3px 1px 3px;color:#ffffff;font-size:0.95em;">${num.trim()}</span><span style="padding:1px 3px 0 3px;color:#5eead4;font-size:0.95em;">${den.trim()}</span></span>`;
+  });
+
+  // Second pass for nested fractions
+  e = e.replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, (m, num, den) => {
+    return `<span style="display:inline-flex;flex-direction:column;vertical-align:middle;text-align:center;line-height:1.1;padding:0 3px;font-family:serif;margin:0 2px;"><span style="border-bottom:1px solid #5eead4;padding:0 3px 1px 3px;color:#ffffff;font-size:0.95em;">${num.trim()}</span><span style="padding:1px 3px 0 3px;color:#5eead4;font-size:0.95em;">${den.trim()}</span></span>`;
+  });
+
+  // Common math symbols
+  const replacements = [
+    [/\\mu/g, 'μ'],
+    [/\\sigma/g, 'σ'],
+    [/\\alpha/g, 'α'],
+    [/\\beta/g, 'β'],
+    [/\\theta/g, 'θ'],
+    [/\\lambda/g, 'λ'],
+    [/\\pi/g, 'π'],
+    [/\\approx/g, '≈'],
+    [/\\le(?!a)\b|\\leq/g, '≤'],
+    [/\\ge(?!a)\b|\\geq/g, '≥'],
+    [/\\neq|\\ne\b/g, '≠'],
+    [/\\times/g, '×'],
+    [/\\cdot/g, '·'],
+    [/\\pm/g, '±'],
+    [/\\infty/g, '∞'],
+    [/\\sum/g, '∑'],
+    [/\\int/g, '∫'],
+    [/\\in(?![a-zA-Z])/g, '∈'],
+    [/\\subset/g, '⊂'],
+    [/\\cup/g, '∪'],
+    [/\\cap/g, '∩'],
+    [/\\forall/g, '∀'],
+    [/\\exists/g, '∃'],
+    [/\\to\b|\\rightarrow/g, '→'],
+    [/\\leftarrow/g, '←'],
+    [/\\implies|\\Rightarrow/g, '⇒'],
+    [/\\sqrt\{([^}]+)\}/g, '√($1)'],
+    [/\\text\{([^}]+)\}/g, '$1'],
+    [/\\left\(/g, '('],
+    [/\\right\)/g, ')'],
+    [/\\left\[/g, '['],
+    [/\\right\]/g, ']'],
+    [/\\\[/g, ''],
+    [/\\\]/g, ''],
+    [/\\\(/g, ''],
+    [/\\\)/g, '']
+  ];
+
+  for (const [regex, rep] of replacements) {
+    e = e.replace(regex, rep);
+  }
+
+  return e;
+}
+
 function renderAnswerToDOM(container, text, questionText = '') {
   container.innerHTML = '';
 
@@ -3532,12 +4064,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
 
           // Strip leading dash/bullet char
           let content = trimmed.startsWith('- ') ? trimmed.slice(2) : trimmed.slice(2);
-          // Render **heading:** in purple bold, rest in normal text
-          let html = escapeHTML(content).replace(
-            /\*\*([^*]+)\*\*/g,
-            '<strong style="color:#5eead4;font-weight:700;letter-spacing:0.01em;">$1</strong>'
-          );
-          bulletContent.innerHTML = html;
+          bulletContent.innerHTML = formatMathAndMarkdown(escapeHTML(content));
 
           bulletRow.appendChild(dot);
           bulletRow.appendChild(bulletContent);
@@ -3552,11 +4079,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
           const lineDiv = document.createElement('div');
           lineDiv.style.marginBottom = '4px';
           lineDiv.style.lineHeight = '1.6';
-          let html = escapeHTML(trimmed).replace(
-            /\*\*([^*]+)\*\*/g,
-            '<strong style="color:#5eead4;font-weight:700;">$1</strong>'
-          );
-          lineDiv.innerHTML = html;
+          lineDiv.innerHTML = formatMathAndMarkdown(escapeHTML(trimmed));
           textDiv.appendChild(lineDiv);
         }
       });
@@ -4470,22 +4993,22 @@ setTimeout(() => {
 
 // Deep Link / Session Update event listener
 if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'function') {
-  window.electronAPI.onDeepLinkSession((config) => {
+  window.electronAPI.onDeepLinkSession(async (config) => {
     console.log('[Stealth UI] Received deep link session configuration update:', config);
     if (!config) return;
 
-    // Fill form fields
-    if (config.company) {
+    // Fill form fields with web-entered configuration
+    if (config.company !== undefined) {
       const companyInput = document.getElementById('setup-company');
       if (companyInput) companyInput.value = config.company;
     }
-    if (config.role) {
+    if (config.role !== undefined) {
       const roleInput = document.getElementById('setup-role');
       if (roleInput) roleInput.value = config.role;
     }
-    if (config.jd) {
+    if (config.jd !== undefined || config.job_description !== undefined) {
       const jdInput = document.getElementById('setup-jd');
-      if (jdInput) jdInput.value = config.jd;
+      if (jdInput) jdInput.value = config.jd || config.job_description || '';
     }
     if (config.model) {
       const modelSelect = document.getElementById('setup-model-select');
@@ -4495,6 +5018,20 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
       const languageSelect = document.getElementById('setup-language-select');
       if (languageSelect) languageSelect.value = config.language;
     }
+
+    // Bind directly to liveSessionData so Edit Session modal has the exact web-entered content
+    liveSessionData = {
+      company: config.company || '',
+      role: config.role || '',
+      jd: config.jd || config.job_description || '',
+      resumeId: config.resume_id || '',
+      docId: config.doc_id || ''
+    };
+
+    // Ensure dropdown options are loaded and selected
+    if (!backendResumes.length || !backendDocs.length) {
+      await loadDropdowns();
+    }
     if (config.resume_id) {
       const resumeSelect = document.getElementById('setup-resume-select');
       if (resumeSelect) resumeSelect.value = config.resume_id;
@@ -4502,7 +5039,6 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
     if (config.doc_id) {
       const docSelect = document.getElementById('setup-doc-select');
       if (docSelect) {
-        // Multi-select handling
         const ids = String(config.doc_id).split(',');
         Array.from(docSelect.options).forEach(opt => {
           opt.selected = ids.includes(opt.value);
@@ -4518,10 +5054,11 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
       if (saveTranscriptInput) saveTranscriptInput.checked = Boolean(config.save_transcript);
     }
 
-    // Trigger session launch automatically after a brief delay to ensure dropdowns are populated
+    // Directly start live session with the web-entered data
     setTimeout(() => {
       const startBtn = document.getElementById('start-session-btn');
       if (startBtn && !startBtn.disabled) {
+        console.log('[Stealth UI] Direct launch to live session from web payload...');
         startBtn.click();
       }
     }, 100);
