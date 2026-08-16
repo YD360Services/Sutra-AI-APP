@@ -4845,6 +4845,40 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
   }
 
+  // Focus Manual Question Input Shortcut (e.g. Ctrl+M)
+  if (checkShortcut('askQuestion', e)) {
+    e.preventDefault();
+    const aiBtn = document.getElementById('ai-btn');
+    const aiPanel = document.getElementById('ai-panel');
+    const aiInput = document.getElementById('ai-input');
+
+    if (aiPanel && (aiPanel.style.display === 'none' || getComputedStyle(aiPanel).display === 'none')) {
+      if (aiBtn) aiBtn.click();
+    }
+
+    if (aiInput) {
+      if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+        window.electronAPI.setFocusable(true);
+      }
+      aiInput.focus();
+      aiInput.select();
+    }
+  }
+
+  // Prev Answer Shortcut
+  if (checkShortcut('prevAnswer', e)) {
+    const prevBtn = document.getElementById('prev-answer-btn');
+    if (prevBtn) prevBtn.click();
+    e.preventDefault();
+  }
+
+  // Next Answer Shortcut
+  if (checkShortcut('nextAnswer', e)) {
+    const nextBtn = document.getElementById('next-answer-btn');
+    if (nextBtn) nextBtn.click();
+    e.preventDefault();
+  }
+
   // Toggle stealth hover check with F8 or Ctrl+Shift+M
   if (e.key === 'F8' || (e.ctrlKey && e.shiftKey && e.key.toUpperCase() === 'M')) {
     const isSessionActive = document.body.classList.contains('stealth-active');
@@ -4865,16 +4899,55 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Stealth Focus Lock: Enforce setFocusable(false) on all mouse events to guarantee 0% OS window activation / focus theft on background proctor window
-document.addEventListener('mousedown', () => {
+// Dynamic Focus Lock: Ensure inputs/modals are fully focusable and editable, while non-input toolbar clicks remain stealthy
+function isTargetEditableOrInModal(target) {
+  if (!target || !(target instanceof Element)) return false;
+
+  // Check if setup wizard is currently active/visible
+  const setupViewElem = document.getElementById('setup-view');
+  if (setupViewElem && setupViewElem.style.display !== 'none') return true;
+
+  // Check if target is an editable form element
+  const tag = target.tagName;
+  const isInput = tag === 'INPUT' ||
+    tag === 'TEXTAREA' ||
+    tag === 'SELECT' ||
+    target.isContentEditable ||
+    target.getAttribute('contenteditable') === 'true';
+
+  if (isInput) return true;
+
+  // Check if target is inside an input, setup view, or interactive modal
+  const editableClosest = target.closest('input, textarea, select, [contenteditable], #setup-view, .setup-modal, .modal-content, #settings-popup, #shortcuts-subpopup, .shortcut-recorder, .settings-popup, .autocomplete-dropdown, [data-focusable="true"]');
+  if (editableClosest) return true;
+
+  return false;
+}
+
+document.addEventListener('mousedown', (e) => {
   if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-    window.electronAPI.setFocusable(false);
+    if (isTargetEditableOrInModal(e.target)) {
+      window.electronAPI.setFocusable(true);
+    } else {
+      window.electronAPI.setFocusable(false);
+    }
   }
 }, true);
 
-// Capture override: Ctrl + click on any button
+document.addEventListener('focusin', (e) => {
+  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+    if (isTargetEditableOrInModal(e.target)) {
+      window.electronAPI.setFocusable(true);
+    }
+  }
+}, true);
+
+// Capture override: Ctrl + click on main action buttons (excluding settings/shortcut recorders)
 document.addEventListener('click', (e) => {
   if (e.ctrlKey && e.target.closest('button')) {
+    const isSettingsOrRecorder = e.target.closest('#settings-popup, #shortcuts-subpopup, .shortcut-recorder, .setup-modal, #setup-view');
+    if (isSettingsOrRecorder) return; // Do NOT hijack clicks inside settings or shortcut recorders!
+
     const captureBtn = document.getElementById('capture-btn');
     if (captureBtn && e.target.closest('button') !== captureBtn) {
       captureBtn.click();
@@ -4889,8 +4962,11 @@ document.addEventListener('click', (e) => {
 window.appShortcuts = {
   capture: { ctrl: true, shift: false, alt: false, key: 'Space' },
   answer: { ctrl: true, shift: false, alt: false, key: 'Enter' },
+  askQuestion: { ctrl: true, shift: false, alt: false, key: 'm' },
   scrollUp: { ctrl: true, shift: false, alt: false, key: 'ArrowUp' },
-  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' }
+  scrollDown: { ctrl: true, shift: false, alt: false, key: 'ArrowDown' },
+  prevAnswer: { ctrl: true, shift: false, alt: false, key: 'ArrowLeft' },
+  nextAnswer: { ctrl: true, shift: false, alt: false, key: 'ArrowRight' }
 };
 
 function formatShortcut(config) {
@@ -4913,23 +4989,40 @@ function updateShortcutUI() {
   const captureBadge = document.getElementById('badge-capture');
   const answerBadge = document.getElementById('badge-answer');
   const askBadge = document.getElementById('badge-ask');
+  const askInputBadge = document.getElementById('badge-ask-input');
   const scrollBadge = document.getElementById('badge-scroll');
+  const prevBadge = document.getElementById('badge-prev-answer');
+  const nextBadge = document.getElementById('badge-next-answer');
 
   if (captureBadge) captureBadge.textContent = formatShortcut(window.appShortcuts.capture);
   if (answerBadge) answerBadge.textContent = formatShortcut(window.appShortcuts.answer);
   if (askBadge) askBadge.textContent = formatShortcut(window.appShortcuts.answer);
+  if (askInputBadge) askInputBadge.textContent = formatShortcut(window.appShortcuts.askQuestion || { ctrl: true, shift: false, alt: false, key: 'm' });
   if (scrollBadge) scrollBadge.textContent = `${formatShortcut(window.appShortcuts.scrollUp)} / ${formatShortcut(window.appShortcuts.scrollDown)}`;
+  if (prevBadge) prevBadge.textContent = formatShortcut(window.appShortcuts.prevAnswer || { ctrl: true, shift: false, alt: false, key: 'ArrowLeft' });
+  if (nextBadge) nextBadge.textContent = formatShortcut(window.appShortcuts.nextAnswer || { ctrl: true, shift: false, alt: false, key: 'ArrowRight' });
 
-  // Update Recorders in Settings
+  // Update Recorders in Settings Sub-popup
   const recCapture = document.getElementById('set-shortcut-capture');
   const recAnswer = document.getElementById('set-shortcut-answer');
+  const recAskQuestion = document.getElementById('set-shortcut-askQuestion');
   const recScrollUp = document.getElementById('set-shortcut-scrollUp');
   const recScrollDown = document.getElementById('set-shortcut-scrollDown');
+  const recPrevAnswer = document.getElementById('set-shortcut-prevAnswer');
+  const recNextAnswer = document.getElementById('set-shortcut-nextAnswer');
 
   if (recCapture && !recCapture.classList.contains('recording')) recCapture.textContent = formatShortcut(window.appShortcuts.capture);
   if (recAnswer && !recAnswer.classList.contains('recording')) recAnswer.textContent = formatShortcut(window.appShortcuts.answer);
+  if (recAskQuestion && !recAskQuestion.classList.contains('recording')) recAskQuestion.textContent = formatShortcut(window.appShortcuts.askQuestion || { ctrl: true, shift: false, alt: false, key: 'm' });
   if (recScrollUp && !recScrollUp.classList.contains('recording')) recScrollUp.textContent = formatShortcut(window.appShortcuts.scrollUp);
   if (recScrollDown && !recScrollDown.classList.contains('recording')) recScrollDown.textContent = formatShortcut(window.appShortcuts.scrollDown);
+  if (recPrevAnswer && !recPrevAnswer.classList.contains('recording')) recPrevAnswer.textContent = formatShortcut(window.appShortcuts.prevAnswer || { ctrl: true, shift: false, alt: false, key: 'ArrowLeft' });
+  if (recNextAnswer && !recNextAnswer.classList.contains('recording')) recNextAnswer.textContent = formatShortcut(window.appShortcuts.nextAnswer || { ctrl: true, shift: false, alt: false, key: 'ArrowRight' });
+
+  // Sync registered global shortcuts to Electron OS level
+  if (window.electronAPI && typeof window.electronAPI.registerGlobalShortcuts === 'function') {
+    window.electronAPI.registerGlobalShortcuts(window.appShortcuts);
+  }
 }
 
 function loadShortcuts() {
@@ -4948,9 +5041,31 @@ function setupRecorder(btnId, actionKey) {
   if (!btn) return;
 
   btn.addEventListener('click', (e) => {
-    btn.classList.add('recording');
-    btn.textContent = 'Press Key...';
+    e.preventDefault();
     e.stopPropagation();
+
+    // Reset any other recorder currently recording
+    document.querySelectorAll('.shortcut-recorder.recording').forEach(otherBtn => {
+      if (otherBtn !== btn) {
+        otherBtn.classList.remove('recording');
+      }
+    });
+
+    btn.classList.add('recording');
+    btn.textContent = 'Press Hotkey...';
+
+    let cancelTimeout = null;
+    let cancelHandler = null;
+
+    const cleanup = () => {
+      btn.classList.remove('recording');
+      window.removeEventListener('keydown', handler, true);
+      if (cancelHandler) {
+        window.removeEventListener('mousedown', cancelHandler, true);
+      }
+      if (cancelTimeout) clearTimeout(cancelTimeout);
+      updateShortcutUI();
+    };
 
     const handler = (evt) => {
       evt.preventDefault();
@@ -4969,23 +5084,22 @@ function setupRecorder(btnId, actionKey) {
       };
 
       safeSetItem('stealth_shortcuts', JSON.stringify(window.appShortcuts));
+      cleanup();
+    };
 
-      btn.classList.remove('recording');
-      window.removeEventListener('keydown', handler, true);
-      updateShortcutUI();
+    cancelHandler = (evt) => {
+      if (evt.target === btn || btn.contains(evt.target)) return;
+      cleanup();
     };
 
     window.addEventListener('keydown', handler, true);
 
-    // Cancel on click away
-    const cancelHandler = () => {
-      btn.classList.remove('recording');
-      updateShortcutUI();
-      window.removeEventListener('keydown', handler, true);
-      window.removeEventListener('click', cancelHandler, true);
-    };
-    // Delay adding click listener so we don't trigger immediately on the click that opened it
-    setTimeout(() => window.addEventListener('click', cancelHandler, true), 10);
+    // Cancel on click away outside recorder button
+    cancelTimeout = setTimeout(() => {
+      if (btn.classList.contains('recording')) {
+        window.addEventListener('mousedown', cancelHandler, true);
+      }
+    }, 100);
   });
 }
 
@@ -5067,8 +5181,22 @@ setTimeout(() => {
   loadShortcuts();
   setupRecorder('set-shortcut-capture', 'capture');
   setupRecorder('set-shortcut-answer', 'answer');
+  setupRecorder('set-shortcut-askQuestion', 'askQuestion');
   setupRecorder('set-shortcut-scrollUp', 'scrollUp');
   setupRecorder('set-shortcut-scrollDown', 'scrollDown');
+  setupRecorder('set-shortcut-prevAnswer', 'prevAnswer');
+  setupRecorder('set-shortcut-nextAnswer', 'nextAnswer');
+
+  const aiInput = document.getElementById('ai-input');
+  if (aiInput) {
+    aiInput.addEventListener('keydown', (evt) => {
+      if (evt.key === 'Enter' && !evt.shiftKey) {
+        evt.preventDefault();
+        const aiSendBtn = document.getElementById('ai-send');
+        if (aiSendBtn) aiSendBtn.click();
+      }
+    });
+  }
 
   const savedFontSize = safeGetItem('stealth_font_size');
   if (savedFontSize) applyFontSize(savedFontSize);
@@ -5076,6 +5204,41 @@ setTimeout(() => {
   const savedOpacity = safeGetItem('stealth_opacity');
   if (savedOpacity) applyOpacity(savedOpacity);
 }, 500);
+
+// Global Shortcut OS Trigger Handler
+if (window.electronAPI && typeof window.electronAPI.onGlobalShortcutTriggered === 'function') {
+  window.electronAPI.onGlobalShortcutTriggered((action) => {
+    console.log('[Stealth UI] Global shortcut triggered:', action);
+    if (action === 'askQuestion') {
+      if (typeof openPanel === 'function') openPanel('ai');
+      const aiInput = document.getElementById('ai-input');
+      if (aiInput) {
+        setTimeout(() => {
+          aiInput.focus();
+          aiInput.select();
+        }, 50);
+      }
+    } else if (action === 'capture') {
+      const captureBtn = document.getElementById('capture-btn');
+      if (captureBtn) captureBtn.click();
+    } else if (action === 'answer') {
+      const aiSendBtn = document.getElementById('ai-send');
+      const aiAnswerBtn = document.getElementById('ai-answer-btn');
+      const aiInput = document.getElementById('ai-input');
+      if (aiInput && document.activeElement === aiInput && aiInput.value.trim() !== '') {
+        if (aiSendBtn) aiSendBtn.click();
+      } else {
+        if (aiAnswerBtn) aiAnswerBtn.click();
+      }
+    } else if (action === 'prevAnswer') {
+      const prevBtn = document.getElementById('prev-answer-btn');
+      if (prevBtn) prevBtn.click();
+    } else if (action === 'nextAnswer') {
+      const nextBtn = document.getElementById('next-answer-btn');
+      if (nextBtn) nextBtn.click();
+    }
+  });
+}
 
 // Deep Link / Session Update event listener
 if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'function') {

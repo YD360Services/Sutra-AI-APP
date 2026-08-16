@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -358,6 +358,7 @@ function createWindow() {
   mainWindow.setContentProtection(true);
 
   mainWindow.show();
+  mainWindow.setFocusable(true);
   mainWindow.setResizable(false);
 
   // Forward all renderer logs to the terminal
@@ -392,6 +393,43 @@ function createWindow() {
     if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
       const shouldFocus = Boolean(focusable);
       win.setFocusable(shouldFocus);
+      if (shouldFocus) {
+        win.focus();
+      }
+    }
+  });
+
+  // Register dynamic global shortcuts with OS window manager
+  ipcMain.on('register-global-shortcuts', (event, shortcuts) => {
+    try {
+      globalShortcut.unregisterAll();
+      if (!shortcuts || typeof shortcuts !== 'object') return;
+
+      for (const [action, config] of Object.entries(shortcuts)) {
+        if (!config || !config.key) continue;
+        let accelerator = [];
+        if (config.ctrl) accelerator.push('CommandOrControl');
+        if (config.alt) accelerator.push('Alt');
+        if (config.shift) accelerator.push('Shift');
+
+        let k = config.key;
+        if (k === 'Space') k = 'Space';
+        else if (k.startsWith('Arrow')) k = k.replace('Arrow', '');
+        accelerator.push(k.toUpperCase());
+
+        const shortcutStr = accelerator.join('+');
+        try {
+          globalShortcut.register(shortcutStr, () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('global-shortcut-triggered', action);
+            }
+          });
+        } catch (err) {
+          console.warn(`[Shortcuts] Could not register ${shortcutStr}:`, err.message);
+        }
+      }
+    } catch (e) {
+      console.error('[Shortcuts] Error registering shortcuts:', e.message);
     }
   });
 

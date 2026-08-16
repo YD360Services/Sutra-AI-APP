@@ -573,10 +573,13 @@
           </div>
           <div class="input-area"
             style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.04); padding: 10px 16px; align-items: center;">
-            <input type="text" id="ai-input" class="custom-input" placeholder="Type a manual question instead..."
-              style="flex: 1; cursor: default !important;" />
+            <div style="position: relative; flex: 1; display: flex; align-items: center;">
+              <input type="text" id="ai-input" class="custom-input" placeholder="Type a manual question instead..."
+                style="flex: 1; padding-right: 68px; cursor: default !important;" />
+              <span id="badge-ask-input" class="shortcut-badge" style="position: absolute; right: 8px; pointer-events: none; opacity: 0.85;">Ctrl+M</span>
+            </div>
             <button id="ai-send" class="btn-send interactive" data-tooltip="Ask Manual Question">Ask <span
-                id="badge-ask" class="shortcut-badge" style="display: none;">Ctrl+Enter</span></button>
+                id="badge-ask" class="shortcut-badge" style="display: inline-block;">Enter</span></button>
             <button id="expand-answer-btn" class="interactive" data-tooltip="Expand Answer Panel"
               style="display: flex; align-items: center; justify-content: center; width: auto; min-width: 32px; padding: 0 6px; height: 32px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; color: var(--text-secondary);  transition: all 0.2s; outline: none; flex-shrink: 0; gap: 4px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -600,8 +603,7 @@
         <span
           style="font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Preferences</span>
         <button id="settings-close-btn" class="interactive" data-tooltip="Close Settings" data-tooltip-pos="right"
-          style="background: none; border: none; color: var(--text-muted);  font-size: 11px; display: flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s; padding: 0 2px;"
-          onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+          style="background: none; border: none; color: var(--text-muted); font-size: 11px; display: flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s; padding: 0 2px;">✕</button>
       </div>
 
       <!-- User Account / Mail Section -->
@@ -624,11 +626,11 @@
         <label for="font-size-input" style="font-size: 10px; color: #aaa;">Font Size (px)</label>
         <div style="display: flex; gap: 6px; align-items: center;">
           <button id="font-size-minus" class="interactive"
-            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px;  font-weight: bold; outline: none;">-</button>
+            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px; font-weight: bold; outline: none;">-</button>
           <input type="number" id="font-size-input" value="12.5" step="0.5" min="8" max="36"
             style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: #fff; padding: 4px 6px; border-radius: 6px; font-size: 11px; outline: none; text-align: center;">
           <button id="font-size-plus" class="interactive"
-            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px;  font-weight: bold; outline: none;">+</button>
+            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px; font-weight: bold; outline: none;">+</button>
         </div>
       </div>
 
@@ -640,11 +642,11 @@
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
           <button id="opacity-minus" class="interactive"
-            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px;  font-weight: bold; outline: none;">-</button>
+            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px; font-weight: bold; outline: none;">-</button>
           <input type="range" id="opacity-slider" min="0.20" max="1.0" step="0.05" value="1.0"
             style="width: 100%; accent-color: var(--accent-chat); ">
           <button id="opacity-plus" class="interactive"
-            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px;  font-weight: bold; outline: none;">+</button>
+            style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 4px; padding: 2px 8px; font-weight: bold; outline: none;">+</button>
         </div>
       </div>
 
@@ -655,7 +657,7 @@
           <span id="stealth-mode-label" style="font-size: 9px; color: #2dd4bf;">ON (Protected)</span>
         </div>
         <button id="dev-stealth-toggle-btn" class="interactive" data-tooltip="Toggle OS Screen Capture Protection" data-tooltip-pos="right"
-          style="background: rgba(20, 184, 166, 0.15); border: 1px solid rgba(20, 184, 166, 0.4); color: #2dd4bf; border-radius: 6px; padding: 3px 10px; font-size: 10px; font-weight: 700;  outline: none; transition: all 0.2s; -webkit-app-region: no-drag !important;">
+          style="background: rgba(20, 184, 166, 0.15); border: 1px solid rgba(20, 184, 166, 0.4); color: #2dd4bf; border-radius: 6px; padding: 3px 10px; font-size: 10px; font-weight: 700; outline: none; transition: all 0.2s; -webkit-app-region: no-drag !important;">
           ON
         </button>
       </div>
@@ -672,7 +674,7 @@
 
       <!-- Dashboard Button -->
       <button id="settings-dashboard-btn" class="interactive"
-        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600;  transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
+        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600; transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
           stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="7" height="9"></rect>
@@ -685,7 +687,7 @@
 
       <!-- Logout Button -->
       <button id="settings-logout-btn" class="interactive"
-        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600;  transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
+        style="width: 100%; margin-top: 6px; padding: 6px 10px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; border-radius: 6px; font-size: 10px; font-weight: 600; transition: all 0.2s; outline: none; display: flex; align-items: center; justify-content: center; gap: 5px; -webkit-app-region: no-drag !important;">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
           stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -706,7 +708,7 @@
           ‹ Back
         </button>
         <span style="font-size: 10px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">Keyboard Shortcuts</span>
-        <button id="shortcuts-close-btn" class="interactive" style="background: none; border: none; color: var(--text-muted); font-size: 11px; outline: none; padding: 0 2px;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+        <button id="shortcuts-close-btn" class="interactive" style="background: none; border: none; color: var(--text-muted); font-size: 11px; outline: none; padding: 0 2px;">✕</button>
       </div>
 
       <!-- Shortcut Recorders -->
@@ -719,6 +721,11 @@
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size: 10.5px; color: #f1f5f9; font-weight: 600;">Get AI Answer</span>
           <button id="set-shortcut-answer" class="shortcut-recorder interactive">Ctrl+Enter</button>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 10.5px; color: #f1f5f9; font-weight: 600;">Manual Question</span>
+          <button id="set-shortcut-askQuestion" class="shortcut-recorder interactive">Ctrl+M</button>
         </div>
 
         <div style="display: flex; justify-content: space-between; align-items: center;">
