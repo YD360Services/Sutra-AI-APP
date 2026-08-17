@@ -96,8 +96,9 @@ body.resizing {
   position: absolute;
   top: 4px;
   left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 20px) !important;
+  margin-left: -310px;
+  transform: none !important;
+  width: 620px !important;
   max-width: 620px !important;
   box-sizing: border-box;
   height: 48px;
@@ -420,6 +421,7 @@ body.stealth-active .ctrl-btn-danger {
 
 /* --- Layer 2: Interviewer Transcript Strip (Locked to 620px) --- */
 #transcript-layer {
+  width: 620px !important;
   max-width: 620px !important;
   height: 36px;
   display: flex;

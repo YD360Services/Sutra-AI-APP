@@ -2015,7 +2015,7 @@ let justExpanded = false;
 let justExpandedTimeout;
 let startWidth, startHeight;
 let startPanelWidth;
-let startX, startY;
+let startX, startY, startCenterX;
 let startMouseX, startMouseY;
 let lastResizeTime = 0;
 
@@ -2199,7 +2199,10 @@ window.addEventListener('pointermove', (e) => {
     const now = Date.now();
     if (now - lastResizeTime > 16) {
       lastResizeTime = now;
-      updateWindowSize();
+      const targetWinWidth = Math.max(WIDTH, newPanelWidth + 24);
+      const targetX = Math.round(startCenterX - (targetWinWidth / 2));
+      const targetY = startY;
+      updateWindowSize(false, targetX, targetY);
     }
     return;
   }
@@ -2214,7 +2217,7 @@ window.electronAPI.setIgnoreMouseEvents(false);
 // 2. WINDOW CONTROL ACTIONS
 // -------------------------------------------------------------
 
-function updateWindowSize(reposition = false) {
+function updateWindowSize(reposition = false, targetX = null, targetY = null) {
   // NEVER resize while user is dragging
   if (isDraggingWindow) return;
 
@@ -2261,106 +2264,10 @@ function updateWindowSize(reposition = false) {
 
     const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
     document.documentElement.style.setProperty('--panel-width', currentPanelWidth + 'px');
-    const targetWinWidth = aiLayerVisible ? Math.max(WIDTH, currentPanelWidth + 20) : WIDTH;
+    const targetWinWidth = aiLayerVisible ? Math.max(WIDTH, currentPanelWidth + 24) : WIDTH;
 
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition);
-  }
-
-  if (false) { // legacy branch: never reached, kept for structural reference
-    const answerBlock = document.getElementById('answer-block');
-    const codeDisplayPre = document.getElementById('code-display');
-
-    const screenHeight = window.screen.availHeight || 1080;
-    const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
-    const maxAnswerHeight = Math.max(150, screenHeight - 250);
-
-    if (window.isCustomResized) {
-      const headerHeight = 45;
-      const navHeight = 35;
-      const inputHeight = 55;
-      const computedAnswerHeight = currentHeight - COLLAPSED_HEIGHT - 12 - headerHeight - navHeight - inputHeight;
-      if (answerBlock) {
-        answerBlock.style.height = Math.max(100, computedAnswerHeight) + 'px';
-        answerBlock.style.maxHeight = 'none';
-        answerBlock.style.overflowY = 'auto';
-      }
-      if (codeDisplayPre) {
-        codeDisplayPre.style.height = Math.max(100, computedAnswerHeight) + 'px';
-        codeDisplayPre.style.maxHeight = 'none';
-        codeDisplayPre.style.overflowY = 'auto';
-      }
-      const panelsContainer = document.getElementById('panels');
-      if (panelsContainer) {
-        panelsContainer.style.height = (currentHeight - COLLAPSED_HEIGHT - 12) + 'px';
-        panelsContainer.style.maxHeight = 'none';
-      }
-      if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
-    } else {
-      if (isAnswerExpanded) {
-        if (answerBlock) {
-          answerBlock.style.height = 'auto';
-          answerBlock.style.maxHeight = maxAnswerHeight + 'px';
-          answerBlock.style.overflowY = 'auto';
-        }
-        if (codeDisplayPre) {
-          codeDisplayPre.style.height = 'auto';
-          codeDisplayPre.style.maxHeight = '350px';
-          codeDisplayPre.style.overflowY = 'auto';
-        }
-        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
-      } else if (hasActiveAnswer) {
-        if (answerBlock) {
-          answerBlock.style.height = 'auto';
-          answerBlock.style.maxHeight = '250px';
-          answerBlock.style.overflowY = 'auto';
-        }
-        if (codeDisplayPre) {
-          codeDisplayPre.style.height = 'auto';
-          codeDisplayPre.style.maxHeight = '350px';
-          codeDisplayPre.style.overflowY = 'auto';
-        }
-        if (copyAllAnswerBtn) copyAllAnswerBtn.style.display = 'inline-block';
-      } else {
-        if (answerBlock) {
-          answerBlock.style.height = '110px';
-          answerBlock.style.maxHeight = '250px';
-          answerBlock.style.overflowY = 'auto';
-        }
-        if (codeDisplayPre) {
-          codeDisplayPre.style.height = '310px';
-          codeDisplayPre.style.maxHeight = '350px';
-          codeDisplayPre.style.overflowY = 'auto';
-        }
-      }
-    }
-
-    setTimeout(() => {
-      const appContainer = document.querySelector('.app-container');
-      const panelsContainer = document.getElementById('panels');
-      if (panelsContainer && !window.isCustomResized) {
-        panelsContainer.style.height = 'auto';
-      }
-      const rect = appContainer ? appContainer.getBoundingClientRect() : { height: 0 };
-      const settingsPopupEl = document.getElementById('settings-popup');
-      const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
-      const settingsBuffer = settingsOpen ? 180 : 0;
-
-      // Use exact content height without preserving stale expanded heights
-      let targetHeight;
-      if (window.isCustomResized) {
-        targetHeight = currentHeight;
-      } else {
-        const contentHeight = appContainer ? appContainer.scrollHeight : Math.round(rect.height);
-        targetHeight = Math.min(maxWinHeight, contentHeight + 12 + settingsBuffer);
-      }
-
-      const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
-      const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
-
-      pendingProgrammaticResizes++;
-      window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition);
-    }, 30);
+    window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition, targetX, targetY);
   }
 }
 
@@ -4718,6 +4625,7 @@ if (aiLayerResizerBtn) {
     startMouseY = e.screenY;
     startX = window.screenX;
     startY = window.screenY;
+    startCenterX = window.screenX + (window.outerWidth / 2);
     isDragClick = false;
     e.preventDefault();
 
