@@ -1864,31 +1864,106 @@ startSessionBtn.addEventListener('click', async () => {
 
 // Stop session button event handler
 stopSessionBtn.addEventListener('click', async () => {
-  // Expand window back to 600x580 setup state
-  pendingProgrammaticResizes++;
-  window.electronAPI.resizeWindow(600, 580, 'top', true);
-
-  // Close any active panel/tabs
-  if (activeTab) {
-    const activePanel = aiPanel;
-    activePanel.classList.remove('active');
-    panelsContainer.classList.remove('active');
-    activeTab = null;
+  // 1. Immediately stop audio recording & native transcription if active
+  try {
+    if (typeof stopRecording === 'function') {
+      stopRecording();
+    }
+  } catch (e) {
+    console.warn('[Session End] Error stopping audio recording:', e);
   }
 
-  // Reset session & save ending duration/status to backend (non-blocking)
+  // 2. Stop live session ticking timer
+  if (typeof stopSessionTimer === 'function') {
+    stopSessionTimer();
+  }
+
+  // 3. Switch views FIRST so updateWindowSize knows we are back in setup view
+  if (toolbarView) toolbarView.style.display = 'none';
+  if (setupView) setupView.style.display = 'flex';
+  const recentSessionsViewEl = document.getElementById('recent-sessions-view');
+  if (recentSessionsViewEl) recentSessionsViewEl.style.display = 'none';
+  const settingsPopupEl = document.getElementById('settings-popup');
+  if (settingsPopupEl) settingsPopupEl.style.display = 'none';
+  const shortcutsSubpopupEl = document.getElementById('shortcuts-subpopup');
+  if (shortcutsSubpopupEl) shortcutsSubpopupEl.style.display = 'none';
+  const editModalEl = document.getElementById('edit-session-modal');
+  if (editModalEl) editModalEl.style.display = 'none';
+
+  // 4. Close any active panels / HUD layers
+  activeTab = null;
+  if (aiPanel) aiPanel.classList.remove('active');
+  if (panelsContainer) panelsContainer.classList.remove('active');
+  const aiLayerEl = document.getElementById('ai-layer');
+  if (aiLayerEl) aiLayerEl.style.display = 'none';
+  const aiLayerExtended = document.getElementById('ai-layer-extended');
+  if (aiLayerExtended) aiLayerExtended.classList.remove('active');
+
+  // 5. Restore cursor visibility, window focus and interactive mouse events
+  isStealthHoverEnabled = false;
+  isShrunk = false;
+  document.body.classList.remove('stealth-active');
+  document.body.classList.remove('hover-active');
+  if (typeof toggleStealthTooltips === 'function') {
+    toggleStealthTooltips(false);
+  }
+  if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+    window.electronAPI.setIgnoreMouseEvents(false);
+  }
+  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+    window.electronAPI.setFocusable(true);
+  }
+  const appContainerEl = document.querySelector('.app-container');
+  if (appContainerEl) {
+    appContainerEl.style.opacity = userOpacity || 1.0;
+  }
+
+  // 6. Expand window back to 600x580 setup state
+  pendingProgrammaticResizes++;
+  if (window.electronAPI && window.electronAPI.resizeWindow) {
+    window.electronAPI.resizeWindow(600, 580, 'top', true);
+  }
+
+  // 7. Reset step wizard back to Step 1 & clear form
+  currentStep = 1;
+  if (typeof updateWizardView === 'function') {
+    updateWizardView();
+  }
+  if (setupCompany) setupCompany.value = '';
+  if (setupRole) setupRole.value = '';
+  if (setupJd) setupJd.value = '';
+
+  const logoutTextSpan = document.getElementById('settings-logout-text');
+  if (logoutTextSpan) logoutTextSpan.textContent = 'Logout';
+
+  // 8. Clear answer history
+  answerHistory = [];
+  currentAnswerIndex = -1;
+  if (typeof renderActiveAnswer === 'function') {
+    renderActiveAnswer();
+  }
+
+  // 9. Clear live transcript state
+  accumulatedTranscript = '';
+  lastAnswerOffset = 0;
+  if (transcriptFlushTimer) {
+    clearTimeout(transcriptFlushTimer);
+    transcriptFlushTimer = null;
+  }
+  transcriptChunkBuffer = '';
+
+  // 10. Reset session & save ending duration/status to backend (non-blocking)
   if (sessionToken) {
     const tokenToReset = sessionToken;
     const sessionToReset = activeSessionId;
     const seconds = sessionSecondsElapsed;
-    const finalTranscript = accumulatedTranscript.trim();
+    const finalTranscript = accumulatedTranscript ? accumulatedTranscript.trim() : '';
     sessionToken = '';      // clear immediately
     activeSessionId = '';   // clear immediately
 
     // Fire-and-forget backend updates so they don't block the UI transition
     Promise.resolve()
       .then(async () => {
-        // Flush the full accumulated transcript as one final block if we have content
         if (finalTranscript && shouldSaveTranscript && sessionToReset) {
           try {
             await window.electronAPI.saveTranscriptBlock(sessionToReset, {
@@ -1901,70 +1976,30 @@ stopSessionBtn.addEventListener('click', async () => {
             console.warn('[Transcript] Flush failed — transcript saved in localStorage:', e.message);
           }
         }
-        // Clear localStorage buffer after successful flush
         safeSetItem('stealth_transcript_buffer', '');
         safeSetItem('stealth_transcript_session', '');
-        return window.electronAPI.updateBackendSession(tokenToReset, {
-          status: 'completed',
-          duration_seconds: seconds
-        });
+        if (window.electronAPI && window.electronAPI.updateBackendSession) {
+          return window.electronAPI.updateBackendSession(tokenToReset, {
+            status: 'completed',
+            duration_seconds: seconds
+          });
+        }
       })
-      .then(() => window.electronAPI.resetSessionMemory(tokenToReset))
+      .then(() => {
+        if (window.electronAPI && window.electronAPI.resetSessionMemory) {
+          return window.electronAPI.resetSessionMemory(tokenToReset);
+        }
+      })
       .catch(e => console.error('[Stealth] Failed to complete session on backend:', e.message));
   } else {
-    // Even offline, clear localStorage buffer
     safeSetItem('stealth_transcript_buffer', '');
     safeSetItem('stealth_transcript_session', '');
   }
 
-  // Clear live transcript state
-  accumulatedTranscript = '';
-  lastAnswerOffset = 0;
-
-  // Clear transcript chunk buffer and cancel any pending flush timer
-  if (transcriptFlushTimer) {
-    clearTimeout(transcriptFlushTimer);
-    transcriptFlushTimer = null;
+  // 11. Reload dropdown options fresh from backend
+  if (typeof loadDropdowns === 'function') {
+    loadDropdowns();
   }
-  transcriptChunkBuffer = '';
-
-  // Reset step wizard back to Step 1
-  currentStep = 1;
-  updateWizardView();
-
-  // Clear answer history
-  answerHistory = [];
-  currentAnswerIndex = -1;
-  renderActiveAnswer();
-
-  // Restore cursor visibility when exiting stealth mode
-  isStealthHoverEnabled = false;
-  isShrunk = false;  // ensure shrunk state is cleared so click-through isn't triggered
-  window.electronAPI.setIgnoreMouseEvents(false);
-  document.body.classList.remove('stealth-active');
-  toggleStealthTooltips(false);
-  document.body.classList.remove('hover-active');
-  document.querySelector('.app-container').style.opacity = userOpacity;
-
-  // Stop live session ticking timer
-  stopSessionTimer();
-
-  // Switch views
-  toolbarView.style.display = 'none';
-  setupView.style.display = 'flex';
-  const logoutTextSpan = document.getElementById('settings-logout-text');
-  if (logoutTextSpan) logoutTextSpan.textContent = 'Logout';
-  // Guarantee the window is fully interactive after returning to setup portal
-  window.electronAPI.setIgnoreMouseEvents(false);
-
-
-  // Clear all setup form fields so wizard starts fresh (no stale company/role data)
-  setupCompany.value = '';
-  setupRole.value = '';
-  if (setupJd) setupJd.value = '';
-
-  // Reload dropdown options fresh from backend
-  loadDropdowns();
 });
 
 
@@ -2089,7 +2124,8 @@ window.addEventListener('pointerup', (e) => {
     isResizingPanel = false;
     document.body.classList.remove('resizing');
 
-    const currentWinWidth = isAnswerExpanded ? 840 : WIDTH;
+    const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
+    const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
     safeSetItem('stealth_panelHeight', currentHeight);
     safeSetItem('stealth_windowX', window.screenX);
     safeSetItem('stealth_windowY', window.screenY);
@@ -2097,7 +2133,7 @@ window.addEventListener('pointerup', (e) => {
     // Save full bounds (size + position) to main process JSON store
     if (window.electronAPI && window.electronAPI.saveWindowBounds) {
       window.electronAPI.saveWindowBounds({
-        width: currentWinWidth,
+        width: targetWinWidth,
         height: currentHeight,
         x: window.screenX,
         y: window.screenY,
@@ -2105,16 +2141,12 @@ window.addEventListener('pointerup', (e) => {
       });
     }
 
-    // Perform final unthrottled resize locked to startX (0 horizontal wobble)
-    pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(currentWinWidth, currentHeight, toolbarPosition, false, startX, startY);
-
-    const aiLayerResizer = document.getElementById('ai-layer-resizer');
-    if (aiLayerResizer) {
-      try { aiLayerResizer.releasePointerCapture(e.pointerId); } catch (err) { }
+    const aiLayerResizerBtn = document.getElementById('ai-layer-resizer-btn');
+    if (aiLayerResizerBtn) {
+      try { aiLayerResizerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
     }
 
-    // Re-evaluate click-through after resize ends so buttons don't freeze
+    updateWindowSize();
     requestAnimationFrame(() => updateClickThrough());
   }
   isDraggingWindow = false;
@@ -2129,11 +2161,12 @@ window.addEventListener('pointermove', (e) => {
   _lastClientX = e.clientX;
   _lastClientY = e.clientY;
 
-  // Handle panel resizing — purely vertical height adjustment (0 horizontal movement, 0 navbar shaking)
+  // Handle answer panel resizing (height and width)
   if (isResizingPanel) {
+    const dx = e.screenX - startMouseX;
     const dy = e.screenY - startMouseY;
 
-    if (Math.abs(dy) > 3) {
+    if (Math.abs(dy) > 3 || Math.abs(dx) > 3) {
       isDragClick = true;
     }
 
@@ -2144,31 +2177,29 @@ window.addEventListener('pointermove', (e) => {
     }
 
     const screenHeight = window.screen.availHeight || 1080;
-    const maxWinHeight = Math.min(MAX_HEIGHT, screenHeight - 40);
-    const newHeight = Math.max(160, Math.min(maxWinHeight, startHeight + dySigned));
-    currentHeight = newHeight;
+    const maxAnswerHeight = Math.min(800, screenHeight - 220);
+    const newAnswerHeight = Math.max(60, Math.min(maxAnswerHeight, startAnswerHeight + dySigned));
+
+    const screenWidth = window.screen.availWidth || 1920;
+    const maxPanelWidth = Math.min(1200, screenWidth - 60);
+    const newPanelWidth = Math.max(480, Math.min(maxPanelWidth, startPanelWidth + dx * 2));
 
     const answerBlock = document.getElementById('answer-block');
     if (answerBlock) {
-      const aiLayerExtended = document.getElementById('ai-layer-extended');
-      const isInputVisible = aiLayerExtended && aiLayerExtended.classList.contains('active');
-      const inputH = isInputVisible ? 50 : 0;
-      // 56px navbar + 42px transcript + 6px margin + 30px answer header + inputH + 28px padding/resizer
-      const otherElementsH = 56 + 42 + 6 + 30 + inputH + 28;
-      const computedAnswerHeight = Math.max(60, newHeight - otherElementsH);
-      answerBlock.style.height = computedAnswerHeight + 'px';
-      answerBlock.style.maxHeight = 'none';
+      answerBlock.style.height = newAnswerHeight + 'px';
+      answerBlock.style.maxHeight = newAnswerHeight + 'px';
       answerBlock.style.overflowY = 'auto';
     }
 
-    // Throttle the native OS window resizing IPC calls to prevent DWM thread blocks
+    safeSetItem('stealth_panelWidth', newPanelWidth.toString());
+    safeSetItem('stealth_answerHeight', newAnswerHeight.toString());
+    document.documentElement.style.setProperty('--panel-width', newPanelWidth + 'px');
+
+    // Throttle updateWindowSize to prevent IPC congestion
     const now = Date.now();
-    if (now - lastResizeTime > 30) {
+    if (now - lastResizeTime > 16) {
       lastResizeTime = now;
-      const currentWinWidth = isAnswerExpanded ? 840 : WIDTH;
-      // Lock X to startX and width to currentWinWidth — 100% shake-free!
-      pendingProgrammaticResizes++;
-      window.electronAPI.resizeWindow(currentWinWidth, newHeight, toolbarPosition, false, startX, startY);
+      updateWindowSize();
     }
     return;
   }
@@ -2183,30 +2214,9 @@ window.electronAPI.setIgnoreMouseEvents(false);
 // 2. WINDOW CONTROL ACTIONS
 // -------------------------------------------------------------
 
-
-
-
-if (closeBtn) {
-  closeBtn.addEventListener('click', () => {
-    window.electronAPI.closeApp();
-  });
-}
-
-// Listen for global Escape key to close open panels
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (activeTab) {
-      closeAllPanels();
-    }
-  }
-});
-
-// -------------------------------------------------------------
-// 3. TAB / PANEL TOGGLING & RESIZING
-// -------------------------------------------------------------
 function updateWindowSize(reposition = false) {
   // NEVER resize while user is dragging
-  if (isDraggingWindow || isResizingPanel) return;
+  if (isDraggingWindow) return;
 
   // If minimized (shrunk), do not let updateWindowSize override the small 48x48 bounds
   if (isShrunk) return;
@@ -2216,26 +2226,17 @@ function updateWindowSize(reposition = false) {
     return;
   }
 
-  // If in recent sessions view, do not resize the window (keep 800x580 bounds)
+  // If in recent sessions view, do not resize (keep 800x580 bounds)
   if (recentSessionsView && recentSessionsView.style.display !== 'none') {
     return;
   }
 
-  // If a full modal overlay (transcript, summary) is open, do not resize/collapse the window
-  const modalOverlayEl = document.getElementById('stealth-modal-overlay');
-  if (modalOverlayEl) {
-    return;
-  }
-
-  // Detect and update the toolbar position dynamically based on window location
-  updateDynamicToolbarPosition();
-
-  // ── 3-LAYER HUD: always measure the full content of all visible layer strips ──
-  {
-    const settingsPopupEl = document.getElementById('settings-popup');
-    const settingsOpen = settingsPopupEl && settingsPopupEl.style.display === 'flex';
-    const editModalEl = document.getElementById('edit-session-modal');
-    const editModalOpen = editModalEl && editModalEl.style.display === 'flex';
+  // In toolbar mode, compute exact height of only the VISIBLE layers
+  if (toolbarView && toolbarView.style.display !== 'none') {
+    const settingsPopup = document.getElementById('settings-popup');
+    const settingsOpen = settingsPopup && settingsPopup.style.display !== 'none';
+    const editModal = document.getElementById('edit-session-modal');
+    const editModalOpen = editModal && editModal.style.display !== 'none';
 
     // Base = toolbar (48px) + transcript layer (36px) + margins (6+6px)
     const toolbarH = 56;       // toolbar 48px + 8px top margin
@@ -2246,7 +2247,7 @@ function updateWindowSize(reposition = false) {
     const aiLayerVisible = aiLayerEl && aiLayerEl.style.display !== 'none' && aiLayerEl.offsetParent !== null;
     let aiLayerH = 0;
     if (aiLayerVisible) {
-      aiLayerH = aiLayerEl.getBoundingClientRect().height + 6; // +6 margin
+      aiLayerH = aiLayerEl.offsetHeight + 6;
     }
 
     let targetHeight;
@@ -2258,7 +2259,7 @@ function updateWindowSize(reposition = false) {
       targetHeight = toolbarH + transcriptH + aiLayerH + 8; // 8px bottom buffer
     }
 
-    const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || (isAnswerExpanded ? '820' : '620'));
+    const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
     document.documentElement.style.setProperty('--panel-width', currentPanelWidth + 'px');
     const targetWinWidth = aiLayerVisible ? Math.max(WIDTH, currentPanelWidth + 20) : WIDTH;
 
@@ -2365,19 +2366,10 @@ function updateWindowSize(reposition = false) {
 
 function closeAllPanels() {
   activeTab = null;
-  isAnswerExpanded = false;
 
   // Deactivate buttons
   aiBtn.classList.remove('active');
   captureBtn.classList.remove('active');
-
-  const expandAnswerBtn = document.getElementById('expand-answer-btn');
-  if (expandAnswerBtn) {
-    expandAnswerBtn.classList.remove('active');
-    expandAnswerBtn.style.color = 'var(--text-secondary)';
-    expandAnswerBtn.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-    expandAnswerBtn.style.background = 'rgba(255, 255, 255, 0.04)';
-  }
 
   // ── 3-LAYER HUD: hide the entire #ai-layer strip when Assistant is closed ──
   const aiLayerEl = document.getElementById('ai-layer');
@@ -2407,6 +2399,13 @@ function openPanel(tabName) {
   if (tabName === 'ai') {
     if (aiLayerEl) aiLayerEl.style.display = 'flex';
     if (aiLayerExtended) aiLayerExtended.classList.add('active');
+
+    // Apply saved answer height if present
+    const answerBlock = document.getElementById('answer-block');
+    const savedAnswerHeight = safeGetItem('stealth_answerHeight');
+    if (answerBlock && savedAnswerHeight) {
+      answerBlock.style.height = Math.max(60, Math.min(800, parseFloat(savedAnswerHeight))) + 'px';
+    }
   } else {
     // For other tabs (e.g. 'code'), keep ai-layer as-is
     if (aiLayerExtended) aiLayerExtended.classList.remove('active');
@@ -4702,48 +4701,17 @@ if (diamondBtn) {
   });
 }
 
-const expandAnswerBtn = document.getElementById('expand-answer-btn');
-
-if (expandAnswerBtn) {
-  expandAnswerBtn.addEventListener('click', (e) => {
-
-    isAnswerExpanded = !isAnswerExpanded;
-    expandAnswerBtn.classList.toggle('active', isAnswerExpanded);
-    const expandBtnText = document.getElementById('expand-btn-text');
-    if (expandBtnText) {
-      expandBtnText.textContent = isAnswerExpanded ? 'Compact' : 'Expand';
-    }
-
-    const answerBlock = document.getElementById('answer-block');
-    if (isAnswerExpanded) {
-      safeSetItem('stealth_panelWidth', 820);
-      document.documentElement.style.setProperty('--panel-width', '820px');
-      if (answerBlock) {
-        answerBlock.style.height = 'auto';
-        answerBlock.style.maxHeight = '360px';
-        answerBlock.style.overflowY = 'auto';
-      }
-    } else {
-      safeSetItem('stealth_panelWidth', 620);
-      document.documentElement.style.setProperty('--panel-width', '620px');
-      if (answerBlock) {
-        answerBlock.style.height = '110px';
-        answerBlock.style.maxHeight = '220px';
-        answerBlock.style.overflowY = 'auto';
-      }
-    }
-    updateWindowSize();
-  });
-}
-
-// ── Bottom Resizer Handle for #ai-layer ─────────────────────────────────────
-const aiLayerResizer = document.getElementById('ai-layer-resizer');
-if (aiLayerResizer) {
-  aiLayerResizer.addEventListener('pointerdown', (e) => {
+// ── Dedicated Resizer Button for 3rd Layer (next to Ask button) ───────────────────────────
+let startAnswerHeight = 110;
+const aiLayerResizerBtn = document.getElementById('ai-layer-resizer-btn');
+if (aiLayerResizerBtn) {
+  aiLayerResizerBtn.addEventListener('pointerdown', (e) => {
     isResizingPanel = true;
     window.isCustomResized = true;
     document.body.classList.add('resizing');
     updateDynamicToolbarPosition();
+    const answerBlock = document.getElementById('answer-block');
+    startAnswerHeight = answerBlock ? answerBlock.offsetHeight : 110;
     startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
     startHeight = currentHeight;
     startMouseX = e.screenX;
@@ -4753,9 +4721,11 @@ if (aiLayerResizer) {
     isDragClick = false;
     e.preventDefault();
 
-    // Capture pointer events globally so dragging works smoothly even if pointer moves outside the strip
-    aiLayerResizer.setPointerCapture(e.pointerId);
-    window.electronAPI.setIgnoreMouseEvents(false);
+    // Capture pointer events globally so dragging works smoothly
+    aiLayerResizerBtn.setPointerCapture(e.pointerId);
+    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+      window.electronAPI.setIgnoreMouseEvents(false);
+    }
   });
 }
 

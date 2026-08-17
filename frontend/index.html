@@ -178,23 +178,23 @@
           <!-- Backend status / retry banner -->
           <div id="dropdown-status-msg"
             style="display:none; align-items:center; gap:8px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:8px 12px; font-size:10.5px; color:#fca5a5;">
-            <span style="font-size:13px;">âš ï¸</span>
-            <span id="dropdown-status-text" style="flex:1;">Backend offline â€” lists unavailable.</span>
+            <span style="font-size:13px;">⚠️</span>
+            <span id="dropdown-status-text" style="flex:1;">Backend offline — lists unavailable.</span>
             <button id="dropdown-retry-btn" class="interactive"
-              style="background:rgba(20, 184, 166,0.15);border:1px solid rgba(20, 184, 166,0.35);color:#2dd4bf;border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;outline:none;white-space:nowrap;">â†º
+              style="background:rgba(20, 184, 166,0.15);border:1px solid rgba(20, 184, 166,0.35);color:#2dd4bf;border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;outline:none;white-space:nowrap;">↺
               Retry</button>
           </div>
 
           <div class="setup-form-group">
             <label class="setup-label"
               style="font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; color: #fff; width: 100%;">
-              <span>ðŸ“„ Select Resume Context</span>
+              <span>📄 Select Resume Context</span>
               <span id="resume-jd-score"
                 style="display: none; font-size: 10px; font-weight: 700; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px; font-family: inherit;">--</span>
             </label>
             <select id="setup-resume-select" class="setup-input" style="padding: 12px; font-size: 15px; cursor: default !important;">
               <option value="" style="cursor: default !important;">-- None --</option>
-              <option value="upload" style="cursor: default !important;">ðŸ“‚ Upload new resume...</option>
+              <option value="upload" style="cursor: default !important;">📁 Upload new resume...</option>
             </select>
             <input type="file" id="setup-resume-file" style="display: none;" accept=".pdf,.docx,.doc,.txt" />
           </div>
@@ -202,7 +202,7 @@
           <div class="setup-form-group">
             <label class="setup-label"
               style="font-size: 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; color: #fff;">
-              <span>ðŸ“š Select Extra Context</span>
+              <span>📚 Select Extra Context</span>
               <span style="font-size: 9.5px; opacity: 0.65; font-weight: normal;">(Ctrl+Click to select multiple)</span>
             </label>
             <select id="setup-doc-select" class="setup-input custom-scrollbar" multiple size="4"
@@ -211,10 +211,10 @@
             </select>
             <div style="display: flex; gap: 8px;">
               <button id="input-prompt-btn" class="interactive" type="button"
-                style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">âœï¸
+                style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">✍️
                 Input Prompt</button>
               <button id="upload-doc-btn" class="interactive" type="button"
-                style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">ðŸ“‚
+                style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">📁
                 Upload Doc</button>
             </div>
             <input type="file" id="setup-doc-file" style="display: none;" accept=".pdf,.docx,.doc,.txt,.md" />
@@ -228,7 +228,7 @@
             <div class="setup-form-group" style="margin: 0;">
               <label class="setup-label"
                 style="font-size: 11.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; color: #fff;">
-                ðŸ§  AI Model
+                🧠 AI Model
               </label>
               <select id="setup-model-select" class="setup-input" style="padding: 9px 10px; font-size: 13px;">
                 <option value="gpt-5.5" selected>GPT 5.5</option>
@@ -244,41 +244,41 @@
             <div class="setup-form-group" style="margin: 0;">
               <label class="setup-label"
                 style="font-size: 11.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; color: #fff;">
-                ðŸŒ Language
+                🌐 Language
               </label>
               <select id="setup-language-select" class="setup-input" style="padding: 9px 10px; font-size: 13px;">
                 <option value="en" selected>English (US/Global)</option>
-                <option value="hi">Hindi (à¤¹à¤¿à¤‚à¤¦à¥€)</option>
-                <option value="es">Spanish (EspaÃ±ol)</option>
-                <option value="fr">French (FranÃ§ais)</option>
+                <option value="hi">Hindi (हिंदी)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="fr">French (Français)</option>
                 <option value="de">German (Deutsch)</option>
-                <option value="ja">Japanese (æ—¥æœ¬èªž)</option>
-                <option value="pt">Portuguese (PortuguÃªs)</option>
+                <option value="ja">Japanese (日本語)</option>
+                <option value="pt">Portuguese (Português)</option>
                 <option value="it">Italian (Italiano)</option>
-                <option value="zh">Chinese (ä¸­æ–‡)</option>
-                <option value="ko">Korean (í•œêµ­ì–´)</option>
+                <option value="zh">Chinese (中文)</option>
+                <option value="ko">Korean (한국어)</option>
                 <option value="nl">Dutch (Nederlands)</option>
-                <option value="ru">Russian (Ð ÑƒÑÑÐºÐ¸Ð¹)</option>
-                <option value="ar">Arabic (Ø§Ù„Ø¹Ø±Ø¨ÙŠØ©)</option>
-                <option value="tr">Turkish (TÃ¼rkÃ§e)</option>
+                <option value="ru">Russian (Русский)</option>
+                <option value="ar">Arabic (العربية)</option>
+                <option value="tr">Turkish (Türkçe)</option>
                 <option value="pl">Polish (Polski)</option>
                 <option value="sv">Swedish (Svenska)</option>
                 <option value="id">Indonesian (Bahasa)</option>
-                <option value="vi">Vietnamese (Tiáº¿ng Viá»‡t)</option>
-                <option value="uk">Ukrainian (Ð£ÐºÑ€Ð°Ñ—Ð½ÑÑŒÐºÐ°)</option>
-                <option value="el">Greek (Î•Î»Î»Î·Î½Î¹ÎºÎ¬)</option>
-                <option value="cs">Czech (ÄŒeÅ¡tina)</option>
+                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                <option value="uk">Ukrainian (Українська)</option>
+                <option value="el">Greek (Ελληνικά)</option>
+                <option value="cs">Czech (Čeština)</option>
                 <option value="da">Danish (Dansk)</option>
                 <option value="fi">Finnish (Suomi)</option>
-                <option value="he">Hebrew (×¢×‘×¨×™×ª)</option>
+                <option value="he">Hebrew (עברית)</option>
                 <option value="hu">Hungarian (Magyar)</option>
                 <option value="no">Norwegian (Norsk)</option>
-                <option value="ro">Romanian (RomÃ¢nÄƒ)</option>
-                <option value="th">Thai (à¹„à¸—à¸¢)</option>
-                <option value="ta">Tamil (à®¤à®®à®¿à®´à¯)</option>
-                <option value="te">Telugu (à°¤à±†à°²à±à°—à±)</option>
-                <option value="bn">Bengali (à¦¬à¦¾à¦‚à¦²à¦¾)</option>
-                <option value="mr">Marathi (à¤®à¤°à¤¾à¤ à¥€)</option>
+                <option value="ro">Romanian (Română)</option>
+                <option value="th">Thai (ไทย)</option>
+                <option value="ta">Tamil (தமிழ்)</option>
+                <option value="te">Telugu (తెలుగు)</option>
+                <option value="bn">Bengali (বাংলা)</option>
+                <option value="mr">Marathi (मराठी)</option>
                 <option value="multi">Auto / Multilingual</option>
               </select>
             </div>
@@ -347,7 +347,7 @@
         </div>
         <div id="sessions-count-badge"
           style="margin-left: auto; background: rgba(20, 184, 166,0.15); border: 1px solid rgba(20, 184, 166,0.3); color: #2dd4bf; border-radius: 20px; padding: 2px 10px; font-size: 10px; font-weight: 700;">
-          â€” total</div>
+          — total</div>
         <!-- Reposition/Drag handle in recent sessions -->
         <div id="recent-position-btn" class="interactive" data-tooltip="Drag to Reposition"
           style="display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); border-radius: 8px; width: 26px; height: 26px;  transition: all 0.2s; outline: none; flex-shrink: 0; margin-right: 4px; -webkit-app-region: drag !important;">
@@ -575,7 +575,7 @@
 
           <!-- AI Answer text block -->
           <div id="answer-block" class="scrollable-block custom-scrollbar"
-            style="height: 110px; min-height: 60px; min-width: 130px; max-height: 1000px; background: #0f111a; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: #f8fafc; line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left;">
+            style="height: 110px; min-height: 60px; min-width: 130px; max-height: 800px; background: #0f111a; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px; overflow-y: auto; font-family: inherit; font-size: 12.5px; color: #f8fafc; line-height: 18px; word-break: break-word; white-space: pre-wrap; text-align: left;">
           </div>
         </div>
 
@@ -591,22 +591,15 @@
             </div>
             <button id="ai-send" class="btn-send interactive" data-tooltip="Ask Manual Question">Ask <span
                 id="badge-ask" class="shortcut-badge" style="display: inline-block;">Enter</span></button>
-            <button id="expand-answer-btn" class="interactive btn-expand-toggle" data-tooltip="Toggle Wide / Compact Mode">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                stroke-linecap="round" stroke-linejoin="round">
+            <button id="ai-layer-resizer-btn" class="interactive btn-resizer-toggle" data-tooltip="Drag to resize panel">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 3 21 3 21 9"></polyline>
                 <polyline points="9 21 3 21 3 15"></polyline>
                 <line x1="21" y1="3" x2="14" y2="10"></line>
                 <line x1="3" y1="21" x2="10" y2="14"></line>
               </svg>
-              <span id="expand-btn-text">Expand</span>
             </button>
           </div>
-        </div>
-
-        <!-- Bottom drag-resize handle for answer panel height -->
-        <div id="ai-layer-resizer" class="panel-resizer interactive" data-tooltip="Drag to resize answer panel height">
-          <div class="resizer-pill"></div>
         </div>
 
       </div><!-- /#ai-layer -->
