@@ -462,7 +462,7 @@ body.stealth-active .ctrl-btn-danger {
   flex-shrink: 0;
 }
 
-/* --- Layer 3: AI Answer Strip (Dynamic Width & Smooth Animation) --- */
+/* --- Layer 3: AI Answer Strip (Dynamic Width & Smooth Zero-Blink Resizing) --- */
 #ai-layer {
   display: none; /* shown by JS on first AI answer */
   flex-direction: column;
@@ -473,8 +473,7 @@ body.stealth-active .ctrl-btn-danger {
   box-sizing: border-box;
   overflow: hidden;
   container-type: inline-size;
-  animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  transition: max-width 0.25s cubic-bezier(0.16, 1, 0.3, 1), height 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #answer-block {

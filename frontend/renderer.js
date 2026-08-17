@@ -2013,7 +2013,7 @@ let isResizingPanel = false;
 let isDraggingSlider = false;
 let justExpanded = false;
 let justExpandedTimeout;
-let startWidth, startHeight;
+let startWidth, startHeight, startAnswerHeight = 110;
 let startPanelWidth;
 let startX, startY, startCenterX;
 let startMouseX, startMouseY;
@@ -2124,8 +2124,12 @@ window.addEventListener('pointerup', (e) => {
     isResizingPanel = false;
     document.body.classList.remove('resizing');
 
+    const aiLayerResizerBtn = document.getElementById('ai-layer-resizer-btn');
+    if (aiLayerResizerBtn) {
+      try { aiLayerResizerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
+    }
+
     const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
-    const targetWinWidth = Math.max(WIDTH, currentPanelWidth + 20);
     safeSetItem('stealth_panelHeight', currentHeight);
     safeSetItem('stealth_windowX', window.screenX);
     safeSetItem('stealth_windowY', window.screenY);
@@ -2133,7 +2137,7 @@ window.addEventListener('pointerup', (e) => {
     // Save full bounds (size + position) to main process JSON store
     if (window.electronAPI && window.electronAPI.saveWindowBounds) {
       window.electronAPI.saveWindowBounds({
-        width: targetWinWidth,
+        width: 1240,
         height: currentHeight,
         x: window.screenX,
         y: window.screenY,
@@ -2141,12 +2145,6 @@ window.addEventListener('pointerup', (e) => {
       });
     }
 
-    const aiLayerResizerBtn = document.getElementById('ai-layer-resizer-btn');
-    if (aiLayerResizerBtn) {
-      try { aiLayerResizerBtn.releasePointerCapture(e.pointerId); } catch (err) { }
-    }
-
-    updateWindowSize();
     requestAnimationFrame(() => updateClickThrough());
   }
   isDraggingWindow = false;
@@ -2161,27 +2159,21 @@ window.addEventListener('pointermove', (e) => {
   _lastClientX = e.clientX;
   _lastClientY = e.clientY;
 
-  // Handle answer panel resizing (height and width)
+  // Handle answer panel resizing (height and width) — 100% purely GPU DOM, 0 OS window movement = ZERO SHAKING
   if (isResizingPanel) {
     const dx = e.screenX - startMouseX;
-    const dy = e.screenY - startMouseY;
+    const dy = (toolbarPosition === 'bottom') ? -(e.screenY - startMouseY) : (e.screenY - startMouseY);
 
     if (Math.abs(dy) > 3 || Math.abs(dx) > 3) {
       isDragClick = true;
     }
 
-    // Scale delta direction depending on where the toolbar is docked
-    let dySigned = dy;
-    if (toolbarPosition === 'bottom') {
-      dySigned = -dy;
-    }
-
     const screenHeight = window.screen.availHeight || 1080;
     const maxAnswerHeight = Math.min(800, screenHeight - 220);
-    const newAnswerHeight = Math.max(60, Math.min(maxAnswerHeight, startAnswerHeight + dySigned));
+    const newAnswerHeight = Math.max(60, Math.min(maxAnswerHeight, startAnswerHeight + dy));
 
     const screenWidth = window.screen.availWidth || 1920;
-    const maxPanelWidth = Math.min(1200, screenWidth - 60);
+    const maxPanelWidth = Math.min(1180, screenWidth - 80);
     const newPanelWidth = Math.max(480, Math.min(maxPanelWidth, startPanelWidth + dx * 2));
 
     const answerBlock = document.getElementById('answer-block');
@@ -2195,15 +2187,7 @@ window.addEventListener('pointermove', (e) => {
     safeSetItem('stealth_answerHeight', newAnswerHeight.toString());
     document.documentElement.style.setProperty('--panel-width', newPanelWidth + 'px');
 
-    // Throttle updateWindowSize to prevent IPC congestion
-    const now = Date.now();
-    if (now - lastResizeTime > 16) {
-      lastResizeTime = now;
-      const targetWinWidth = Math.max(WIDTH, newPanelWidth + 24);
-      const targetX = Math.round(startCenterX - (targetWinWidth / 2));
-      const targetY = startY;
-      updateWindowSize(false, targetX, targetY);
-    }
+    // 100% GPU DOM resize only — ZERO OS window repositioning = ZERO shaking!
     return;
   }
 
@@ -2255,16 +2239,18 @@ function updateWindowSize(reposition = false, targetX = null, targetY = null) {
 
     let targetHeight;
     if (settingsOpen || editModalOpen) {
-      targetHeight = Math.max(480, toolbarH + transcriptH + aiLayerH);
+      targetHeight = Math.max(600, toolbarH + transcriptH + aiLayerH + 100);
     } else if (!isMouseInsideWindow && !aiLayerVisible) {
       targetHeight = toolbarH; // just the navbar when nothing else is visible
     } else {
-      targetHeight = toolbarH + transcriptH + aiLayerH + 8; // 8px bottom buffer
+      // Provide ample canvas headroom when ai layer is visible so vertical resizing is 100% realtime with zero lag
+      targetHeight = aiLayerVisible ? Math.max(850, toolbarH + transcriptH + aiLayerH + 80) : (toolbarH + transcriptH + aiLayerH + 8);
     }
 
     const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
     document.documentElement.style.setProperty('--panel-width', currentPanelWidth + 'px');
-    const targetWinWidth = aiLayerVisible ? Math.max(WIDTH, currentPanelWidth + 24) : WIDTH;
+    // Keep transparent canvas wide (1240px) when 3rd layer is open so width can resize without OS window shifts
+    const targetWinWidth = aiLayerVisible ? 1240 : WIDTH;
 
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition, targetX, targetY);
@@ -4608,34 +4594,7 @@ if (diamondBtn) {
   });
 }
 
-// ── Dedicated Resizer Button for 3rd Layer (next to Ask button) ───────────────────────────
-let startAnswerHeight = 110;
-const aiLayerResizerBtn = document.getElementById('ai-layer-resizer-btn');
-if (aiLayerResizerBtn) {
-  aiLayerResizerBtn.addEventListener('pointerdown', (e) => {
-    isResizingPanel = true;
-    window.isCustomResized = true;
-    document.body.classList.add('resizing');
-    updateDynamicToolbarPosition();
-    const answerBlock = document.getElementById('answer-block');
-    startAnswerHeight = answerBlock ? answerBlock.offsetHeight : 110;
-    startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
-    startHeight = currentHeight;
-    startMouseX = e.screenX;
-    startMouseY = e.screenY;
-    startX = window.screenX;
-    startY = window.screenY;
-    startCenterX = window.screenX + (window.outerWidth / 2);
-    isDragClick = false;
-    e.preventDefault();
-
-    // Capture pointer events globally so dragging works smoothly
-    aiLayerResizerBtn.setPointerCapture(e.pointerId);
-    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
-      window.electronAPI.setIgnoreMouseEvents(false);
-    }
-  });
-}
+// ── Quick Controls ────────────────────────────────────────────────────────
 
 
 
@@ -5209,6 +5168,34 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
         startBtn.click();
       }
     }, 100);
+  });
+}
+
+// ── Dedicated Resizer Button for 3rd Layer (next to Ask button) ───────────────────────────
+startAnswerHeight = 110;
+const aiLayerResizerBtn = document.getElementById('ai-layer-resizer-btn');
+if (aiLayerResizerBtn) {
+  aiLayerResizerBtn.addEventListener('pointerdown', (e) => {
+    isResizingPanel = true;
+    window.isCustomResized = true;
+    document.body.classList.add('resizing');
+    updateDynamicToolbarPosition();
+    const answerBlock = document.getElementById('answer-block');
+    startAnswerHeight = answerBlock ? answerBlock.offsetHeight : 110;
+    startPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
+    startHeight = currentHeight;
+    startMouseX = e.screenX;
+    startMouseY = e.screenY;
+    startX = window.screenX;
+    startY = window.screenY;
+    startCenterX = window.screenX + (window.outerWidth / 2);
+    isDragClick = false;
+    e.preventDefault();
+
+    aiLayerResizerBtn.setPointerCapture(e.pointerId);
+    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+      window.electronAPI.setIgnoreMouseEvents(false);
+    }
   });
 }
 
