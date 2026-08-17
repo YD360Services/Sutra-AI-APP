@@ -90,6 +90,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onSyncCredentials: (cb) => ipcRenderer.on('sync-credentials', (_, data) => cb(data)),
 
   // ── Deep Link Session Handler ─────────────────────────────────────
-  // Fires when the app is opened via sutra://start-session?... deep link
+  // Fires when the app is opened via roundmate://start-session?... or sutra://start-session?... deep link
   onDeepLinkSession: (cb) => ipcRenderer.on('deep-link-session', (_, config) => cb(config)),
 });

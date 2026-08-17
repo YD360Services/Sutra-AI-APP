@@ -320,7 +320,7 @@ function createWindow() {
   const winHeight = 580;
 
   mainWindow = new BrowserWindow({
-    title: "Sutra AI",
+    title: "RoundMate AI",
     width: winWidth,
     height: winHeight,
     frame: false,
@@ -1524,12 +1524,14 @@ function applyDeepLinkConfig(deepLinkUrl) {
   }
 }
 
-// Register sutra:// protocol — handles development vs packaged environment parameter matching
+// Register roundmate:// (and legacy sutra://) protocol — handles development vs packaged environment parameter matching
 if (process.defaultApp) {
   if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('roundmate', process.execPath, [path.resolve(process.argv[1])]);
     app.setAsDefaultProtocolClient('sutra', process.execPath, [path.resolve(process.argv[1])]);
   }
 } else {
+  app.setAsDefaultProtocolClient('roundmate');
   app.setAsDefaultProtocolClient('sutra');
 }
 
@@ -1540,10 +1542,10 @@ const gotTheLock = app.requestSingleInstanceLock(additionalData);
 if (!gotTheLock) {
   app.quit();
 } else {
-  // Windows / Linux: second-instance fires when a sutra:// URL is clicked while app is already running
+  // Windows / Linux: second-instance fires when a roundmate:// or sutra:// URL is clicked while app is already running
   app.on('second-instance', (_event, argv) => {
     // argv includes the deep link URL on Windows
-    const deepLinkArg = argv.find(arg => arg.startsWith('sutra://'));
+    const deepLinkArg = argv.find(arg => arg.startsWith('roundmate://') || arg.startsWith('sutra://'));
     if (deepLinkArg) {
       applyDeepLinkConfig(deepLinkArg);
       if (mainWindow) {
@@ -1560,8 +1562,8 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
-    // Check if launched via sutra:// deep link on Windows (URL will be in argv)
-    const deepLinkArg = process.argv.find(arg => arg.startsWith('sutra://'));
+    // Check if launched via roundmate:// or sutra:// deep link on Windows (URL will be in argv)
+    const deepLinkArg = process.argv.find(arg => arg.startsWith('roundmate://') || arg.startsWith('sutra://'));
     if (deepLinkArg) {
       applyDeepLinkConfig(deepLinkArg);
     }
@@ -1573,7 +1575,7 @@ if (!gotTheLock) {
       console.log('Stealth controller listening on port 48999');
     });
 
-    // macOS: handle open-url event for sutra:// links
+    // macOS: handle open-url event for roundmate:// or sutra:// links
     app.on('open-url', (event, url) => {
       event.preventDefault();
       applyDeepLinkConfig(url);

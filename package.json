@@ -1,8 +1,8 @@
 {
-  "name": "sutra-ai",
-  "productName": "Sutra AI",
-  "version": "1.0.0",
-  "description": "Sutra AI Stealth Desktop Application",
+  "name": "roundmate-ai",
+  "productName": "RoundMate AI",
+  "version": "1.0.1",
+  "description": "RoundMate AI Stealth Desktop Application",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -12,8 +12,8 @@
     "dist:mac": "electron-builder --mac"
   },
   "build": {
-    "appId": "com.sutraai.stealthapp",
-    "productName": "Sutra AI",
+    "appId": "com.roundmateai.stealthapp",
+    "productName": "RoundMate AI",
     "asar": true,
     "asarUnpack": [
       "node_modules/electron/**",
@@ -24,8 +24,9 @@
     },
     "protocols": [
       {
-        "name": "Sutra AI",
+        "name": "RoundMate AI",
         "schemes": [
+          "roundmate",
           "sutra"
         ],
         "role": "Viewer"
@@ -54,7 +55,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Sutra AI",
+      "shortcutName": "RoundMate AI",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico"
     },

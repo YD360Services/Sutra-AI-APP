@@ -1,13 +1,13 @@
-# Sutra AI — AI Model Comparison, Benchmarks & Recommendation Guide
+# RoundMate AI — AI Model Comparison, Benchmarks & Recommendation Guide
 **Document Version:** 2.0  
 **Updated:** August 2026  
-**Scope:** Complete performance, quality, speed, pricing, and architectural comparison of all AI models integrated into the **Sutra AI App**.
+**Scope:** Complete performance, quality, speed, pricing, and architectural comparison of all AI models integrated into the **RoundMate AI App**.
 
 ---
 
 ## 📑 Executive Overview & Benchmark Summary Table
 
-Sutra AI supports multiple industry-leading Large Language Models (LLMs) via hosted APIs (Google Gemini, OpenAI, DeepSeek, Groq Llama). The table below compares these models across key performance metrics:
+RoundMate AI supports multiple industry-leading Large Language Models (LLMs) via hosted APIs (Google Gemini, OpenAI, DeepSeek, Groq Llama). The table below compares these models across key performance metrics:
 
 | Model Name | Provider | TTFT (Latency) | Generation Speed | Quality (1–10) | Coding & Math | System Design | Price / 1M Tokens (In/Out) | 60-Min Session Cost (80 Queries) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -104,4 +104,4 @@ Sutra AI supports multiple industry-leading Large Language Models (LLMs) via hos
 ```
 
 ---
-*Report Generated for Sutra AI Repository Reference.*
+*Report Generated for RoundMate AI Repository Reference.*
