@@ -307,7 +307,25 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
                 log_response(log_file, response_text=content)
             return content
         except Exception as e:
-            logger.error(f"Gemini API generation error: {e}. Falling back...")
+            logger.error(f"Gemini API generation error: {e}. Attempting OpenAI failover...")
+            if openai_client:
+                try:
+                    response_format = {"type": "json_object"} if response_json else None
+                    openai_resp = await openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=temperature,
+                        response_format=response_format
+                    )
+                    content = openai_resp.choices[0].message.content or ""
+                    if log_file:
+                        log_response(log_file, response_text=content)
+                    return content
+                except Exception as oe:
+                    logger.error(f"OpenAI failover error: {oe}")
             if log_file:
                 log_response(log_file, error=str(e))
             if throw_on_error:

@@ -11,6 +11,7 @@ const setupResumeSelect = document.getElementById('setup-resume-select');
 const setupResumeFile = document.getElementById('setup-resume-file');
 const setupDocSelect = document.getElementById('setup-doc-select');
 const setupDocFile = document.getElementById('setup-doc-file');
+const selectedContextChips = document.getElementById('selected-context-chips');
 
 // UI Buttons & Panels
 const aiBtn = document.getElementById('ai-btn');
@@ -1004,7 +1005,7 @@ async function loadDropdowns() {
         }
 
         if (setupPromptSelect) {
-          setupPromptSelect.innerHTML = '<option value="">✍️ -- Select Custom Prompt --</option>';
+          setupPromptSelect.innerHTML = '<option value="">✍️ -- Select Custom Prompt / Instruction Rule --</option>';
           promptItems.forEach(p => {
             const opt = document.createElement('option');
             opt.value = p.id;
@@ -1014,13 +1015,13 @@ async function loadDropdowns() {
         }
       }
     }
+
+    // Fetch Recent Sessions for Step 2 Context Injector
+    await loadRecentSessionsForStep2();
   } catch (e) {
     console.log('[Stealth] Could not load backend dropdowns:', e.message);
   }
 }
-
-// Automatically load dropdown options on boot
-loadDropdowns();
 
 // Recent Sessions Context select element
 const setupRecentContextSelect = document.getElementById('setup-recent-context-select');
@@ -1029,13 +1030,17 @@ async function loadRecentSessionsForStep2() {
   if (!setupRecentContextSelect) return;
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-    const res = await fetch(`${base}/api/sessions`);
-    if (!res.ok) return;
+    const normUserId = normalizeUserId(USER_ID);
+    let res = await fetch(`${base}/api/sessions?user_id=${encodeURIComponent(normUserId)}`).catch(() => null);
+    if (!res || !res.ok) {
+      res = await fetch(`${base}/api/sessions`).catch(() => null);
+    }
+    if (!res || !res.ok) return;
     const sessions = await res.json();
-    setupRecentContextSelect.innerHTML = '<option value="">-- None (Fresh Session) --</option>';
+    setupRecentContextSelect.innerHTML = '<option value="">🕒 -- Select Past Session Context to Inject --</option>';
     if (Array.isArray(sessions)) {
       sessions.forEach(s => {
-        const title = s.company_name ? `${s.company_name} — ${s.target_role || 'Session'}` : (s.session_name || 'Previous Session');
+        const title = s.company_name ? `${s.company_name} — ${s.role_name || 'Session'}` : (s.session_name || 'Previous Session');
         const opt = document.createElement('option');
         opt.value = s.id;
         opt.textContent = `🕒 ${title}`;
@@ -1046,6 +1051,9 @@ async function loadRecentSessionsForStep2() {
     console.log('[Stealth] Could not load recent sessions for context:', e.message);
   }
 }
+
+// Automatically load dropdown options on boot
+loadDropdowns();
 
 // Additional Context Drawer Toggle
 const addContextSourceBtn = document.getElementById('add-context-source-btn');
@@ -1080,28 +1088,86 @@ if (step2UploadResumeBtn && setupResumeFile) {
 const selectedDocIdsSet = new Set();
 const selectedSessionIdsSet = new Set();
 
-function createChip(labelText, onRemove) {
+function createChip({ tag, name, theme, onRemove }) {
   const chip = document.createElement('div');
+  
+  const themes = {
+    resume: {
+      bg: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(147, 51, 234, 0.06) 100%)',
+      border: '1px solid rgba(168, 85, 247, 0.45)',
+      color: '#c084fc',
+      tagBg: 'rgba(168, 85, 247, 0.25)',
+      tagColor: '#e9d5ff'
+    },
+    doc: {
+      bg: 'linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(14, 165, 233, 0.06) 100%)',
+      border: '1px solid rgba(56, 189, 248, 0.45)',
+      color: '#38bdf8',
+      tagBg: 'rgba(56, 189, 248, 0.25)',
+      tagColor: '#bae6fd'
+    },
+    prompt: {
+      bg: 'linear-gradient(135deg, rgba(251, 146, 60, 0.16) 0%, rgba(234, 88, 12, 0.06) 100%)',
+      border: '1px solid rgba(251, 146, 60, 0.45)',
+      color: '#fb923c',
+      tagBg: 'rgba(251, 146, 60, 0.25)',
+      tagColor: '#fed7aa'
+    },
+    session: {
+      bg: 'linear-gradient(135deg, rgba(45, 212, 191, 0.16) 0%, rgba(20, 184, 166, 0.06) 100%)',
+      border: '1px solid rgba(45, 212, 191, 0.45)',
+      color: '#2dd4bf',
+      tagBg: 'rgba(45, 212, 191, 0.25)',
+      tagColor: '#ccfbf1'
+    }
+  };
+
+  const styleConfig = themes[theme] || themes.doc;
+
   chip.style.cssText = `
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    background: linear-gradient(135deg, rgba(45, 212, 191, 0.16) 0%, rgba(20, 184, 166, 0.06) 100%);
-    border: 1px solid rgba(45, 212, 191, 0.38);
-    color: #2dd4bf;
-    border-radius: 20px;
-    padding: 4px 12px;
+    gap: 6px;
+    background: ${styleConfig.bg};
+    border: ${styleConfig.border};
+    color: ${styleConfig.color};
+    border-radius: 18px;
+    padding: 3px 8px 3px 6px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     user-select: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 10px rgba(45, 212, 191, 0.1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     backdrop-filter: blur(8px);
     transition: all 0.2s ease-in-out;
     animation: fadeIn 0.18s ease-out;
+    max-width: 100%;
   `;
   
+  const tagBadge = document.createElement('span');
+  tagBadge.textContent = tag;
+  tagBadge.style.cssText = `
+    background: ${styleConfig.tagBg};
+    color: ${styleConfig.tagColor};
+    font-size: 8.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 5px;
+    border-radius: 6px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+  `;
+
   const textSpan = document.createElement('span');
-  textSpan.textContent = labelText;
+  textSpan.textContent = name;
+  textSpan.style.cssText = `
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `;
+  textSpan.title = name;
   
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -1109,27 +1175,29 @@ function createChip(labelText, onRemove) {
   closeBtn.style.cssText = `
     background: rgba(255, 255, 255, 0.08);
     border: none;
-    color: #2dd4bf;
-    font-size: 10px;
+    color: ${styleConfig.color};
+    font-size: 9.5px;
     font-weight: 800;
     cursor: pointer;
     border-radius: 50%;
-    width: 16px;
-    height: 16px;
+    width: 15px;
+    height: 15px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     line-height: 1;
     transition: all 0.2s ease;
     margin-left: 2px;
+    flex-shrink: 0;
   `;
-  closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'rgba(239, 68, 68, 0.25)'; closeBtn.style.color = '#fca5a5'; });
-  closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; closeBtn.style.color = '#2dd4bf'; });
+  closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'rgba(239, 68, 68, 0.3)'; closeBtn.style.color = '#fca5a5'; });
+  closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; closeBtn.style.color = styleConfig.color; });
   closeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     onRemove();
   });
 
+  chip.appendChild(tagBadge);
   chip.appendChild(textSpan);
   chip.appendChild(closeBtn);
   return chip;
@@ -1138,15 +1206,23 @@ function createChip(labelText, onRemove) {
 function renderContextChips() {
   if (!selectedContextChips) return;
   selectedContextChips.innerHTML = '';
+  let count = 0;
 
   // 1. Active Resume Chip
   if (setupResumeSelect && setupResumeSelect.value && setupResumeSelect.value !== '__upload__' && setupResumeSelect.value !== 'upload') {
     const selectedOpt = setupResumeSelect.options[setupResumeSelect.selectedIndex];
     if (selectedOpt && selectedOpt.value) {
-      const chip = createChip(`📄 ${selectedOpt.textContent.trim()}`, () => {
-        setupResumeSelect.value = '';
-        updateResumeJdScore();
-        renderContextChips();
+      count++;
+      const cleanName = selectedOpt.textContent.replace('📄', '').trim();
+      const chip = createChip({
+        tag: '📄 RESUME',
+        name: cleanName,
+        theme: 'resume',
+        onRemove: () => {
+          setupResumeSelect.value = '';
+          updateResumeJdScore();
+          renderContextChips();
+        }
       });
       selectedContextChips.appendChild(chip);
     }
@@ -1157,10 +1233,15 @@ function renderContextChips() {
     const docObj = backendDocs.find(d => String(d.id) === String(docId));
     const label = docObj ? docObj.document_name : `Doc (${String(docId).substring(0, 8)})`;
     const isPrompt = docObj && (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt'));
-    const icon = isPrompt ? '✍️' : '📚';
-    const chip = createChip(`${icon} ${label}`, () => {
-      selectedDocIdsSet.delete(docId);
-      renderContextChips();
+    count++;
+    const chip = createChip({
+      tag: isPrompt ? '✍️ RULE' : '📁 REF DOC',
+      name: label,
+      theme: isPrompt ? 'prompt' : 'doc',
+      onRemove: () => {
+        selectedDocIdsSet.delete(docId);
+        renderContextChips();
+      }
     });
     selectedContextChips.appendChild(chip);
   });
@@ -1168,13 +1249,32 @@ function renderContextChips() {
   // 3. Recent Sessions Context Chips
   selectedSessionIdsSet.forEach(sessId => {
     const opt = Array.from(setupRecentContextSelect.options).find(o => String(o.value) === String(sessId));
-    const label = opt ? opt.textContent.replace('🕒', '').replace('-- Add Recent Session Context --', '').trim() : `Session (${String(sessId).substring(0, 8)})`;
-    const chip = createChip(`🕒 ${label}`, () => {
-      selectedSessionIdsSet.delete(sessId);
-      renderContextChips();
+    const rawLabel = opt ? opt.textContent.replace('🕒', '').replace('-- Add Recent Session Context --', '').replace('-- Select Past Session Context to Inject --', '').replace('-- Select Past Interview Round to Inject as Memory --', '').trim() : `Session (${String(sessId).substring(0, 8)})`;
+    count++;
+    const chip = createChip({
+      tag: '🕒 PAST ROUND',
+      name: rawLabel,
+      theme: 'session',
+      onRemove: () => {
+        selectedSessionIdsSet.delete(sessId);
+        renderContextChips();
+      }
     });
     selectedContextChips.appendChild(chip);
   });
+
+  // Update context count badge & empty state
+  const contextCountBadge = document.getElementById('context-count-badge');
+  if (contextCountBadge) {
+    contextCountBadge.textContent = count === 0 ? 'None' : `${count} Active`;
+    contextCountBadge.style.color = count === 0 ? 'var(--text-muted)' : '#2dd4bf';
+    contextCountBadge.style.background = count === 0 ? 'rgba(255,255,255,0.05)' : 'rgba(45,212,191,0.14)';
+  }
+
+  const contextEmptyPlaceholder = document.getElementById('context-empty-placeholder');
+  if (contextEmptyPlaceholder) {
+    contextEmptyPlaceholder.style.display = count === 0 ? 'flex' : 'none';
+  }
 }
 
 // Category Filter Buttons Switching Logic
@@ -1185,28 +1285,45 @@ const filterSessionsBtn = document.getElementById('filter-sessions-btn');
 const contextDocsSection = document.getElementById('context-docs-section');
 const contextPromptsSection = document.getElementById('context-prompts-section');
 const contextSessionsSection = document.getElementById('context-sessions-section');
+const contextTabHelperText = document.getElementById('context-tab-helper-text');
 
 const setupPromptSelect = document.getElementById('setup-prompt-select');
 
 function setContextFilterTab(activeTab) {
   const tabs = [
-    { btn: filterDocsBtn, sec: contextDocsSection, name: 'docs' },
-    { btn: filterPromptsBtn, sec: contextPromptsSection, name: 'prompts' },
-    { btn: filterSessionsBtn, sec: contextSessionsSection, name: 'sessions' }
+    { 
+      btn: filterDocsBtn, 
+      sec: contextDocsSection, 
+      name: 'docs', 
+      helper: '📁 Reference notes, cheat sheets & STAR stories the AI will consult for technical answers.' 
+    },
+    { 
+      btn: filterPromptsBtn, 
+      sec: contextPromptsSection, 
+      name: 'prompts', 
+      helper: '✍️ Custom behavioral rules to instruct how the AI should talk or format responses.' 
+    },
+    { 
+      btn: filterSessionsBtn, 
+      sec: contextSessionsSection, 
+      name: 'sessions', 
+      helper: '🕒 Memory from a previous interview round to keep questions & answers consistent.' 
+    }
   ];
 
   tabs.forEach(t => {
     if (!t.btn || !t.sec) return;
     if (t.name === activeTab) {
       t.sec.style.display = t.name === 'sessions' ? 'block' : 'flex';
-      t.btn.style.background = 'rgba(45,212,191,0.14)';
+      t.btn.style.background = 'rgba(45,212,191,0.18)';
       t.btn.style.borderColor = 'rgba(45,212,191,0.4)';
       t.btn.style.color = '#2dd4bf';
+      if (contextTabHelperText) contextTabHelperText.textContent = t.helper;
     } else {
       t.sec.style.display = 'none';
-      t.btn.style.background = 'rgba(255,255,255,0.04)';
-      t.btn.style.borderColor = 'rgba(255,255,255,0.1)';
-      t.btn.style.color = '#aaa';
+      t.btn.style.background = 'transparent';
+      t.btn.style.borderColor = 'transparent';
+      t.btn.style.color = '#888';
     }
   });
 }
@@ -1265,6 +1382,9 @@ setupResumeSelect.addEventListener('change', () => {
   updateResumeJdScore();
   renderContextChips();
 });
+
+// Initialize context chips state on boot
+renderContextChips();
 
 let scoreDebounceTimeout;
 function debounceUpdateScore() {
@@ -2714,9 +2834,9 @@ function flushTranscriptBuffer() {
   transcriptChunkBuffer = '';
   if (!content || !sessionToken || !shouldSaveTranscript) return;
   window.electronAPI.saveTranscriptBlock(sessionToken, {
-    speaker: 'system',
+    speaker: 'interviewer',
     content: content,
-    source: 'mixed_audio'
+    source: 'speaker_audio'
   }).catch(e => console.warn('[Save Transcript] Buffered backend save failed:', e.message));
   console.log(`[Transcript Buffer] Flushed ${content.split(/\s+/).length} words to backend.`);
 }
@@ -3380,6 +3500,15 @@ async function queryAssistant(manualQuestionText, isManual = false) {
           newEntry.totalTimeSec = `first token ${_ttftSec}s · total ${(data.total_ms / 1000).toFixed(1)}s`;
 
           renderActiveAnswer();
+
+          // Save AI answer block to the session transcript database
+          if (sessionToken && shouldSaveTranscript && newEntry.answer && newEntry.answer.trim()) {
+            window.electronAPI.saveTranscriptBlock(sessionToken, {
+              speaker: 'ai',
+              content: newEntry.answer.trim(),
+              source: 'ai_copilot'
+            }).catch(e => console.warn('[Save Transcript] AI answer save failed:', e.message));
+          }
 
           window.electronAPI.removeAnswerStreamListeners();
           resolve();

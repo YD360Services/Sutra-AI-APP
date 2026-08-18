@@ -2,8 +2,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import json
+import re
 import logging
-from app.services.ai_service import call_gemini
+from app.services.ai_service import call_llm
 
 router = APIRouter()
 logger = logging.getLogger("copilotx.mock_interviews")
@@ -25,53 +26,85 @@ class MockEvaluateRequest(BaseModel):
     history: List[Dict[str, str]] = []
     model: str = ""
 
-MOCK_QUESTION_BANK = {
-    "Interview": [
-        'Tell me about a time you handled a production issue.',
-        'Explain Redis caching strategy and when you would use it.',
-        'What is the difference between synchronous and asynchronous communication?',
-        'Describe a situation where you disagreed with a teammate.',
-        'Design a scalable URL shortener.',
-        'How would you optimize a slow SQL query?',
-        'How do you handle prioritization when working on multiple high-priority tasks?',
-        'What is the difference between SQL and NoSQL databases, and how do you choose?'
-    ],
-    "Coding": [
-        'Write an optimal solution for Two Sum.',
-        'Find the longest substring without repeating characters.',
-        'Merge overlapping intervals.',
-        'Design a data structure that supports insert, delete, and getRandom in O(1) time.'
-    ],
-    "HR": [
-        'Why do you want to join this company?',
-        'What are your salary expectations?',
-        'Why are you looking for a change?',
-        'Where do you see yourself in 5 years?'
-    ],
-    "Mixed": [
-        'Tell me about yourself and your recent project experience.',
-        'How would you design a scalable notification system?',
-        'How would you optimize a slow SQL query?',
-        'Tell me about a time you solved a difficult production issue.',
-        'Write an optimal solution for Two Sum.'
-    ]
-}
+class MockFirstQuestionRequest(BaseModel):
+    company: str = "Target Company"
+    role: str = "Software Engineer"
+    interview_type: str = "Mixed"
+    jd: str = ""
+    model: str = ""
+
+def extract_json(text: str) -> Optional[dict]:
+    """Helper to parse raw or markdown JSON safely."""
+    if not text:
+        return None
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if lines[0].startswith("```json") or lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+    
+    # Direct parse
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    # Regex search for outer curly braces
+    try:
+        match = re.search(r'\{[\s\S]*\}', cleaned)
+        if match:
+            return json.loads(match.group(0))
+    except Exception:
+        pass
+    return None
+
+@router.post("/mock-interview/first-question")
+async def mock_interview_first_question(req: MockFirstQuestionRequest):
+    """Generates a dynamic, company and role-specific opening interview question using AI."""
+    system_prompt = (
+        "You are an expert executive interviewer conducting a live mock interview.\n"
+        "Generate a natural, engaging, and professional opening question for the candidate tailored specifically to the target company, target role, and job description.\n"
+        "Return a JSON object with exactly one field:\n"
+        "{\"question\": \"Your dynamic opening interview question here...\"}"
+    )
+    prompt = (
+        f"Target Company: {req.company}\n"
+        f"Target Role: {req.role}\n"
+        f"Interview Type: {req.interview_type}\n"
+        f"Job Description: {req.jd}\n\n"
+        "Please generate a compelling opening question tailored for this specific role."
+    )
+    try:
+        ai_resp = await call_llm(prompt, system_prompt, model=req.model, response_json=True)
+        data = extract_json(ai_resp)
+        if data and data.get("question"):
+            return {"question": data["question"]}
+    except Exception as e:
+        logger.error(f"Error generating first mock interview question: {e}")
+
+    # Fallback opening question
+    return {
+        "question": f"Hello! Welcome to your mock interview at {req.company} for the {req.role} role. To get started, please introduce yourself and walk me through your background and recent project experience."
+    }
 
 @router.post("/mock-interview/feedback")
 async def mock_interview_feedback(req: MockFeedbackRequest):
-    # 1. Attempt to generate feedback & score via AI LLM
+    """Evaluates candidate response with real AI, returning dynamic score, constructive feedback, suggested model answer, and follow-up question."""
     system_prompt = (
         "You are an expert technical interviewer conducting a professional mock interview.\n"
-        "Your goal is to evaluate the candidate's answer, score it dynamically from 0 to 100 based on STAR structure, technical depth, and metrics, provide a model suggested answer, and generate the next interview question.\n"
-        "You must respond in raw JSON format with exactly four fields:\n"
+        "Your goal is to evaluate the candidate's answer, score it dynamically from 0 to 100 based on STAR structure, technical depth, clarity, and metrics, provide a model suggested answer, and generate the next interview question.\n"
+        "You must respond in JSON format with exactly four fields:\n"
         "1. \"score\": An integer between 0 and 100 representing the performance score for this answer.\n"
-        "2. \"feedback\": Concise, structured, and constructive feedback on the candidate's answer, highlighting strengths and improvements.\n"
-        "3. \"suggested_answer\": A high-quality model response demonstrating how a top candidate would answer this question.\n"
-        "4. \"next_question\": The next logical interview question, customized to the target company, target role, job description, and the candidate's previous responses.\n\n"
+        "2. \"feedback\": Concise, structured, and constructive feedback on the candidate's answer (mentioning specific strengths and improvements).\n"
+        "3. \"suggested_answer\": A high-quality model response demonstrating how a top candidate would answer this question using bold bullet points (**Heading:** explanation).\n"
+        "4. \"next_question\": The next logical interview question, customized to the target company, target role, and the candidate's previous response.\n\n"
         "Do NOT return markdown formatting like ```json. Just return a raw JSON string."
     )
 
-    history_str = "\n".join([f"Q: {h.get('question', '')}\nA: {h.get('answer', '')}" for h in req.history])
+    history_str = "\n\n".join([f"Q: {h.get('question', '')}\nA: {h.get('answer', '')}" for h in req.history])
     
     prompt = (
         f"Target Company: {req.company}\n"
@@ -80,27 +113,14 @@ async def mock_interview_feedback(req: MockFeedbackRequest):
         f"Job Description: {req.jd}\n\n"
         f"Current Question: {req.question}\n"
         f"Candidate's Answer: {req.user_answer}\n\n"
-        f"Conversation History (previous questions and answers):\n{history_str}\n\n"
-        f"Please generate score, feedback, suggested_answer, and next_question in JSON format."
+        f"Previous Interview Conversation History:\n{history_str}\n\n"
+        f"Please evaluate the candidate's answer and generate score, feedback, suggested_answer, and next_question in JSON format."
     )
 
     try:
-        from app.core.config import settings
-        mock_model = req.model
-        if settings.GROQ_API_KEY:
-            mock_model = settings.GROQ_MODEL
-        ai_resp = await call_gemini(prompt, system_prompt, response_json=True, model=mock_model)
-        if ai_resp and ai_resp.strip():
-            cleaned = ai_resp.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.splitlines()
-                if lines[0].startswith("```json") or lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                cleaned = "\n".join(lines).strip()
-            
-            data = json.loads(cleaned)
+        ai_resp = await call_llm(prompt, system_prompt, model=req.model, response_json=True)
+        data = extract_json(ai_resp)
+        if data:
             score = data.get("score")
             feedback = data.get("feedback")
             suggested = data.get("suggested_answer")
@@ -134,20 +154,11 @@ async def mock_interview_feedback(req: MockFeedbackRequest):
         f"Connect your answer directly to {req.company} {req.role} expectations, use STAR format (Situation, Task, Action, Result), and highlight measurable impact."
     )
     suggested = (
-        "I would answer this by giving a concrete project example, explaining the technical decision I made, showing ownership, and ending with measurable impact."
+        f"**Situation & Role:** At my previous company, I led the core feature development for {req.role}.\n\n"
+        "**Action & Technical Execution:** I designed the system architecture, optimized queries, and implemented caching to reduce latency.\n\n"
+        "**Result & Impact:** Successfully increased system throughput by 40% and improved customer satisfaction metrics."
     )
-
-    questions = MOCK_QUESTION_BANK.get(req.interview_type, MOCK_QUESTION_BANK["Mixed"])
-    asked = {h.get("question", "").lower() for h in req.history}
-    asked.add(req.question.lower())
-    
-    next_q = None
-    for q in questions:
-        if q.lower() not in asked:
-            next_q = q
-            break
-    if not next_q:
-        next_q = "Thank you! That concludes our mock interview. Do you have any questions for me?"
+    next_q = f"Could you elaborate on how you handled scalability and edge cases in that project?"
 
     return {"score": calc_score, "feedback": feedback, "suggested_answer": suggested, "next_question": next_q}
 
@@ -178,22 +189,9 @@ async def mock_interview_evaluate(req: MockEvaluateRequest):
     )
 
     try:
-        from app.core.config import settings
-        mock_model = req.model
-        if settings.GROQ_API_KEY:
-            mock_model = settings.GROQ_MODEL
-        ai_resp = await call_gemini(prompt, system_prompt, response_json=True, model=mock_model)
-        if ai_resp and ai_resp.strip():
-            cleaned = ai_resp.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.splitlines()
-                if lines[0].startswith("```json") or lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines[-1].startswith("```"):
-                    lines = lines[:-1]
-                cleaned = "\n".join(lines).strip()
-            
-            data = json.loads(cleaned)
+        ai_resp = await call_llm(prompt, system_prompt, model=req.model, response_json=True)
+        data = extract_json(ai_resp)
+        if data:
             score = data.get("score")
             summary = data.get("summary")
             if score is not None:
