@@ -7,16 +7,16 @@
   <meta http-equiv="Content-Security-Policy" content="
     default-src 'self';
     script-src 'self';
-    style-src 'self' 'unsafe-inline';
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
     img-src 'self' data: blob: https:;
     media-src 'self' blob:;
     connect-src 'self' http://127.0.0.1:* http://localhost:* https:;
-    font-src 'self' data:;
+    font-src 'self' data: https://fonts.gstatic.com;
     object-src 'none';
     base-uri 'self';
     form-action 'none';
   ">
-  <title>RoundMate AI</title>
+  <title>RM</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -171,54 +171,104 @@
           </div>
         </div>
 
-        <!-- STEP 2: Context Sources -->
+        <!-- STEP 2: Context Sources & Resume (Ultra-Compact Design) -->
         <div id="setup-step-2" class="setup-step-content"
-          style="display: none; flex-direction: column; height: 320px; justify-content: center; gap: 20px;">
+          style="display: none; flex-direction: column; height: auto; gap: 6px; -webkit-app-region: no-drag !important; user-select: text !important;">
 
           <!-- Backend status / retry banner -->
           <div id="dropdown-status-msg"
-            style="display:none; align-items:center; gap:8px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:8px 12px; font-size:10.5px; color:#fca5a5;">
-            <span style="font-size:13px;">⚠️</span>
+            style="display:none; align-items:center; gap:6px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.35); border-radius:6px; padding:4px 8px; font-size:10px; color:#fca5a5; backdrop-filter: blur(8px);">
+            <span style="font-size:11px;">⚠️</span>
             <span id="dropdown-status-text" style="flex:1;">Backend offline — lists unavailable.</span>
             <button id="dropdown-retry-btn" class="interactive"
-              style="background:rgba(20, 184, 166,0.15);border:1px solid rgba(20, 184, 166,0.35);color:#2dd4bf;border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;outline:none;white-space:nowrap;">↺
-              Retry</button>
+              style="background:rgba(20, 184, 166,0.2);border:1px solid rgba(20, 184, 166,0.4);color:#2dd4bf;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:700;outline:none;white-space:nowrap;cursor:pointer;">↺ Retry</button>
           </div>
 
-          <div class="setup-form-group">
-            <label class="setup-label"
-              style="font-size: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; color: #fff; width: 100%;">
-              <span>📄 Select Resume Context</span>
-              <span id="resume-jd-score"
-                style="display: none; font-size: 10px; font-weight: 700; color: #10b981; background: rgba(16,185,129,0.1); padding: 2px 6px; border-radius: 4px; font-family: inherit;">--</span>
-            </label>
-            <select id="setup-resume-select" class="setup-input" style="padding: 12px; font-size: 15px; cursor: default !important;">
-              <option value="" style="cursor: default !important;">-- None --</option>
-              <option value="upload" style="cursor: default !important;">📁 Upload new resume...</option>
-            </select>
-            <input type="file" id="setup-resume-file" style="display: none;" accept=".pdf,.docx,.doc,.txt" />
+          <div style="font-size: 10px; font-weight: 800; color: rgba(255,255,255,0.75); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0px; display: flex; align-items: center; gap: 5px;">
+            <span style="width: 5px; height: 5px; border-radius: 50%; background: #2dd4bf; box-shadow: 0 0 6px #2dd4bf;"></span>
+            CONTEXT SOURCES & RESUME
           </div>
 
-          <div class="setup-form-group">
-            <label class="setup-label"
-              style="font-size: 12px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; color: #fff;">
-              <span>📚 Select Extra Context</span>
-              <span style="font-size: 9.5px; opacity: 0.65; font-weight: normal;">(Ctrl+Click to select multiple)</span>
-            </label>
-            <select id="setup-doc-select" class="setup-input custom-scrollbar" multiple size="4"
-              style="padding: 6px; font-size: 12.5px; margin-bottom: 8px; height: 95px; cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;">
-              <option value="">-- None --</option>
-            </select>
-            <div style="display: flex; gap: 8px;">
-              <button id="input-prompt-btn" class="interactive" type="button"
-                style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">✍️
-                Input Prompt</button>
-              <button id="upload-doc-btn" class="interactive" type="button"
-                style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">📁
-                Upload Doc</button>
+          <!-- 2-Column Glass Card Grid Layout (Ultra Compact) -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center;">
+
+            <!-- Left Glass Card: Active Resume -->
+            <div style="background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(15,23,42,0.6) 100%); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; backdrop-filter: blur(12px); box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+              <div style="font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: space-between;">
+                <span style="display: flex; align-items: center; gap: 5px;">
+                  <span style="display: inline-flex; width: 16px; height: 16px; border-radius: 4px; background: rgba(45,212,191,0.15); align-items: center; justify-content: center; color: #2dd4bf; font-size: 10px;">📄</span>
+                  Active Resume
+                </span>
+                <span id="resume-jd-score" style="display: none; font-size: 8.5px; font-weight: 700; color: #10b981; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); padding: 1px 5px; border-radius: 4px;">--</span>
+              </div>
+              <div style="position: relative;">
+                <select id="setup-resume-select" class="setup-input" style="padding: 5px 8px; font-size: 10.5px; font-weight: 600; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.14); color: #fff; width: 100%; outline: none; height: 28px;">
+                  <option value="">📄 -- Select Resume --</option>
+                  <option value="__upload__">📁 Upload new resume...</option>
+                </select>
+              </div>
+              <input type="file" id="setup-resume-file" style="display: none;" accept=".pdf,.docx,.doc,.txt" />
             </div>
+
+            <!-- Right Glass Card: Additional Context -->
+            <div style="background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(15,23,42,0.6) 100%); border: 1px solid rgba(255,255,255,0.09); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; backdrop-filter: blur(12px); box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+              <div style="font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 5px;">
+                <span style="display: inline-flex; width: 16px; height: 16px; border-radius: 4px; background: rgba(45,212,191,0.15); align-items: center; justify-content: center; color: #2dd4bf; font-size: 10px;">📚</span>
+                Additional Context
+              </div>
+              <button id="add-context-source-btn" class="interactive" type="button" style="width: 100%; background: linear-gradient(135deg, rgba(45,212,191,0.14) 0%, rgba(20,184,166,0.04) 100%); border: 1px solid rgba(45,212,191,0.45); color: #2dd4bf; border-radius: 6px; padding: 5px 10px; font-size: 10.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 5px; height: 28px;">
+                <span style="font-size: 12px; font-weight: 800; line-height: 1;">+</span> Add Context Source
+              </button>
+            </div>
+
+          </div>
+
+          <!-- Context Menu Drawer (Ultra-Compact Filtered Drawer) -->
+          <div id="add-context-menu" style="display: none; background: rgba(12, 12, 16, 0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 6px 8px; margin-top: 2px; gap: 6px; flex-direction: column; backdrop-filter: blur(16px); box-shadow: 0 6px 20px rgba(0,0,0,0.5); animation: fadeIn 0.15s ease-out;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 3px;">
+              <span style="font-size: 9.5px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.05em;">
+                Category:
+              </span>
+              <button id="close-context-menu" type="button" style="background: none; border: none; color: #888; cursor: pointer; font-size: 9.5px; padding: 0 4px; outline: none;">✕</button>
+            </div>
+            
+            <!-- Category Filter Buttons -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;">
+              <button id="filter-docs-btn" type="button" class="interactive" style="background: rgba(45,212,191,0.14); border: 1px solid rgba(45,212,191,0.4); color: #2dd4bf; border-radius: 5px; padding: 3px 6px; font-size: 10px; font-weight: 700; cursor: pointer; outline: none; height: 24px;">📁 Docs</button>
+              <button id="filter-prompts-btn" type="button" class="interactive" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 5px; padding: 3px 6px; font-size: 10px; font-weight: 700; cursor: pointer; outline: none; height: 24px;">✍️ Prompts</button>
+              <button id="filter-sessions-btn" type="button" class="interactive" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 5px; padding: 3px 6px; font-size: 10px; font-weight: 700; cursor: pointer; outline: none; height: 24px;">🕒 Sessions</button>
+            </div>
+
+            <!-- Filtered Sections -->
+            <!-- 1. Docs Only Section -->
+            <div id="context-docs-section" style="display: flex; gap: 4px; align-items: center;">
+              <select id="setup-doc-select" class="setup-input" style="flex: 1; padding: 4px 8px; font-size: 10.5px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 26px;">
+                <option value="">📁 -- Select Reference Document --</option>
+              </select>
+              <button id="upload-doc-btn" type="button" class="interactive" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #fff; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 26px;">📁 Upload</button>
+            </div>
+
+            <!-- 2. Prompts Only Section -->
+            <div id="context-prompts-section" style="display: none; gap: 4px; align-items: center;">
+              <select id="setup-prompt-select" class="setup-input" style="flex: 1; padding: 4px 8px; font-size: 10.5px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 26px;">
+                <option value="">✍️ -- Select Custom Prompt --</option>
+              </select>
+              <button id="input-prompt-btn" type="button" class="interactive" style="background: rgba(45,212,191,0.12); border: 1px solid rgba(45,212,191,0.3); color: #2dd4bf; border-radius: 6px; padding: 4px 8px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 26px;">✍️ + Create</button>
+            </div>
+
+            <!-- 3. Sessions Only Section -->
+            <div id="context-sessions-section" style="display: none;">
+              <select id="setup-recent-context-select" class="setup-input" style="width: 100%; padding: 4px 8px; font-size: 10.5px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 26px;">
+                <option value="">🕒 -- Select Recent Session Context --</option>
+              </select>
+            </div>
+
             <input type="file" id="setup-doc-file" style="display: none;" accept=".pdf,.docx,.doc,.txt,.md" />
           </div>
+
+          <!-- Selected Context Removable Chips Container -->
+          <div id="selected-context-chips" style="display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; min-height: 22px; align-items: center;"></div>
+
         </div>
 
         <!-- STEP 3: AI & Language Options -->
@@ -315,11 +365,11 @@
 
         <!-- Action Buttons Footer -->
         <div
-          style="display: flex; gap: 10px; margin-top: auto; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px; width: 100%; -webkit-app-region: no-drag !important;">
+          style="display: flex; gap: 10px; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; width: 100%; -webkit-app-region: no-drag !important;">
           <button id="setup-back-btn" class="setup-btn-start interactive"
-            style="flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); display: none; box-shadow: none;">Back</button>
-          <button id="setup-next-btn" class="setup-btn-start interactive" style="flex: 2;">Next</button>
-          <button id="start-session-btn" class="setup-btn-start interactive" style="flex: 2; display: none;">Start
+            style="flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); display: none; box-shadow: none; height: 34px; padding: 6px 14px; font-size: 11.5px;">Back</button>
+          <button id="setup-next-btn" class="setup-btn-start interactive" style="flex: 2; height: 34px; padding: 6px 14px; font-size: 11.5px;">Next</button>
+          <button id="start-session-btn" class="setup-btn-start interactive" style="flex: 2; display: none; height: 34px; padding: 6px 14px; font-size: 11.5px;">Start
             Session
             & Collapse</button>
         </div> <!-- #setup-steps-wrapper -->
