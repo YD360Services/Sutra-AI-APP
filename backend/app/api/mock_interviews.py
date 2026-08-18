@@ -1,13 +1,43 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import json
 import re
 import logging
+import httpx
 from app.services.ai_service import call_llm
+from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger("copilotx.mock_interviews")
+
+class TTSRequest(BaseModel):
+    text: str
+    model: str = "aura-asteria-en"
+
+@router.post("/tts/speak")
+async def tts_speak(req: TTSRequest):
+    """Converts interview question text to human-like speech audio using Deepgram Aura TTS."""
+    if not settings.DEEPGRAM_API_KEY:
+        return Response(content=b"", status_code=400)
+    
+    url = f"https://api.deepgram.com/v1/speak?model={req.model}"
+    headers = {
+        "Authorization": f"Token {settings.DEEPGRAM_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            resp = await client.post(url, json={"text": req.text}, headers=headers)
+            if resp.status_code == 200:
+                return Response(content=resp.content, media_type="audio/mp3")
+            else:
+                logger.error(f"Deepgram TTS API error: {resp.status_code} {resp.text}")
+                return Response(content=b"", status_code=resp.status_code)
+    except Exception as e:
+        logger.error(f"Deepgram TTS request failed: {e}")
+        return Response(content=b"", status_code=500)
 
 class MockFeedbackRequest(BaseModel):
     company: str = "Amazon"
