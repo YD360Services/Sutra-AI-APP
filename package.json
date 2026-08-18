@@ -1,6 +1,6 @@
 {
   "name": "roundmate-ai",
-  "productName": "RoundMate AI",
+  "productName": "RM",
   "version": "1.0.1",
   "description": "RoundMate AI Stealth Desktop Application",
   "main": "main.js",
@@ -13,7 +13,7 @@
   },
   "build": {
     "appId": "com.roundmateai.stealthapp",
-    "productName": "RoundMate AI",
+    "productName": "RM",
     "asar": true,
     "asarUnpack": [
       "node_modules/electron/**",
@@ -24,7 +24,7 @@
     },
     "protocols": [
       {
-        "name": "RoundMate AI",
+        "name": "RM",
         "schemes": [
           "roundmate",
           "sutra"
@@ -55,7 +55,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "RoundMate AI",
+      "shortcutName": "RM",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico"
     },

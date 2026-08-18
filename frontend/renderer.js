@@ -964,14 +964,306 @@ if (recentSessionsBackBtn) {
   recentSessionsBackBtn.addEventListener('click', () => hideRecentSessionsPage());
 }
 
+// Global Context Cache population
+async function loadDropdowns() {
+  try {
+    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const normUserId = normalizeUserId(USER_ID);
+    
+    // Fetch Resumes
+    const resResume = await fetch(`${base}/api/resumes?user_id=${normUserId}`);
+    if (resResume.ok) {
+      backendResumes = await resResume.json();
+      if (setupResumeSelect && Array.isArray(backendResumes)) {
+        setupResumeSelect.innerHTML = '<option value="">📄 -- Select Resume --</option><option value="__upload__">📁 Upload new resume...</option>';
+        backendResumes.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.textContent = `📄 ${r.file_name || 'Resume'}`;
+          setupResumeSelect.appendChild(opt);
+        });
+      }
+    }
+
+    // Fetch Knowledge Documents (Filtered into Docs vs Prompts)
+    const resDocs = await fetch(`${base}/api/knowledge?user_id=${normUserId}`);
+    if (resDocs.ok) {
+      backendDocs = await resDocs.json();
+      if (Array.isArray(backendDocs)) {
+        const docItems = backendDocs.filter(d => d.document_type !== 'prompt');
+        const promptItems = backendDocs.filter(d => d.document_type === 'prompt');
+
+        if (setupDocSelect) {
+          setupDocSelect.innerHTML = '<option value="">📁 -- Select Reference Document --</option>';
+          docItems.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.textContent = `📚 ${d.document_name}`;
+            setupDocSelect.appendChild(opt);
+          });
+        }
+
+        if (setupPromptSelect) {
+          setupPromptSelect.innerHTML = '<option value="">✍️ -- Select Custom Prompt --</option>';
+          promptItems.forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `✍️ ${p.document_name}`;
+            setupPromptSelect.appendChild(opt);
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.log('[Stealth] Could not load backend dropdowns:', e.message);
+  }
+}
+
+// Automatically load dropdown options on boot
+loadDropdowns();
+
+// Recent Sessions Context select element
+const setupRecentContextSelect = document.getElementById('setup-recent-context-select');
+
+async function loadRecentSessionsForStep2() {
+  if (!setupRecentContextSelect) return;
+  try {
+    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const res = await fetch(`${base}/api/sessions`);
+    if (!res.ok) return;
+    const sessions = await res.json();
+    setupRecentContextSelect.innerHTML = '<option value="">-- None (Fresh Session) --</option>';
+    if (Array.isArray(sessions)) {
+      sessions.forEach(s => {
+        const title = s.company_name ? `${s.company_name} — ${s.target_role || 'Session'}` : (s.session_name || 'Previous Session');
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = `🕒 ${title}`;
+        setupRecentContextSelect.appendChild(opt);
+      });
+    }
+  } catch (e) {
+    console.log('[Stealth] Could not load recent sessions for context:', e.message);
+  }
+}
+
+// Additional Context Drawer Toggle
+const addContextSourceBtn = document.getElementById('add-context-source-btn');
+const addContextMenu = document.getElementById('add-context-menu');
+const closeContextMenu = document.getElementById('close-context-menu');
+const addRecentSessionContextBtn = document.getElementById('add-recent-session-context-btn');
+
+if (addContextSourceBtn && addContextMenu) {
+  addContextSourceBtn.addEventListener('click', () => {
+    addContextMenu.style.display = addContextMenu.style.display === 'flex' ? 'none' : 'flex';
+  });
+}
+
+if (closeContextMenu && addContextMenu) {
+  closeContextMenu.addEventListener('click', () => {
+    addContextMenu.style.display = 'none';
+  });
+}
+
+if (addRecentSessionContextBtn && setupRecentContextSelect) {
+  addRecentSessionContextBtn.addEventListener('click', () => {
+    setupRecentContextSelect.style.display = setupRecentContextSelect.style.display === 'block' ? 'none' : 'block';
+  });
+}
+
+const step2UploadResumeBtn = document.getElementById('step2-upload-resume-btn');
+if (step2UploadResumeBtn && setupResumeFile) {
+  step2UploadResumeBtn.addEventListener('click', () => setupResumeFile.click());
+}
+
+// Multi-selection tracking sets for Documents and Recent Sessions
+const selectedDocIdsSet = new Set();
+const selectedSessionIdsSet = new Set();
+
+function createChip(labelText, onRemove) {
+  const chip = document.createElement('div');
+  chip.style.cssText = `
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: linear-gradient(135deg, rgba(45, 212, 191, 0.16) 0%, rgba(20, 184, 166, 0.06) 100%);
+    border: 1px solid rgba(45, 212, 191, 0.38);
+    color: #2dd4bf;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    user-select: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 10px rgba(45, 212, 191, 0.1);
+    backdrop-filter: blur(8px);
+    transition: all 0.2s ease-in-out;
+    animation: fadeIn 0.18s ease-out;
+  `;
+  
+  const textSpan = document.createElement('span');
+  textSpan.textContent = labelText;
+  
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.textContent = '✕';
+  closeBtn.style.cssText = `
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: #2dd4bf;
+    font-size: 10px;
+    font-weight: 800;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    transition: all 0.2s ease;
+    margin-left: 2px;
+  `;
+  closeBtn.addEventListener('mouseenter', () => { closeBtn.style.background = 'rgba(239, 68, 68, 0.25)'; closeBtn.style.color = '#fca5a5'; });
+  closeBtn.addEventListener('mouseleave', () => { closeBtn.style.background = 'rgba(255, 255, 255, 0.08)'; closeBtn.style.color = '#2dd4bf'; });
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onRemove();
+  });
+
+  chip.appendChild(textSpan);
+  chip.appendChild(closeBtn);
+  return chip;
+}
+
+function renderContextChips() {
+  if (!selectedContextChips) return;
+  selectedContextChips.innerHTML = '';
+
+  // 1. Active Resume Chip
+  if (setupResumeSelect && setupResumeSelect.value && setupResumeSelect.value !== '__upload__' && setupResumeSelect.value !== 'upload') {
+    const selectedOpt = setupResumeSelect.options[setupResumeSelect.selectedIndex];
+    if (selectedOpt && selectedOpt.value) {
+      const chip = createChip(`📄 ${selectedOpt.textContent.trim()}`, () => {
+        setupResumeSelect.value = '';
+        updateResumeJdScore();
+        renderContextChips();
+      });
+      selectedContextChips.appendChild(chip);
+    }
+  }
+
+  // 2. Reference Documents & Custom Prompts Chips
+  selectedDocIdsSet.forEach(docId => {
+    const docObj = backendDocs.find(d => String(d.id) === String(docId));
+    const label = docObj ? docObj.document_name : `Doc (${String(docId).substring(0, 8)})`;
+    const isPrompt = docObj && (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt'));
+    const icon = isPrompt ? '✍️' : '📚';
+    const chip = createChip(`${icon} ${label}`, () => {
+      selectedDocIdsSet.delete(docId);
+      renderContextChips();
+    });
+    selectedContextChips.appendChild(chip);
+  });
+
+  // 3. Recent Sessions Context Chips
+  selectedSessionIdsSet.forEach(sessId => {
+    const opt = Array.from(setupRecentContextSelect.options).find(o => String(o.value) === String(sessId));
+    const label = opt ? opt.textContent.replace('🕒', '').replace('-- Add Recent Session Context --', '').trim() : `Session (${String(sessId).substring(0, 8)})`;
+    const chip = createChip(`🕒 ${label}`, () => {
+      selectedSessionIdsSet.delete(sessId);
+      renderContextChips();
+    });
+    selectedContextChips.appendChild(chip);
+  });
+}
+
+// Category Filter Buttons Switching Logic
+const filterDocsBtn = document.getElementById('filter-docs-btn');
+const filterPromptsBtn = document.getElementById('filter-prompts-btn');
+const filterSessionsBtn = document.getElementById('filter-sessions-btn');
+
+const contextDocsSection = document.getElementById('context-docs-section');
+const contextPromptsSection = document.getElementById('context-prompts-section');
+const contextSessionsSection = document.getElementById('context-sessions-section');
+
+const setupPromptSelect = document.getElementById('setup-prompt-select');
+
+function setContextFilterTab(activeTab) {
+  const tabs = [
+    { btn: filterDocsBtn, sec: contextDocsSection, name: 'docs' },
+    { btn: filterPromptsBtn, sec: contextPromptsSection, name: 'prompts' },
+    { btn: filterSessionsBtn, sec: contextSessionsSection, name: 'sessions' }
+  ];
+
+  tabs.forEach(t => {
+    if (!t.btn || !t.sec) return;
+    if (t.name === activeTab) {
+      t.sec.style.display = t.name === 'sessions' ? 'block' : 'flex';
+      t.btn.style.background = 'rgba(45,212,191,0.14)';
+      t.btn.style.borderColor = 'rgba(45,212,191,0.4)';
+      t.btn.style.color = '#2dd4bf';
+    } else {
+      t.sec.style.display = 'none';
+      t.btn.style.background = 'rgba(255,255,255,0.04)';
+      t.btn.style.borderColor = 'rgba(255,255,255,0.1)';
+      t.btn.style.color = '#aaa';
+    }
+  });
+}
+
+if (filterDocsBtn) filterDocsBtn.addEventListener('click', () => setContextFilterTab('docs'));
+if (filterPromptsBtn) filterPromptsBtn.addEventListener('click', () => setContextFilterTab('prompts'));
+if (filterSessionsBtn) filterSessionsBtn.addEventListener('click', () => setContextFilterTab('sessions'));
+
+// Reference Documents dropdown selection
+if (setupDocSelect) {
+  setupDocSelect.addEventListener('change', () => {
+    const val = setupDocSelect.value;
+    if (val) {
+      selectedDocIdsSet.add(val);
+      setupDocSelect.value = ''; // Auto-reset dropdown back to placeholder
+      if (addContextMenu) addContextMenu.style.display = 'none'; // Auto-collapse menu
+      renderContextChips();
+    }
+  });
+}
+
+// Custom Prompts dropdown selection
+if (setupPromptSelect) {
+  setupPromptSelect.addEventListener('change', () => {
+    const val = setupPromptSelect.value;
+    if (val) {
+      selectedDocIdsSet.add(val);
+      setupPromptSelect.value = ''; // Auto-reset dropdown back to placeholder
+      if (addContextMenu) addContextMenu.style.display = 'none'; // Auto-collapse menu
+      renderContextChips();
+    }
+  });
+}
+
+// Recent Session Context dropdown selection
+if (setupRecentContextSelect) {
+  setupRecentContextSelect.addEventListener('change', () => {
+    const val = setupRecentContextSelect.value;
+    if (val) {
+      selectedSessionIdsSet.add(val);
+      setupRecentContextSelect.value = ''; // Auto-reset dropdown back to placeholder
+      if (addContextMenu) addContextMenu.style.display = 'none'; // Auto-collapse menu
+      renderContextChips();
+    }
+  });
+}
+
 // Dropdown change handlers to open file selector
 setupResumeSelect.addEventListener('change', () => {
-  if (setupResumeSelect.value === '__upload__') {
+  if (setupResumeSelect.value === '__upload__' || setupResumeSelect.value === 'upload') {
     setupResumeFile.click();
     setupResumeSelect.value = '';
+    renderContextChips();
     return;
   }
   updateResumeJdScore();
+  renderContextChips();
 });
 
 let scoreDebounceTimeout;
@@ -1136,12 +1428,29 @@ setupResumeFile.addEventListener('change', async () => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     backendResumes.push(data);
-    // Refresh dropdowns and pre-select the newly uploaded resume
     await loadDropdowns();
     setupResumeSelect.value = data.id;
+    renderContextChips();
   } catch (e) {
-    console.error('[Stealth] Resume upload failed:', e.message);
-    showInlineError('Failed to upload resume — make sure the backend is running.', document.getElementById('setup-step-2'));
+    console.warn('[Stealth] Remote resume upload failed — falling back to local file parsing:', e.message);
+    try {
+      const text = await file.text();
+      const localResume = {
+        id: 'local_res_' + Date.now(),
+        file_name: file.name,
+        parsed_content: text
+      };
+      backendResumes.push(localResume);
+      const opt = document.createElement('option');
+      opt.value = localResume.id;
+      opt.textContent = `📄 ${localResume.file_name}`;
+      setupResumeSelect.appendChild(opt);
+      setupResumeSelect.value = localResume.id;
+      renderContextChips();
+    } catch (readErr) {
+      console.error('[Stealth] Local resume read failed:', readErr);
+      showInlineError('Failed to read resume file.', document.getElementById('setup-step-2'));
+    }
   } finally {
     setupResumeFile.value = '';
   }
@@ -1164,12 +1473,28 @@ setupDocFile.addEventListener('change', async () => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     backendDocs.push(data);
-    // Refresh dropdowns and pre-select the newly uploaded doc
     await loadDropdowns();
-    setupDocSelect.value = data.id;
+    selectedDocIdsSet.add(data.id);
+    if (addContextMenu) addContextMenu.style.display = 'none';
+    renderContextChips();
   } catch (e) {
-    console.error('[Stealth] Document upload failed:', e.message);
-    showInlineError('Failed to upload reference document — make sure the backend is running.', document.getElementById('setup-step-2'));
+    console.warn('[Stealth] Remote document upload failed — falling back to local file parsing:', e.message);
+    try {
+      const text = await file.text();
+      const localDoc = {
+        id: 'local_doc_' + Date.now(),
+        document_name: file.name,
+        document_type: 'document',
+        content: text
+      };
+      backendDocs.push(localDoc);
+      selectedDocIdsSet.add(localDoc.id);
+      if (addContextMenu) addContextMenu.style.display = 'none';
+      renderContextChips();
+    } catch (readErr) {
+      console.error('[Stealth] Local document read failed:', readErr);
+      showInlineError('Failed to read reference document file.', document.getElementById('setup-step-2'));
+    }
   } finally {
     setupDocFile.value = '';
   }
@@ -1703,16 +2028,14 @@ startSessionBtn.addEventListener('click', async () => {
   const role = setupRole.value.trim() || 'Software Engineer';
   const jd = setupJd.value.trim();
 
-  // Find the selected resume & JD doc contents from cache
+  // Find the selected resume & doc contents from cache
   const selectedResumeId = setupResumeSelect.value;
-  const selectedDocIds = Array.from(setupDocSelect.selectedOptions)
-    .map(o => o.value)
-    .filter(val => val && val !== '');
+  const selectedDocIds = Array.from(selectedDocIdsSet);
 
-  const resumeObj = backendResumes.find(r => r.id === selectedResumeId);
+  const resumeObj = backendResumes.find(r => String(r.id) === String(selectedResumeId));
   const resume = resumeObj ? resumeObj.parsed_content : '';
 
-  const selectedDocs = backendDocs.filter(d => selectedDocIds.includes(d.id));
+  const selectedDocs = backendDocs.filter(d => selectedDocIds.includes(String(d.id)));
   const docText = selectedDocs.map(d => `--- ${d.document_name} ---\n${d.content}`).join('\n\n');
   const selectedDocId = selectedDocIds.join(',');
 

@@ -1,4 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut } = require('electron');
+app.setName('RM');
+app.name = 'RM';
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -320,7 +322,7 @@ function createWindow() {
   const winHeight = 580;
 
   mainWindow = new BrowserWindow({
-    title: "RoundMate AI",
+    title: "RM",
     width: winWidth,
     height: winHeight,
     frame: false,
