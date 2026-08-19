@@ -330,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Populate liveSessionData so Edit Session is immediately pre-filled with web data
       liveSessionData = {
-        sessionName: offlineUserContext.session_name || offlineUserContext.company || '',
         company: offlineUserContext.company || '',
         role: offlineUserContext.role || '',
         jd: offlineUserContext.job_description || '',
@@ -342,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (setupCompany) setupCompany.value = '';
       if (setupRole) setupRole.value = '';
       if (setupJd) setupJd.value = '';
-      liveSessionData = { sessionName: '', company: '', role: '', jd: '', resumeId: '', docId: '' };
+      liveSessionData = { company: '', role: '', jd: '', resumeId: '', docId: '' };
     }
     console.log('[Stealth] Initialized setup form:', offlineUserContext);
   } catch (e) {
@@ -2102,7 +2101,6 @@ setupBackBtn.addEventListener('click', () => {
 // ── Edit Session Feature ──────────────────────────────────────────────────────
 // Tracks the current live session data so the edit modal can be pre-populated.
 let liveSessionData = {
-  sessionName: '',
   company: '',
   role: '',
   jd: '',
@@ -2117,7 +2115,6 @@ const editSessionSaveBtn = document.getElementById('edit-session-save');
 const editSessionStatus = document.getElementById('edit-session-status');
 const editSessionSpinner = document.getElementById('edit-session-spinner');
 const editSessionStatusText = document.getElementById('edit-session-status-text');
-const editSessionNameInput = document.getElementById('edit-session-name');
 const editCompanyInput = document.getElementById('edit-company');
 const editRoleInput = document.getElementById('edit-role');
 const editJdInput = document.getElementById('edit-jd');
@@ -2185,7 +2182,6 @@ function openEditSessionModal() {
   if (!editSessionModal) return;
 
   // Populate fields with current live session data
-  if (editSessionNameInput) editSessionNameInput.value = liveSessionData.sessionName || '';
   if (editCompanyInput) editCompanyInput.value = liveSessionData.company || '';
   if (editRoleInput) editRoleInput.value = liveSessionData.role || '';
   if (editJdInput) editJdInput.value = liveSessionData.jd || '';
@@ -2354,9 +2350,6 @@ if (editInputPromptBtn && promptModal) {
 if (editSessionSaveBtn) {
   editSessionSaveBtn.addEventListener('click', async () => {
     const newCompany = (editCompanyInput?.value || '').trim() || liveSessionData.company || 'Stealth Practice';
-    const enteredSessionName = (editSessionNameInput?.value || '').trim();
-    // If no session name is provided, use Company Name as the session name
-    const finalSessionName = enteredSessionName || newCompany;
     const newRole = (editRoleInput?.value || '').trim() || liveSessionData.role || 'Software Engineer';
     const newJd = (editJdInput?.value || '').trim();
     const newResumeId = editResumeSelect?.value || '';
@@ -2372,7 +2365,7 @@ if (editSessionSaveBtn) {
         await window.electronAPI.updateBackendSession(sessionToken, {
           company_name: newCompany,
           role_name: newRole,
-          session_name: finalSessionName
+          session_name: `${newCompany} (${selectedSessionType})`
         });
       } catch (e) {
         console.warn('[EditSession] Backend patch failed:', e.message);
@@ -2405,10 +2398,10 @@ if (editSessionSaveBtn) {
     }
 
     // 3. Update local live session tracking state
-    liveSessionData = { sessionName: finalSessionName, company: newCompany, role: newRole, jd: newJd, resumeId: newResumeId, docId: newDocId };
+    liveSessionData = { company: newCompany, role: newRole, jd: newJd, resumeId: newResumeId, docId: newDocId };
 
     // 4. Show success and close
-    setEditSessionStatus(`✓ Session "${finalSessionName}" updated — AI will use new context!`, 'success', 2000);
+    setEditSessionStatus('✓ Session context updated — AI will use new data for next answer!', 'success', 2000);
     editSessionSaveBtn.disabled = false;
     editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session';
 
@@ -2456,11 +2449,7 @@ function stopSessionTimer() {
 // Start session button event handler
 startSessionBtn.addEventListener('click', async () => {
   hasActiveAnswer = false;
-  const sessionNameInput = document.getElementById('setup-session-name');
-  const customSessionName = (sessionNameInput?.value || '').trim();
   const company = setupCompany.value.trim() || 'Stealth Practice';
-  // If no session name is given, take company name as session name
-  const finalSessionName = customSessionName || company;
   const role = setupRole.value.trim() || 'Software Engineer';
   const jd = setupJd.value.trim();
 
@@ -2509,7 +2498,7 @@ startSessionBtn.addEventListener('click', async () => {
     backendUrl = (await window.electronAPI.getBackendUrl()) || '';
     if (backendUrl) {
       const session = await window.electronAPI.createBackendSession(USER_ID, {
-        session_name: finalSessionName,
+        session_name: `${company} (${selectedSessionType})`,
         company_name: company,
         role_name: role,
         language: preferredLanguage,
@@ -2551,7 +2540,6 @@ startSessionBtn.addEventListener('click', async () => {
 
   // Capture current session data for the Edit Session modal
   liveSessionData = {
-    sessionName: finalSessionName,
     company,
     role,
     jd,
@@ -5937,7 +5925,6 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
 
     // Bind directly to liveSessionData so Edit Session modal has the exact web-entered content
     liveSessionData = {
-      sessionName: config.session_name || config.company || '',
       company: config.company || '',
       role: config.role || '',
       jd: config.jd || config.job_description || '',
