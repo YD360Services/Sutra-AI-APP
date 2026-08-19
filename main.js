@@ -393,15 +393,27 @@ function createWindow() {
     }
   });
 
-  // Handle focusable state — setFocusable(true) allows keyboard input into overlay inputs
-  // WITHOUT calling win.focus(), so the background window keeps OS activation (no blur event fired).
+  // Handle focusable state — kept here for setup wizard / modal flows only.
+  // During live toolbar mode we NEVER call setFocusable(true) to avoid OS window activation.
   ipcMain.on('set-focusable', (event, focusable) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
       win.setFocusable(Boolean(focusable));
       // NOTE: Deliberately do NOT call win.focus() here.
-      // Calling focus() would make Electron the foreground OS window, firing blur on the background app.
-      // setFocusable(true) alone is sufficient to receive keyboard events for typing in inputs.
+    }
+  });
+
+  // Route keyboard input to webContents WITHOUT activating the native OS window.
+  // This is the key trick: webContents.focus() sends key events to the renderer
+  // while the native window keeps WS_EX_NOACTIVATE — so background apps never blur.
+  ipcMain.on('focus-webcontents', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+      try {
+        event.sender.focus(); // focuses the webContents, not the native window
+      } catch (e) {
+        console.warn('[IPC] focus-webcontents error:', e.message);
+      }
     }
   });
 
