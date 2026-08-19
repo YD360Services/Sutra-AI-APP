@@ -393,15 +393,15 @@ function createWindow() {
     }
   });
 
-  // Handle focusable state (setFocusable(false) prevents OS window activation & blur events on background app)
+  // Handle focusable state — setFocusable(true) allows keyboard input into overlay inputs
+  // WITHOUT calling win.focus(), so the background window keeps OS activation (no blur event fired).
   ipcMain.on('set-focusable', (event, focusable) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed() && typeof win.setFocusable === 'function') {
-      const shouldFocus = Boolean(focusable);
-      win.setFocusable(shouldFocus);
-      if (shouldFocus) {
-        win.focus();
-      }
+      win.setFocusable(Boolean(focusable));
+      // NOTE: Deliberately do NOT call win.focus() here.
+      // Calling focus() would make Electron the foreground OS window, firing blur on the background app.
+      // setFocusable(true) alone is sufficient to receive keyboard events for typing in inputs.
     }
   });
 

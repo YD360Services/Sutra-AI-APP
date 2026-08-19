@@ -2899,7 +2899,10 @@ function updateClickThrough(clientX, clientY) {
 }
 
 // Focus Management: in floating overlay mode, keep window non-activating so bottom apps keep focus,
-// but dynamically enable focus when typing in text fields or editable content.
+// but dynamically enable focusable when user clicks into a text input so they can type.
+// We do NOT call win.focus() — so the background window never loses OS activation.
+let _focusOutTimer = null;
+
 document.addEventListener('focusin', (e) => {
   if (toolbarView && toolbarView.style.display !== 'none') {
     const isInput = e.target && (
@@ -2909,6 +2912,8 @@ document.addEventListener('focusin', (e) => {
       e.target.getAttribute('contenteditable') === 'true'
     );
     if (isInput && window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+      // Cancel any pending focusout debounce — user moved between inputs
+      if (_focusOutTimer) { clearTimeout(_focusOutTimer); _focusOutTimer = null; }
       window.electronAPI.setFocusable(true);
     }
   }
@@ -2917,7 +2922,23 @@ document.addEventListener('focusin', (e) => {
 document.addEventListener('focusout', (e) => {
   if (toolbarView && toolbarView.style.display !== 'none') {
     if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-      window.electronAPI.setFocusable(false);
+      // Debounce: only disable focusable if no other input gains focus within 120ms.
+      // This handles cases like tabbing between fields or brief internal re-renders.
+      if (_focusOutTimer) clearTimeout(_focusOutTimer);
+      _focusOutTimer = setTimeout(() => {
+        _focusOutTimer = null;
+        // Only disable if the currently focused element is not also an input
+        const active = document.activeElement;
+        const stillInInput = active && (
+          active.tagName === 'INPUT' ||
+          active.tagName === 'TEXTAREA' ||
+          active.isContentEditable ||
+          active.getAttribute('contenteditable') === 'true'
+        );
+        if (!stillInInput) {
+          window.electronAPI.setFocusable(false);
+        }
+      }, 120);
     }
   }
 });
@@ -5626,6 +5647,11 @@ document.addEventListener('mousedown', (e) => {
 document.addEventListener('focusin', (e) => {
   if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
     if (isTargetEditableOrInModal(e.target)) {
+      // Cancel any pending focusout debounce so switching between settings inputs stays smooth
+      if (typeof _focusOutTimer !== 'undefined' && _focusOutTimer) {
+        clearTimeout(_focusOutTimer);
+        _focusOutTimer = null;
+      }
       window.electronAPI.setFocusable(true);
     }
   }
