@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   launchToolbar: (config) => ipcRenderer.send('launch-toolbar', config),
   registerGlobalShortcuts: (shortcuts) => ipcRenderer.send('register-global-shortcuts', shortcuts),
   onGlobalShortcutTriggered: (cb) => ipcRenderer.on('global-shortcut-triggered', (_, action) => cb(action)),
-  setStealthTyping: (active) => ipcRenderer.send('set-stealth-typing', active),
+  setStealthTyping: (active, bounds) => ipcRenderer.send('set-stealth-typing', active, bounds),
   onStealthKeyInput: (cb) => ipcRenderer.on('stealth-key-input', (_, data) => cb(data)),
   onStealthTypingState: (cb) => ipcRenderer.on('stealth-typing-state', (_, data) => cb(data)),
   readClipboardText: () => ipcRenderer.invoke('read-clipboard-text'),

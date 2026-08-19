@@ -4194,6 +4194,27 @@ if (aiInput) {
       handleManualAISubmit();
     }
   });
+
+  // Activate stealth typing when clicking directly on the input field
+  aiInput.addEventListener('pointerdown', (e) => {
+    const bounds = typeof getInputScreenBounds === 'function' ? getInputScreenBounds() : null;
+    if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+      window.electronAPI.setStealthTyping(true, bounds);
+    }
+    if (typeof updateStealthTypingUI === 'function') {
+      updateStealthTypingUI(true);
+    }
+  });
+
+  aiInput.addEventListener('click', (e) => {
+    const bounds = typeof getInputScreenBounds === 'function' ? getInputScreenBounds() : null;
+    if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+      window.electronAPI.setStealthTyping(true, bounds);
+    }
+    if (typeof updateStealthTypingUI === 'function') {
+      updateStealthTypingUI(true);
+    }
+  });
 }
 
 recordBtn.addEventListener('click', toggleRecording);
@@ -5559,8 +5580,9 @@ window.addEventListener('keydown', (e) => {
   if (checkShortcut('askQuestion', e)) {
     e.preventDefault();
     if (typeof openPanel === 'function') openPanel('ai');
+    const bounds = typeof getInputScreenBounds === 'function' ? getInputScreenBounds() : null;
     if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
-      window.electronAPI.setStealthTyping(true);
+      window.electronAPI.setStealthTyping(true, bounds);
     }
     if (typeof updateStealthTypingUI === 'function') {
       updateStealthTypingUI(true);
@@ -5627,11 +5649,16 @@ function isTargetEditableOrInModal(target) {
 }
 
 document.addEventListener('mousedown', (e) => {
-  // IMPORTANT: Do NOT call setFocusable(true) here — even for sliders or inputs.
-  // setFocusable(true) removes WS_EX_NOACTIVATE, causing the OS to activate Electron
-  // on the very next click/drag, which steals focus from the background window.
-  // Keyboard input is handled separately via focusWebContents() in the focusin handler.
-  // Sliders (range inputs) are entirely mouse-driven — they never need keyboard focus.
+  // If user clicks anywhere outside the manual prompt input, deactivate stealth typing
+  const aiInputEl = document.getElementById('ai-input');
+  if (isStealthTyping && e.target !== aiInputEl && !e.target.closest('#ai-layer-extended, #ai-input-status')) {
+    if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+      window.electronAPI.setStealthTyping(false);
+    }
+    if (typeof updateStealthTypingUI === 'function') {
+      updateStealthTypingUI(false);
+    }
+  }
 }, true);
 
 document.addEventListener('focusin', (e) => {
@@ -5641,6 +5668,17 @@ document.addEventListener('focusin', (e) => {
     if (typeof _focusOutTimer !== 'undefined' && _focusOutTimer) {
       clearTimeout(_focusOutTimer);
       _focusOutTimer = null;
+    }
+    // Activate stealth typing if focusing manual prompt input
+    const aiInputEl = document.getElementById('ai-input');
+    if (e.target === aiInputEl) {
+      const bounds = typeof getInputScreenBounds === 'function' ? getInputScreenBounds() : null;
+      if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+        window.electronAPI.setStealthTyping(true, bounds);
+      }
+      if (typeof updateStealthTypingUI === 'function') {
+        updateStealthTypingUI(true);
+      }
     }
     // Use focusWebContents — routes keys to renderer WITHOUT native window activation
     if (window.electronAPI && typeof window.electronAPI.focusWebContents === 'function') {
@@ -5935,6 +5973,18 @@ setTimeout(() => {
 // ── Global Stealth Typing Manager (Zero Focus Loss) ──────────────────────────
 let isStealthTyping = false;
 
+function getInputScreenBounds() {
+  const aiInput = document.getElementById('ai-input');
+  if (!aiInput) return null;
+  const rect = aiInput.getBoundingClientRect();
+  return {
+    minX: rect.left + (window.screenX || 0),
+    minY: rect.top + (window.screenY || 0),
+    maxX: rect.right + (window.screenX || 0),
+    maxY: rect.bottom + (window.screenY || 0)
+  };
+}
+
 function updateStealthTypingUI(active) {
   isStealthTyping = Boolean(active);
   const aiInput = document.getElementById('ai-input');
@@ -5951,7 +6001,7 @@ function updateStealthTypingUI(active) {
     if (aiInputStatusEl && aiInputStatusText) {
       aiInputStatusEl.style.display = 'flex';
       const count = aiInput ? aiInput.value.length : 0;
-      aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> ⚡ <strong>Stealth Typing Active</strong> • Type & press Enter to ask (Ctrl+\\ or Esc to exit)${count > 0 ? ` (${count} chars)` : ''}`;
+      aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> ⚡ <strong>Stealth Typing Active</strong> • Type & press Enter to ask (click away to exit)${count > 0 ? ` (${count} chars)` : ''}`;
     }
   } else {
     if (aiInput) {

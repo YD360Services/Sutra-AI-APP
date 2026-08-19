@@ -117,10 +117,24 @@ function initStealthKeyHook() {
   }
 }
 
-function setStealthTyping(active) {
+function setStealthTyping(active, bounds = null) {
   isStealthTypingActive = Boolean(active);
   if (stealthKeyHookProcess && stealthKeyHookProcess.stdin && !stealthKeyHookProcess.stdin.destroyed) {
-    const cmd = isStealthTypingActive ? 'START_TYPING\n' : 'STOP_TYPING\n';
+    let cmd = 'STOP_TYPING\n';
+    if (isStealthTypingActive) {
+      if (bounds && typeof bounds.minX === 'number') {
+        cmd = `START_TYPING ${Math.round(bounds.minX)} ${Math.round(bounds.minY)} ${Math.round(bounds.maxX)} ${Math.round(bounds.maxY)}\n`;
+      } else if (mainWindow && !mainWindow.isDestroyed()) {
+        try {
+          const winBounds = mainWindow.getBounds();
+          cmd = `START_TYPING ${winBounds.x} ${winBounds.y} ${winBounds.x + winBounds.width} ${winBounds.y + winBounds.height}\n`;
+        } catch (e) {
+          cmd = 'START_TYPING\n';
+        }
+      } else {
+        cmd = 'START_TYPING\n';
+      }
+    }
     try {
       stealthKeyHookProcess.stdin.write(cmd);
     } catch (e) { }
@@ -131,8 +145,8 @@ function setStealthTyping(active) {
   console.log(`[Stealth KeyHook] Stealth typing state: ${isStealthTypingActive}`);
 }
 
-function toggleStealthTyping() {
-  setStealthTyping(!isStealthTypingActive);
+function toggleStealthTyping(bounds = null) {
+  setStealthTyping(!isStealthTypingActive, bounds);
 }
 
 // Persistent Bounds (Width, Height, X, Y, Panel Size) file path
@@ -528,8 +542,8 @@ function createWindow() {
   });
 
   // Stealth typing mode toggle handler
-  ipcMain.on('set-stealth-typing', (event, active) => {
-    setStealthTyping(active);
+  ipcMain.on('set-stealth-typing', (event, active, bounds) => {
+    setStealthTyping(active, bounds);
   });
 
   // Clipboard read handler

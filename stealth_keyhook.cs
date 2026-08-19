@@ -9,10 +9,16 @@ namespace StealthKeyHook
     class Program
     {
         private const int WH_KEYBOARD_LL = 13;
+        private const int WH_MOUSE_LL = 14;
+
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_KEYUP = 0x0101;
         private const int WM_SYSKEYDOWN = 0x0104;
         private const int WM_SYSKEYUP = 0x0105;
+
+        private const int WM_LBUTTONDOWN = 0x0201;
+        private const int WM_RBUTTONDOWN = 0x0204;
+        private const int WM_MBUTTONDOWN = 0x0207;
 
         private const int VK_SHIFT = 0x10;
         private const int VK_CONTROL = 0x11;
@@ -31,13 +37,25 @@ namespace StealthKeyHook
         private const int VK_OEM_5 = 0xDC; // '\' key on standard US keyboard
 
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-        private static LowLevelKeyboardProc _proc = HookCallback;
-        private static IntPtr _hookID = IntPtr.Zero;
+        private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        private static LowLevelKeyboardProc _keyProc = KeyboardHookCallback;
+        private static LowLevelMouseProc _mouseProc = MouseHookCallback;
+
+        private static IntPtr _keyHookID = IntPtr.Zero;
+        private static IntPtr _mouseHookID = IntPtr.Zero;
 
         private static volatile bool _stealthTypingActive = false;
+        private static volatile int _inputMinX = 0;
+        private static volatile int _inputMinY = 0;
+        private static volatile int _inputMaxX = 0;
+        private static volatile int _inputMaxY = 0;
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -67,18 +85,6 @@ namespace StealthKeyHook
         [DllImport("user32.dll")]
         private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetForegroundWindow();
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-
-        [DllImport("user32.dll")]
-        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-
-        [DllImport("kernel32.dll")]
-        private static extern uint GetCurrentThreadId();
-
         static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
@@ -94,8 +100,26 @@ namespace StealthKeyHook
                     while ((line = Console.ReadLine()) != null)
                     {
                         line = line.Trim();
-                        if (line.Equals("START_TYPING", StringComparison.OrdinalIgnoreCase))
+                        if (line.StartsWith("START_TYPING", StringComparison.OrdinalIgnoreCase))
                         {
+                            // Optional coords: START_TYPING minX minY maxX maxY
+                            string[] parts = line.Split(new char[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                            if (parts.Length >= 5)
+                            {
+                                int minX = 0, minY = 0, maxX = 0, maxY = 0;
+                                int.TryParse(parts[1], out minX);
+                                int.TryParse(parts[2], out minY);
+                                int.TryParse(parts[3], out maxX);
+                                int.TryParse(parts[4], out maxY);
+                                _inputMinX = minX;
+                                _inputMinY = minY;
+                                _inputMaxX = maxX;
+                                _inputMaxY = maxY;
+                            }
+                            else
+                            {
+                                _inputMinX = _inputMinY = _inputMaxX = _inputMaxY = 0;
+                            }
                             _stealthTypingActive = true;
                             Console.WriteLine("STATUS:TYPING_STARTED");
                             Console.Out.Flush();
@@ -113,7 +137,7 @@ namespace StealthKeyHook
                         }
                         else if (line.Equals("EXIT", StringComparison.OrdinalIgnoreCase))
                         {
-                            Unhook();
+                            UnhookAll();
                             Environment.Exit(0);
                         }
                     }
@@ -124,18 +148,20 @@ namespace StealthKeyHook
                 }
                 finally
                 {
-                    Unhook();
+                    UnhookAll();
                     Environment.Exit(0);
                 }
             });
             stdinThread.IsBackground = true;
             stdinThread.Start();
 
-            // Set low-level hook
+            // Set low-level keyboard and mouse hooks
             using (Process curProcess = Process.GetCurrentProcess())
             using (ProcessModule curModule = curProcess.MainModule)
             {
-                _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, GetModuleHandle(curModule.ModuleName), 0);
+                IntPtr modHandle = GetModuleHandle(curModule.ModuleName);
+                _keyHookID = SetWindowsHookEx(WH_KEYBOARD_LL, _keyProc, modHandle, 0);
+                _mouseHookID = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, modHandle, 0);
             }
 
             // Standard Windows Message Loop
@@ -146,15 +172,20 @@ namespace StealthKeyHook
                 DispatchMessage(ref msg);
             }
 
-            Unhook();
+            UnhookAll();
         }
 
-        private static void Unhook()
+        private static void UnhookAll()
         {
-            if (_hookID != IntPtr.Zero)
+            if (_keyHookID != IntPtr.Zero)
             {
-                UnhookWindowsHookEx(_hookID);
-                _hookID = IntPtr.Zero;
+                UnhookWindowsHookEx(_keyHookID);
+                _keyHookID = IntPtr.Zero;
+            }
+            if (_mouseHookID != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_mouseHookID);
+                _mouseHookID = IntPtr.Zero;
             }
         }
 
@@ -189,7 +220,51 @@ namespace StealthKeyHook
             public IntPtr dwExtraInfo;
         }
 
-        private static IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSLLHOOKSTRUCT
+        {
+            public POINT pt;
+            public uint mouseData;
+            public uint flags;
+            public uint time;
+            public IntPtr dwExtraInfo;
+        }
+
+        private static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && _stealthTypingActive)
+            {
+                int msg = wParam.ToInt32();
+                if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
+                {
+                    MSLLHOOKSTRUCT mouseStruct = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+                    int mx = mouseStruct.pt.x;
+                    int my = mouseStruct.pt.y;
+
+                    bool hasValidRect = (_inputMaxX > _inputMinX && _inputMaxY > _inputMinY);
+                    bool isInsideInput = hasValidRect && (mx >= _inputMinX && mx <= _inputMaxX && my >= _inputMinY && my <= _inputMaxY);
+
+                    // If clicked outside the input element, immediately end stealth typing!
+                    if (!isInsideInput)
+                    {
+                        _stealthTypingActive = false;
+                        Console.WriteLine("KEY:{\"action\":\"escape\"}");
+                        Console.Out.Flush();
+                    }
+                }
+            }
+
+            return CallNextHookEx(_mouseHookID, nCode, wParam, lParam);
+        }
+
+        private static IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
             {
@@ -203,7 +278,6 @@ namespace StealthKeyHook
                 // Check if user pressed Ctrl+\ or Ctrl+M while typing to toggle/cancel
                 if (isCtrl && (vkCode == VK_OEM_5 || vkCode == 'M'))
                 {
-                    // Let the hotkey trigger through or emit toggle
                     Console.WriteLine("KEY:{\"action\":\"toggle\"}");
                     Console.Out.Flush();
                     return (IntPtr)1; // Swallow shortcut so back window doesn't get it
@@ -278,8 +352,7 @@ namespace StealthKeyHook
                             Console.Out.Flush();
                             return (IntPtr)1;
                         }
-                        // If it's another Ctrl combo (like Ctrl+Space for capture, Ctrl+Up, etc.), don't swallow it
-                        return CallNextHookEx(_hookID, nCode, wParam, lParam);
+                        return CallNextHookEx(_keyHookID, nCode, wParam, lParam);
                     }
 
                     // Navigation keys
@@ -306,11 +379,9 @@ namespace StealthKeyHook
                     byte[] keyState = new byte[256];
                     GetKeyboardState(keyState);
 
-                    // Ensure Shift state is accurate
                     if (isShift) keyState[VK_SHIFT] = 0x80;
                     else keyState[VK_SHIFT] = 0x00;
 
-                    // Ensure CapsLock is accounted for
                     short caps = GetAsyncKeyState(VK_CAPITAL);
                     if ((caps & 0x0001) != 0 || (caps & 0x8000) != 0) keyState[VK_CAPITAL] = 0x01;
 
@@ -321,11 +392,10 @@ namespace StealthKeyHook
                     if (res > 0)
                     {
                         string text = sb.ToString();
-                        // Escape JSON characters
                         string escaped = text.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "");
                         Console.WriteLine("KEY:{\"action\":\"char\",\"char\":\"" + escaped + "\"}");
                         Console.Out.Flush();
-                        return (IntPtr)1; // SWALLOW keystroke so it doesn't leak into background window!
+                        return (IntPtr)1; // SWALLOW keystroke
                     }
                     else if (vkCode == VK_SPACE)
                     {
@@ -336,7 +406,7 @@ namespace StealthKeyHook
                 }
             }
 
-            return CallNextHookEx(_hookID, nCode, wParam, lParam);
+            return CallNextHookEx(_keyHookID, nCode, wParam, lParam);
         }
     }
 }
