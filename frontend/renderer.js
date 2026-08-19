@@ -2553,6 +2553,11 @@ startSessionBtn.addEventListener('click', async () => {
   toggleStealthTooltips(true);
   document.querySelector('.app-container').style.opacity = Math.min(1.0, userOpacity);
 
+  // Set window non-activating so clicks on toolbar buttons do not steal focus from underlying apps/games
+  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+    window.electronAPI.setFocusable(false);
+  }
+
   // Load saved bounds if any
   const savedState = await window.electronAPI.getSavedBounds();
   if (savedState) {
@@ -2796,7 +2801,19 @@ let isMouseInsideWindow = false;
 function updateClickThrough(clientX, clientY) {
   if (isDraggingWindow) return;
   if (justExpanded) {
-    window.electronAPI.setIgnoreMouseEvents(false);
+    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+      window.electronAPI.setIgnoreMouseEvents(false);
+    }
+    return;
+  }
+
+  // If in setup wizard view or recent sessions view, never ignore mouse events
+  const isSetupActive = setupView && setupView.style.display !== 'none';
+  const isRecentActive = document.getElementById('recent-sessions-view') && document.getElementById('recent-sessions-view').style.display !== 'none';
+  if (isSetupActive || isRecentActive) {
+    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+      window.electronAPI.setIgnoreMouseEvents(false);
+    }
     return;
   }
 
@@ -2836,26 +2853,39 @@ function updateClickThrough(clientX, clientY) {
 
   const isInteractive = isOverDragHandle || isOverTooltipArea || (el && (
     el.closest('.interactive') ||
+    el.closest('.toolbar-wrapper') ||
     el.closest('.setup-view-container') ||
     el.closest('#settings-popup') ||
+    el.closest('#shortcuts-subpopup') ||
+    el.closest('#edit-session-modal') ||
     el.closest('.panels-container') ||
     el.closest('#transcript-layer') ||
     el.closest('#ai-layer') ||
+    el.closest('.layer-strip') ||
+    el.closest('.custom-select-options') ||
+    el.closest('.toast-container') ||
     el.tagName === 'BUTTON' ||
     el.tagName === 'INPUT' ||
     el.tagName === 'TEXTAREA' ||
-    el.tagName === 'SELECT'
+    el.tagName === 'SELECT' ||
+    el.tagName === 'A' ||
+    el.isContentEditable ||
+    el.getAttribute('contenteditable') === 'true'
   ));
 
   if (isInteractive) {
-    window.electronAPI.setIgnoreMouseEvents(false);
+    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+      window.electronAPI.setIgnoreMouseEvents(false);
+    }
     if (!isMouseInsideWindow) {
       isMouseInsideWindow = true;
       updateWindowSize();
     }
   } else {
-    // Pass clicks through gaps
-    window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
+    // Pass clicks through transparent gaps to bottom applications
+    if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
+      window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
+    }
     if (isMouseInsideWindow) {
       isMouseInsideWindow = false;
       updateWindowSize();
@@ -2867,6 +2897,30 @@ function updateClickThrough(clientX, clientY) {
     appCont.style.opacity = userOpacity;
   }
 }
+
+// Focus Management: in floating overlay mode, keep window non-activating so bottom apps keep focus,
+// but dynamically enable focus when typing in text fields or editable content.
+document.addEventListener('focusin', (e) => {
+  if (toolbarView && toolbarView.style.display !== 'none') {
+    const isInput = e.target && (
+      e.target.tagName === 'INPUT' ||
+      e.target.tagName === 'TEXTAREA' ||
+      e.target.isContentEditable ||
+      e.target.getAttribute('contenteditable') === 'true'
+    );
+    if (isInput && window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+      window.electronAPI.setFocusable(true);
+    }
+  }
+});
+
+document.addEventListener('focusout', (e) => {
+  if (toolbarView && toolbarView.style.display !== 'none') {
+    if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+      window.electronAPI.setFocusable(false);
+    }
+  }
+});
 
 window.addEventListener('mouseleave', () => {
   isMouseInsideWindow = false;
@@ -5849,6 +5903,18 @@ setTimeout(() => {
         evt.preventDefault();
         const aiSendBtn = document.getElementById('ai-send');
         if (aiSendBtn) aiSendBtn.click();
+        aiInput.blur();
+      } else if (evt.key === 'Escape') {
+        evt.preventDefault();
+        aiInput.blur();
+      }
+    });
+
+    aiInput.addEventListener('blur', () => {
+      if (toolbarView && toolbarView.style.display !== 'none') {
+        if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+          window.electronAPI.setFocusable(false);
+        }
       }
     });
   }
@@ -5866,6 +5932,12 @@ if (window.electronAPI && typeof window.electronAPI.onGlobalShortcutTriggered ==
     console.log('[Stealth UI] Global shortcut triggered:', action);
     if (action === 'askQuestion') {
       if (typeof openPanel === 'function') openPanel('ai');
+      if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
+        window.electronAPI.setFocusable(true);
+      }
+      if (window.electronAPI && typeof window.electronAPI.setIgnoreMouseEvents === 'function') {
+        window.electronAPI.setIgnoreMouseEvents(false);
+      }
       const aiInput = document.getElementById('ai-input');
       if (aiInput) {
         setTimeout(() => {
@@ -5891,6 +5963,12 @@ if (window.electronAPI && typeof window.electronAPI.onGlobalShortcutTriggered ==
     } else if (action === 'nextAnswer') {
       const nextBtn = document.getElementById('next-answer-btn');
       if (nextBtn) nextBtn.click();
+    } else if (action === 'scrollUp') {
+      const answerBlock = document.getElementById('answer-block');
+      if (answerBlock) answerBlock.scrollTop -= 80;
+    } else if (action === 'scrollDown') {
+      const answerBlock = document.getElementById('answer-block');
+      if (answerBlock) answerBlock.scrollTop += 80;
     }
   });
 }

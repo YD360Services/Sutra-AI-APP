@@ -384,8 +384,12 @@ function createWindow() {
   // Handle click-through toggle
   ipcMain.on('set-ignore-mouse-events', (event, ignore, options) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (win) {
-      win.setIgnoreMouseEvents(ignore, options);
+    if (win && !win.isDestroyed()) {
+      try {
+        win.setIgnoreMouseEvents(Boolean(ignore), options || { forward: true });
+      } catch (e) {
+        console.warn('[IPC] setIgnoreMouseEvents error:', e.message);
+      }
     }
   });
 
@@ -414,18 +418,41 @@ function createWindow() {
         if (config.alt) accelerator.push('Alt');
         if (config.shift) accelerator.push('Shift');
 
-        let k = config.key;
-        if (k === 'Space') k = 'Space';
-        else if (k.startsWith('Arrow')) k = k.replace('Arrow', '');
-        accelerator.push(k.toUpperCase());
+        let rawKey = String(config.key).trim();
+        let k = rawKey;
 
+        if (rawKey === ' ' || rawKey.toLowerCase() === 'space') {
+          k = 'Space';
+        } else if (rawKey === 'ArrowUp' || rawKey.toLowerCase() === 'up') {
+          k = 'Up';
+        } else if (rawKey === 'ArrowDown' || rawKey.toLowerCase() === 'down') {
+          k = 'Down';
+        } else if (rawKey === 'ArrowLeft' || rawKey.toLowerCase() === 'left') {
+          k = 'Left';
+        } else if (rawKey === 'ArrowRight' || rawKey.toLowerCase() === 'right') {
+          k = 'Right';
+        } else if (rawKey.toLowerCase() === 'enter' || rawKey.toLowerCase() === 'return') {
+          k = 'Return';
+        } else if (rawKey.toLowerCase() === 'esc' || rawKey.toLowerCase() === 'escape') {
+          k = 'Escape';
+        } else if (rawKey.length === 1) {
+          k = rawKey.toUpperCase();
+        }
+
+        accelerator.push(k);
         const shortcutStr = accelerator.join('+');
+
         try {
-          globalShortcut.register(shortcutStr, () => {
+          const registered = globalShortcut.register(shortcutStr, () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('global-shortcut-triggered', action);
             }
           });
+          if (!registered) {
+            console.warn(`[Shortcuts] Failed to register: ${shortcutStr} for ${action}`);
+          } else {
+            console.log(`[Shortcuts] Registered: ${shortcutStr} -> ${action}`);
+          }
         } catch (err) {
           console.warn(`[Shortcuts] Could not register ${shortcutStr}:`, err.message);
         }
@@ -1340,6 +1367,7 @@ function triggerLaunchToolbar() {
     mainWindow.setSkipTaskbar(true);
     mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    mainWindow.setFocusable(false);
 
     // 4. Force screen capture protection
     mainWindow.setContentProtection(true);

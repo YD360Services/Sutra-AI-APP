@@ -627,6 +627,10 @@
         </div>
         <div class="statusbar-right">
             <div class="stat">
+                <div class="stat-label">Lost focus time</div>
+                <div class="stat-value warn mono" id="unfocused-timer">00:00</div>
+            </div>
+            <div class="stat">
                 <div class="stat-label">Time remaining</div>
                 <div class="timer mono" id="timer">45:00</div>
             </div>
@@ -791,18 +795,74 @@
                 terminatedEl.classList.remove('hidden');
             }
 
+            // ---- Unfocused / Lost Focus Time Tracking Engine ----
+            let totalUnfocusedMs = 0;
+            let unfocusedStart = null;
+            let unfocusedInterval = null;
+            const unfocusedTimerEl = document.getElementById('unfocused-timer');
+
+            function formatDuration(ms) {
+                const totalSec = Math.floor(ms / 1000);
+                const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+                const s = String(totalSec % 60).padStart(2, '0');
+                return `${m}:${s}`;
+            }
+
+            function onLostFocus(reason) {
+                if (unfocusedStart === null && !terminated) {
+                    unfocusedStart = Date.now();
+                    if (unfocusedTimerEl) {
+                        unfocusedTimerEl.classList.add('alert');
+                    }
+                    if (!unfocusedInterval) {
+                        unfocusedInterval = setInterval(() => {
+                            if (unfocusedStart !== null) {
+                                const currentDuration = totalUnfocusedMs + (Date.now() - unfocusedStart);
+                                if (unfocusedTimerEl) {
+                                    unfocusedTimerEl.textContent = formatDuration(currentDuration);
+                                }
+                            }
+                        }, 250);
+                    }
+                }
+            }
+
+            function onRegainFocus() {
+                if (unfocusedStart !== null) {
+                    const blurDurationMs = Date.now() - unfocusedStart;
+                    totalUnfocusedMs += blurDurationMs;
+                    unfocusedStart = null;
+                    if (unfocusedTimerEl) {
+                        unfocusedTimerEl.textContent = formatDuration(totalUnfocusedMs);
+                        unfocusedTimerEl.classList.remove('alert');
+                    }
+                    const durationSec = (blurDurationMs / 1000).toFixed(1);
+                    addLog(`Window regained focus (was unfocused for ${durationSec}s)`, false);
+                }
+            }
+
             // ---- Tab switch / window blur detection ----
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
+                    onLostFocus('Tab switched or minimized');
                     flagViolation('Tab switched or minimized', 'You navigated away from the exam tab. This has been recorded as a monitoring violation.');
+                } else {
+                    if (document.hasFocus()) {
+                        onRegainFocus();
+                    }
                 }
             });
 
             window.addEventListener('blur', () => {
+                onLostFocus('Window lost focus');
                 // Avoid double-firing right after a deliberate fullscreen prompt click
                 if (!document.hidden) {
                     flagViolation('Window lost focus', 'The exam window lost focus, possibly due to switching applications.');
                 }
+            });
+
+            window.addEventListener('focus', () => {
+                onRegainFocus();
             });
 
             // ---- Cursor leaving the viewport ----
