@@ -1500,3 +1500,78 @@ input, textarea, [contenteditable], .setup-input, .setup-textarea {
   font-family: monospace;
 }
 
+/* ── Live Upload & Prompt Status Indicators ──────────────────────────────── */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes typingPulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+.upload-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(45, 212, 191, 0.25);
+  border-top-color: #2dd4bf;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+.upload-spinner-danger {
+  border: 2px solid rgba(239, 68, 68, 0.25);
+  border-top-color: #ef4444;
+}
+
+.upload-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  backdrop-filter: blur(8px);
+  animation: fadeInDown 0.25s ease;
+  transition: all 0.3s ease;
+}
+
+.upload-status-banner.uploading {
+  background: rgba(45, 212, 191, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  color: #5eead4;
+}
+
+.upload-status-banner.success {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+}
+
+.upload-status-banner.error {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.typing-dot-pulse {
+  width: 6px;
+  height: 6px;
+  background-color: #2dd4bf;
+  border-radius: 50%;
+  display: inline-block;
+  animation: typingPulse 1.2s infinite ease-in-out;
+}
+
+.btn-uploading-active {
+  opacity: 0.8 !important;
+  pointer-events: none !important;
+  cursor: wait !important;
+}
+
+

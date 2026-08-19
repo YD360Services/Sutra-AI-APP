@@ -141,7 +141,8 @@
         </div>
 
         <!-- STEP 1: Job Details -->
-        <div id="setup-step-1" class="setup-step-content" style="display: flex; flex-direction: column; height: 320px; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;">
+        <div id="setup-step-1" class="setup-step-content"
+          style="display: flex; flex-direction: column; height: 320px; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;">
           <div class="setup-form-group">
             <label class="setup-label">Session Type</label>
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px;">
@@ -155,18 +156,22 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div class="setup-form-group" style="margin: 0; position: relative;">
               <label class="setup-label">Company Name <span style="color: #ef4444;">*</span></label>
-              <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..." autocomplete="off" autofocus style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
+              <input type="text" id="setup-company" class="setup-input" placeholder="e.g. Google, Stripe..."
+                autocomplete="off" autofocus
+                style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
               <div id="setup-company-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
             </div>
             <div class="setup-form-group" style="margin: 0;">
               <label class="setup-label">Target Role <span style="color: #ef4444;">*</span></label>
-              <input type="text" id="setup-role" class="setup-input" placeholder="e.g. Senior SDE..." style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
+              <input type="text" id="setup-role" class="setup-input" placeholder="e.g. Senior SDE..."
+                style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
             </div>
           </div>
 
           <div class="setup-form-group" style="margin-bottom: 0; flex: 1; display: flex; flex-direction: column;">
             <label class="setup-label">Job Description <span style="color: #ef4444;">*</span></label>
-            <textarea id="setup-jd" class="setup-textarea" style="flex: 1; min-height: 120px; cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;"
+            <textarea id="setup-jd" class="setup-textarea"
+              style="flex: 1; min-height: 120px; cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;"
               placeholder="Paste the target Job Description (required to personalize AI answers)..."></textarea>
           </div>
         </div>
@@ -181,25 +186,38 @@
             <span style="font-size:11px;">⚠️</span>
             <span id="dropdown-status-text" style="flex:1;">Backend offline — lists unavailable.</span>
             <button id="dropdown-retry-btn" class="interactive"
-              style="background:rgba(20, 184, 166,0.2);border:1px solid rgba(20, 184, 166,0.4);color:#2dd4bf;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:700;outline:none;white-space:nowrap;cursor:pointer;">↺ Retry</button>
+              style="background:rgba(20, 184, 166,0.2);border:1px solid rgba(20, 184, 166,0.4);color:#2dd4bf;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:700;outline:none;white-space:nowrap;cursor:pointer;">↺
+              Retry</button>
+          </div>
+
+          <!-- Upload & Processing Status Banner -->
+          <div id="step2-upload-status" class="upload-status-banner uploading" style="display: none;">
+            <span class="upload-spinner" id="step2-upload-spinner"></span>
+            <span id="step2-upload-text" style="flex: 1;">Uploading...</span>
           </div>
 
           <!-- Section 1: Active Candidate Resume Card -->
-          <div style="background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(15,23,42,0.65) 100%); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+          <div
+            style="background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(15,23,42,0.65) 100%); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
             <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
-                <span style="display: inline-flex; width: 18px; height: 18px; border-radius: 5px; background: rgba(45,212,191,0.15); align-items: center; justify-content: center; color: #2dd4bf; font-size: 11px;">📄</span>
+              <span
+                style="font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+                <span
+                  style="display: inline-flex; width: 18px; height: 18px; border-radius: 5px; background: rgba(45,212,191,0.15); align-items: center; justify-content: center; color: #2dd4bf; font-size: 11px;">📄</span>
                 Candidate Resume
               </span>
-              <span id="resume-jd-score" style="display: none; font-size: 9px; font-weight: 700; color: #10b981; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); padding: 2px 7px; border-radius: 6px;">--</span>
+              <span id="resume-jd-score"
+                style="display: none; font-size: 9px; font-weight: 700; color: #10b981; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3); padding: 2px 7px; border-radius: 6px;">--</span>
             </div>
-            
+
             <div style="display: flex; gap: 6px; align-items: center;">
-              <select id="setup-resume-select" class="setup-input" style="flex: 1; padding: 5px 10px; font-size: 11px; font-weight: 500; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 32px;">
+              <select id="setup-resume-select" class="setup-input"
+                style="flex: 1; padding: 5px 10px; font-size: 11px; font-weight: 500; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 32px;">
                 <option value="">📄 -- Select Existing Resume --</option>
                 <option value="__upload__">📁 Upload new resume...</option>
               </select>
-              <button id="step2-upload-resume-btn" type="button" class="interactive" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 32px; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">
+              <button id="step2-upload-resume-btn" type="button" class="interactive"
+                style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 32px; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">
                 📁 Upload
               </button>
             </div>
@@ -207,17 +225,25 @@
           </div>
 
           <!-- Section 2: Knowledge Bank & Additional Context -->
-          <div style="background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(15,23,42,0.65) 100%); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 9px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
+          <div
+            style="background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(15,23,42,0.65) 100%); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 9px 12px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25);">
             <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
-                <span style="display: inline-flex; width: 18px; height: 18px; border-radius: 5px; background: rgba(56,189,248,0.15); align-items: center; justify-content: center; color: #38bdf8; font-size: 11px;">📚</span>
+              <span
+                style="font-size: 11px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px;">
+                <span
+                  style="display: inline-flex; width: 18px; height: 18px; border-radius: 5px; background: rgba(56,189,248,0.15); align-items: center; justify-content: center; color: #38bdf8; font-size: 11px;">📚</span>
                 Knowledge & Extra Context
               </span>
               <!-- Tabs switcher -->
-              <div style="display: flex; gap: 3px; background: rgba(0,0,0,0.3); padding: 2px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.06);">
-                <button id="filter-docs-btn" type="button" class="interactive" style="background: rgba(45,212,191,0.18); border: 1px solid rgba(45,212,191,0.4); color: #2dd4bf; border-radius: 5px; padding: 2px 8px; font-size: 9.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s;">Docs</button>
-                <button id="filter-prompts-btn" type="button" class="interactive" style="background: transparent; border: 1px solid transparent; color: #888; border-radius: 5px; padding: 2px 8px; font-size: 9.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s;">Prompts</button>
-                <button id="filter-sessions-btn" type="button" class="interactive" style="background: transparent; border: 1px solid transparent; color: #888; border-radius: 5px; padding: 2px 8px; font-size: 9.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s;">Past Rounds</button>
+              <div
+                style="display: flex; gap: 3px; background: rgba(0,0,0,0.3); padding: 2px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.06);">
+                <button id="filter-docs-btn" type="button" class="interactive"
+                  style="background: rgba(45,212,191,0.18); border: 1px solid rgba(45,212,191,0.4); color: #2dd4bf; border-radius: 5px; padding: 2px 8px; font-size: 9.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s;">Docs</button>
+                <button id="filter-prompts-btn" type="button" class="interactive"
+                  style="background: transparent; border: 1px solid transparent; color: #888; border-radius: 5px; padding: 2px 8px; font-size: 9.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s;">Prompts</button>
+                <button id="filter-sessions-btn" type="button" class="interactive"
+                  style="background: transparent; border: 1px solid transparent; color: #888; border-radius: 5px; padding: 2px 8px; font-size: 9.5px; font-weight: 700; cursor: pointer; outline: none; transition: all 0.2s;">Past
+                  Rounds</button>
               </div>
             </div>
 
@@ -228,23 +254,30 @@
 
             <!-- Tab 1: Docs Only Section -->
             <div id="context-docs-section" style="display: flex; gap: 6px; align-items: center;">
-              <select id="setup-doc-select" class="setup-input" style="flex: 1; padding: 5px 10px; font-size: 11px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 30px;">
+              <select id="setup-doc-select" class="setup-input"
+                style="flex: 1; padding: 5px 10px; font-size: 11px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 30px;">
                 <option value="">📚 -- Select Reference Document / Prep Note --</option>
               </select>
-              <button id="upload-doc-btn" type="button" class="interactive" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 30px; display: flex; align-items: center; gap: 4px;">📁 Upload Doc</button>
+              <button id="upload-doc-btn" type="button" class="interactive"
+                style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 30px; display: flex; align-items: center; gap: 4px;">📁
+                Upload Doc</button>
             </div>
 
             <!-- Tab 2: Prompts Only Section -->
             <div id="context-prompts-section" style="display: none; gap: 6px; align-items: center;">
-              <select id="setup-prompt-select" class="setup-input" style="flex: 1; padding: 5px 10px; font-size: 11px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 30px;">
+              <select id="setup-prompt-select" class="setup-input"
+                style="flex: 1; padding: 5px 10px; font-size: 11px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 30px;">
                 <option value="">✍️ -- Select Custom Prompt / Instruction Rule --</option>
               </select>
-              <button id="input-prompt-btn" type="button" class="interactive" style="background: rgba(45,212,191,0.14); border: 1px solid rgba(45,212,191,0.35); color: #2dd4bf; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 700; cursor: pointer; white-space: nowrap; outline: none; height: 30px; display: flex; align-items: center; gap: 4px;">✍️ + Create</button>
+              <button id="input-prompt-btn" type="button" class="interactive"
+                style="background: rgba(45,212,191,0.14); border: 1px solid rgba(45,212,191,0.35); color: #2dd4bf; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 700; cursor: pointer; white-space: nowrap; outline: none; height: 30px; display: flex; align-items: center; gap: 4px;">✍️
+                + Create</button>
             </div>
 
             <!-- Tab 3: Sessions Only Section -->
             <div id="context-sessions-section" style="display: none;">
-              <select id="setup-recent-context-select" class="setup-input" style="width: 100%; padding: 5px 10px; font-size: 11px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 30px;">
+              <select id="setup-recent-context-select" class="setup-input"
+                style="width: 100%; padding: 5px 10px; font-size: 11px; border-radius: 7px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); color: #fff; outline: none; height: 30px;">
                 <option value="">🕒 -- Select Past Interview Round to Inject as Memory --</option>
               </select>
             </div>
@@ -253,20 +286,27 @@
           </div>
 
           <!-- Section 3: Active Context Knowledge Stack (Loaded Chips) -->
-          <div style="background: rgba(255,255,255,0.015); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 8px 12px; display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 75px;">
+          <div
+            style="background: rgba(255,255,255,0.015); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 8px 12px; display: flex; flex-direction: column; gap: 5px; flex: 1; min-height: 75px;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 5px;">
-                <span style="width: 5px; height: 5px; border-radius: 50%; background: #2dd4bf; box-shadow: 0 0 6px #2dd4bf;"></span>
+              <span
+                style="font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.7); text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 5px;">
+                <span
+                  style="width: 5px; height: 5px; border-radius: 50%; background: #2dd4bf; box-shadow: 0 0 6px #2dd4bf;"></span>
                 Active AI Context Stack (Live Memory)
               </span>
-              <span id="context-count-badge" style="font-size: 9px; font-weight: 700; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 10px;">None</span>
+              <span id="context-count-badge"
+                style="font-size: 9px; font-weight: 700; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 10px;">None</span>
             </div>
 
-            <div id="context-empty-placeholder" style="display: flex; align-items: center; justify-content: center; flex: 1; font-size: 10.5px; color: rgba(255,255,255,0.3); font-style: italic; text-align: center; padding: 4px 0;">
+            <div id="context-empty-placeholder"
+              style="display: flex; align-items: center; justify-content: center; flex: 1; font-size: 10.5px; color: rgba(255,255,255,0.3); font-style: italic; text-align: center; padding: 4px 0;">
               No extra context attached • AI will formulate answers from Job Description & standard reasoning
             </div>
 
-            <div id="selected-context-chips" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 55px; overflow-y: auto; align-items: center;"></div>
+            <div id="selected-context-chips"
+              style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 55px; overflow-y: auto; align-items: center;">
+            </div>
           </div>
 
         </div>
@@ -368,8 +408,10 @@
           style="display: flex; gap: 10px; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; width: 100%; -webkit-app-region: no-drag !important;">
           <button id="setup-back-btn" class="setup-btn-start interactive"
             style="flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); color: var(--text-secondary); display: none; box-shadow: none; height: 34px; padding: 6px 14px; font-size: 11.5px;">Back</button>
-          <button id="setup-next-btn" class="setup-btn-start interactive" style="flex: 2; height: 34px; padding: 6px 14px; font-size: 11.5px;">Next</button>
-          <button id="start-session-btn" class="setup-btn-start interactive" style="flex: 2; display: none; height: 34px; padding: 6px 14px; font-size: 11.5px;">Start
+          <button id="setup-next-btn" class="setup-btn-start interactive"
+            style="flex: 2; height: 34px; padding: 6px 14px; font-size: 11.5px;">Next</button>
+          <button id="start-session-btn" class="setup-btn-start interactive"
+            style="flex: 2; display: none; height: 34px; padding: 6px 14px; font-size: 11.5px;">Start
             Session
             & Collapse</button>
         </div> <!-- #setup-steps-wrapper -->
@@ -455,26 +497,23 @@
     </div>
 
     <!-- 2. MAIN TOOLBAR VIEW -->
-    <div id="toolbar-view" style="display: none; flex-direction: column; width: 100%; align-items: center; padding-top: 56px;">
+    <div id="toolbar-view"
+      style="display: none; flex-direction: column; width: 100%; align-items: center; padding-top: 56px;">
 
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• LAYER 1: NAVBAR â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+      <!-- ══════════════ LAYER 1: NAVBAR ══════════════ -->
       <div class="toolbar-wrapper">
         <div class="brand-zone" style="-webkit-app-region: drag;">
           <img src="logo.png"
             style="width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; border-radius: 5px;"
             alt="RoundMate AI Logo" />
-          <span
-            style="font-size: 13px; font-weight: 700; color: #ffffff; letter-spacing: 0.04em; white-space: nowrap; user-select: none;">RoundMate
-            <span style="color: #2dd4bf;">AI</span></span>
           <!-- session-timer hidden; stop-session-btn now shows the timer -->
           <div id="session-timer" style="display: none;">00:00</div>
         </div>
 
         <!-- Navigation buttons (Interactive) -->
         <div class="nav-buttons">
-          <button id="ai-btn" class="nav-btn ai-btn interactive"
-            data-tooltip="Toggle manual question input row">
+          <button id="ai-btn" class="nav-btn ai-btn interactive" data-tooltip="Toggle manual question input row">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <path
@@ -507,7 +546,7 @@
               stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
               <path
-                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1-2.83 0l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
               </path>
             </svg>
           </button>
@@ -527,7 +566,7 @@
             </svg>
           </div>
 
-          <!-- End Session â€” red pill that shows live timer and acts as stop button -->
+          <!-- End Session — red pill that shows live timer and acts as stop button -->
           <button id="stop-session-btn" class="ctrl-btn ctrl-btn-danger ctrl-btn-stop interactive"
             data-label="End Session">
             <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;">
@@ -539,10 +578,10 @@
         </div>
       </div>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• LAYER 2: INTERVIEWER TRANSCRIPT STRIP â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+      <!-- ══════════════ LAYER 2: INTERVIEWER TRANSCRIPT STRIP ══════════════ -->
       <div id="transcript-layer" class="layer-strip interactive">
         <!-- Mic icon indicator -->
-        <span class="layer-icon">ðŸŽ™</span>
+        <span class="layer-icon">🎙</span>
 
         <!-- Live scrolling transcript (contenteditable for manual corrections) -->
         <div id="transcript-block" class="transcript-scroll-text custom-scrollbar" contenteditable="true"
@@ -584,11 +623,11 @@
         </button>
       </div>
 
-      <!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• LAYER 3: AI ANSWER STRIP â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• -->
+      <!-- ══════════════ LAYER 3: AI ANSWER STRIP ══════════════ -->
       <!-- Hidden until first AI answer; answer stays visible when Assistant is toggled off -->
       <div id="ai-layer" class="layer-strip interactive">
 
-        <!-- COMPACT SECTION â€” always visible once #ai-layer is shown -->
+        <!-- COMPACT SECTION — always visible once #ai-layer is shown -->
         <div id="ai-layer-compact">
 
           <!-- Answer header: nav + scroll badge + actions -->
@@ -631,8 +670,7 @@
 
         <!-- EXTENDED SECTION: manual question input — shown only when Assistant btn is active -->
         <div id="ai-layer-extended">
-          <div class="input-area"
-            style="display: flex; gap: 8px; align-items: center;">
+          <div class="input-area" style="display: flex; gap: 8px; align-items: center;">
             <div style="position: relative; flex: 1; display: flex; align-items: center;">
               <input type="text" id="ai-input" class="custom-input" placeholder="Type a manual question instead..."
                 style="flex: 1; padding-right: 68px; cursor: default !important;" />
@@ -641,8 +679,10 @@
             </div>
             <button id="ai-send" class="btn-send interactive" data-tooltip="Ask Manual Question">Ask <span
                 id="badge-ask" class="shortcut-badge" style="display: inline-block;">Enter</span></button>
-            <button id="ai-layer-resizer-btn" class="interactive btn-resizer-toggle" data-tooltip="Drag to resize panel">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <button id="ai-layer-resizer-btn" class="interactive btn-resizer-toggle"
+              data-tooltip="Drag to resize panel">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 3 21 3 21 9"></polyline>
                 <polyline points="9 21 3 21 3 15"></polyline>
                 <line x1="21" y1="3" x2="14" y2="10"></line>
@@ -650,6 +690,12 @@
               </svg>
             </button>
           </div>
+          <!-- Live typing / prompt uploading status indicator -->
+          <div id="ai-input-status" style="display: none; align-items: center; gap: 6px; font-size: 10px; color: #2dd4bf; margin-top: 4px; padding-left: 2px;">
+            <span class="typing-dot-pulse"></span>
+            <span id="ai-input-status-text">Drafting prompt question...</span>
+          </div>
+        </div>
         </div>
 
       </div><!-- /#ai-layer -->
@@ -667,7 +713,7 @@
         <span
           style="font-size: 9px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Preferences</span>
         <button id="settings-close-btn" class="interactive" data-tooltip="Close Settings" data-tooltip-pos="right"
-          style="background: none; border: none; color: var(--text-muted); font-size: 11px; display: flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s; padding: 0 2px;">âœ•</button>
+          style="background: none; border: none; color: var(--text-muted); font-size: 11px; display: flex; align-items: center; justify-content: center; outline: none; transition: color 0.2s; padding: 0 2px;">✕</button>
       </div>
 
       <!-- User Account / Mail Section -->
@@ -715,12 +761,14 @@
       </div>
 
       <!-- Developer Stealth Mode Toggle (Stealth Protection ON vs Normal Mode OFF) -->
-      <div id="settings-sec-stealthmode" style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+      <div id="settings-sec-stealthmode"
+        style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
         <div style="display: flex; flex-direction: column;">
           <span style="font-size: 10px; font-weight: 600; color: #fff;">Dev Stealth Mode</span>
           <span id="stealth-mode-label" style="font-size: 9px; color: #2dd4bf;">ON (Protected)</span>
         </div>
-        <button id="dev-stealth-toggle-btn" class="interactive" data-tooltip="Toggle OS Screen Capture Protection" data-tooltip-pos="right"
+        <button id="dev-stealth-toggle-btn" class="interactive" data-tooltip="Toggle OS Screen Capture Protection"
+          data-tooltip-pos="right"
           style="background: rgba(20, 184, 166, 0.15); border: 1px solid rgba(20, 184, 166, 0.4); color: #2dd4bf; border-radius: 6px; padding: 3px 10px; font-size: 10px; font-weight: 700; outline: none; transition: all 0.2s; -webkit-app-region: no-drag !important;">
           ON
         </button>
@@ -730,10 +778,21 @@
       <button id="open-shortcuts-btn" class="interactive"
         style="width: 100%; margin-top: 6px; padding: 7px 10px; background: rgba(20, 184, 166, 0.12); border: 1px solid rgba(20, 184, 166, 0.3); color: #2dd4bf; border-radius: 6px; font-size: 10.5px; font-weight: 600; outline: none; transition: all 0.2s; display: flex; align-items: center; justify-content: space-between; -webkit-app-region: no-drag !important;">
         <div style="display: flex; align-items: center; gap: 6px;">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01"/><path d="M10 8h.01"/><path d="M14 8h.01"/><path d="M18 8h.01"/><path d="M8 12h.01"/><path d="M12 12h.01"/><path d="M16 12h.01"/><path d="M7 16h10"/></svg>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2" />
+            <path d="M6 8h.01" />
+            <path d="M10 8h.01" />
+            <path d="M14 8h.01" />
+            <path d="M18 8h.01" />
+            <path d="M8 12h.01" />
+            <path d="M12 12h.01" />
+            <path d="M16 12h.01" />
+            <path d="M7 16h10" />
+          </svg>
           <span>Edit Shortcuts</span>
         </div>
-        <span style="font-size: 12px; font-weight: 700; opacity: 0.8;">â€º</span>
+        <span style="font-size: 12px; font-weight: 700; opacity: 0.8;">›</span>
       </button>
 
       <!-- Dashboard Button -->
@@ -765,14 +824,19 @@
     <!-- DEDICATED KEYBOARD SHORTCUTS SUB-POPUP -->
     <div id="shortcuts-subpopup" class="interactive custom-scrollbar"
       style="display: none; position: absolute; top: 40px; right: 10px; background: rgba(15, 15, 22, 0.96); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 12px; z-index: 99999 !important; min-width: 220px; max-height: 460px; overflow-y: auto; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.05);">
-      
+
       <!-- Sub-popup Header with Back button -->
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; margin-bottom: 2px;">
-        <button id="shortcuts-back-btn" class="interactive" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">
-          â€¹ Back
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; margin-bottom: 2px;">
+        <button id="shortcuts-back-btn" class="interactive"
+          style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: #fff; border-radius: 6px; padding: 2px 8px; font-size: 10px; font-weight: 600; outline: none; transition: all 0.2s; display: flex; align-items: center; gap: 4px;">
+          ‹ Back
         </button>
-        <span style="font-size: 10px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">Keyboard Shortcuts</span>
-        <button id="shortcuts-close-btn" class="interactive" style="background: none; border: none; color: var(--text-muted); font-size: 11px; outline: none; padding: 0 2px;">âœ•</button>
+        <span
+          style="font-size: 10px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em;">Keyboard
+          Shortcuts</span>
+        <button id="shortcuts-close-btn" class="interactive"
+          style="background: none; border: none; color: var(--text-muted); font-size: 11px; outline: none; padding: 0 2px;">✕</button>
       </div>
 
       <!-- Shortcut Recorders -->
@@ -817,8 +881,8 @@
         Click any button to rebind hotkey.
       </div>
     </div>
-      </button>
-    </div>
+    </button>
+  </div>
   </div>
 
   <button id="diamond-btn" class="interactive"
@@ -826,132 +890,141 @@
     <img src="logo.png" style="width: 20px; height: 20px; object-fit: contain;" alt="Logo" />
   </button>
 
-    <!-- Custom virtual cursor removed to use OS cursor -->
+  <!-- Custom virtual cursor removed to use OS cursor -->
 
-    <!-- Custom Prompt Input Modal -->
-    <div id="prompt-modal"
-      style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 20px; -webkit-app-region: no-drag !important;">
-      <div
-        style="background: #0f1123; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 16px;">
-        <div style="font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
-          âœï¸ Add Custom Prompt Instruction
-        </div>
+  <!-- Custom Prompt Input Modal -->
+  <div id="prompt-modal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); backdrop-filter: blur(8px); z-index: 10000; align-items: center; justify-content: center; padding: 20px; -webkit-app-region: no-drag !important;">
+    <div
+      style="background: #0f1123; border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 16px;">
+      <div style="font-size: 15px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px;">
+        ✍️ Add Custom Prompt Instruction
+      </div>
 
-        <div style="display: flex; flex-direction: column; gap: 6px;">
-          <label
-            style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em; text-align: left;">Prompt
-            Name</label>
-          <input type="text" id="modal-prompt-name" class="setup-input" placeholder="e.g. Behavioral Persona"
-            style="padding: 10px 12px; font-size: 13px; cursor: default !important;" />
-        </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label
+          style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em; text-align: left;">Prompt
+          Name</label>
+        <input type="text" id="modal-prompt-name" class="setup-input" placeholder="e.g. Behavioral Persona"
+          style="padding: 10px 12px; font-size: 13px; cursor: default !important;" />
+      </div>
 
-        <div style="display: flex; flex-direction: column; gap: 6px;">
-          <label
-            style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em; text-align: left;">Instruction
-            Content</label>
-          <textarea id="modal-prompt-content" class="setup-textarea"
-            placeholder="Describe the instructions for the AI to follow..."
-            style="height: 120px; font-size: 13px; cursor: default !important;"></textarea>
-        </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label
+          style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.05em; text-align: left;">Instruction
+          Content</label>
+        <textarea id="modal-prompt-content" class="setup-textarea"
+          placeholder="Describe the instructions for the AI to follow..."
+          style="height: 120px; font-size: 13px; cursor: default !important;"></textarea>
+      </div>
 
-        <div style="display: flex; gap: 12px; margin-top: 4px;">
-          <button id="modal-prompt-cancel" class="interactive"
-            style="flex: 1; padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">Cancel</button>
-          <button id="modal-prompt-save" class="interactive"
-            style="flex: 1; padding: 10px; background: linear-gradient(135deg, #14b8a6, #6d28d9); border: none; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s; box-shadow: 0 4px 12px rgba(20, 184, 166,0.3);">Save</button>
-        </div>
+      <!-- Live prompt typing / uploading status in modal -->
+      <div id="modal-prompt-status" class="upload-status-banner uploading" style="display: none; padding: 6px 10px; font-size: 11px;">
+        <span class="upload-spinner" id="modal-prompt-spinner"></span>
+        <span id="modal-prompt-status-text" style="flex: 1;">Drafting prompt...</span>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 4px;">
+        <button id="modal-prompt-cancel" class="interactive"
+          style="flex: 1; padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-secondary); font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">Cancel</button>
+        <button id="modal-prompt-save" class="interactive"
+          style="flex: 1; padding: 10px; background: linear-gradient(135deg, #14b8a6, #6d28d9); border: none; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s; box-shadow: 0 4px 12px rgba(20, 184, 166,0.3);">Save</button>
       </div>
     </div>
+  </div>
 
-    <!-- Edit Session Modal -->
-    <div id="edit-session-modal"
-      style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.72); backdrop-filter: blur(10px); z-index: 10001; align-items: flex-start; justify-content: center; padding: 12px; -webkit-app-region: no-drag !important; overflow-y: auto;">
-      <div
-        style="background: linear-gradient(145deg, #0f1123, #111827); border: 1px solid rgba(45, 212, 191,0.2); border-radius: 20px; padding: 24px; width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(45, 212, 191,0.08); display: flex; flex-direction: column; gap: 18px; margin-top: 8px;">
+  <!-- Edit Session Modal -->
+  <div id="edit-session-modal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.72); backdrop-filter: blur(10px); z-index: 10001; align-items: flex-start; justify-content: center; padding: 12px; -webkit-app-region: no-drag !important; overflow-y: auto;">
+    <div
+      style="background: linear-gradient(145deg, #0f1123, #111827); border: 1px solid rgba(45, 212, 191,0.2); border-radius: 20px; padding: 24px; width: 100%; max-width: 520px; box-shadow: 0 24px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(45, 212, 191,0.08); display: flex; flex-direction: column; gap: 18px; margin-top: 8px;">
 
-        <!-- Header -->
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <div
-              style="width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, rgba(45, 212, 191,0.25), rgba(20, 184, 166,0.15)); border: 1px solid rgba(45, 212, 191,0.3); display: flex; align-items: center; justify-content: center;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2.5"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-              </svg>
-            </div>
-            <div>
-              <div style="font-size: 14px; font-weight: 700; color: #fff;">Edit Session Data</div>
-              <div style="font-size: 10px; color: #2dd4bf; margin-top: 1px;">Session continues â€” no restart needed</div>
-            </div>
-          </div>
-          <button id="edit-session-close" class="interactive"
-            style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); border-radius: 8px; width: 28px; height: 28px;  outline: none; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.2s;">âœ•</button>
-        </div>
-
-        <!-- Company & Role -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div style="display: flex; flex-direction: column; gap: 5px; position: relative;">
-            <label
-              style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Company <span style="color: #ef4444;">*</span></label>
-            <input type="text" id="edit-company" class="setup-input" placeholder="e.g. Google" autocomplete="off"
-              style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
-            <div id="edit-company-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 5px;">
-            <label
-              style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Target
-              Role <span style="color: #ef4444;">*</span></label>
-            <input type="text" id="edit-role" class="setup-input" placeholder="e.g. Senior SWE"
-              style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
-          </div>
-        </div>
-
-        <!-- Job Description -->
-        <div style="display: flex; flex-direction: column; gap: 5px;">
-          <label
-            style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Job
-            Description <span style="color: #ef4444;">*</span></label>
-          <textarea id="edit-jd" class="setup-textarea" placeholder="Paste job description here..."
-            style="height: 90px; font-size: 12px; resize: vertical; cursor: default !important;"></textarea>
-        </div>
-
-        <!-- Resume -->
-        <div style="display: flex; flex-direction: column; gap: 5px;">
-          <label
-            style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Resume</label>
-          <select id="edit-resume-select" class="setup-input" style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
-        </div>
-
-        <!-- Extra Context Doc -->
-        <div style="display: flex; flex-direction: column; gap: 5px;">
-          <label
-            style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Extra
-            Context Document</label>
-          <select id="edit-doc-select" class="setup-input" style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
-        </div>
-
-        <!-- Status message -->
-        <div id="edit-session-status"
-          style="display: none; padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 600;"></div>
-
-        <!-- Action Buttons -->
-        <div style="display: flex; gap: 10px; margin-top: 2px;">
-          <button id="edit-session-cancel" class="interactive"
-            style="flex: 1; padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: var(--text-secondary); font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">Cancel</button>
-          <button id="edit-session-save" class="interactive"
-            style="flex: 2; padding: 10px; background: linear-gradient(135deg, #0d9488, #6d28d9); border: 1px solid rgba(45, 212, 191,0.3); border-radius: 10px; color: #fff; font-size: 13px; font-weight: 700;  outline: none; transition: all 0.2s; box-shadow: 0 4px 16px rgba(109,40,217,0.35); display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+      <!-- Header -->
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div
+            style="width: 32px; height: 32px; border-radius: 10px; background: linear-gradient(135deg, rgba(45, 212, 191,0.25), rgba(20, 184, 166,0.15)); border: 1px solid rgba(45, 212, 191,0.3); display: flex; align-items: center; justify-content: center;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2.5"
               stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
             </svg>
-            Update Session
-          </button>
+          </div>
+          <div>
+            <div style="font-size: 14px; font-weight: 700; color: #fff;">Edit Session Data</div>
+            <div style="font-size: 10px; color: #2dd4bf; margin-top: 1px;">Session continues — no restart needed</div>
+          </div>
+        </div>
+        <button id="edit-session-close" class="interactive"
+          style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); border-radius: 8px; width: 28px; height: 28px;  outline: none; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.2s;">✕</button>
+      </div>
+
+      <!-- Company & Role -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 5px; position: relative;">
+          <label
+            style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Company
+            <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="edit-company" class="setup-input" placeholder="e.g. Google" autocomplete="off"
+            style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
+          <div id="edit-company-autocomplete" class="autocomplete-dropdown" style="display: none;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 5px;">
+          <label
+            style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Target
+            Role <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="edit-role" class="setup-input" placeholder="e.g. Senior SWE"
+            style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
         </div>
       </div>
-    </div>
 
-    <script src="renderer.js"></script>
+      <!-- Job Description -->
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <label
+          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Job
+          Description <span style="color: #ef4444;">*</span></label>
+        <textarea id="edit-jd" class="setup-textarea" placeholder="Paste job description here..."
+          style="height: 90px; font-size: 12px; resize: vertical; cursor: default !important;"></textarea>
+      </div>
+
+      <!-- Resume -->
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <label
+          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Resume</label>
+        <select id="edit-resume-select" class="setup-input"
+          style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
+      </div>
+
+      <!-- Extra Context Doc -->
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <label
+          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Extra
+          Context Document</label>
+        <select id="edit-doc-select" class="setup-input"
+          style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
+      </div>
+
+      <!-- Status message -->
+      <div id="edit-session-status"
+        style="display: none; padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 600;"></div>
+
+      <!-- Action Buttons -->
+      <div style="display: flex; gap: 10px; margin-top: 2px;">
+        <button id="edit-session-cancel" class="interactive"
+          style="flex: 1; padding: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: var(--text-secondary); font-size: 13px; font-weight: 600;  outline: none; transition: all 0.2s;">Cancel</button>
+        <button id="edit-session-save" class="interactive"
+          style="flex: 2; padding: 10px; background: linear-gradient(135deg, #0d9488, #6d28d9); border: 1px solid rgba(45, 212, 191,0.3); border-radius: 10px; color: #fff; font-size: 13px; font-weight: 700;  outline: none; transition: all 0.2s; box-shadow: 0 4px 16px rgba(109,40,217,0.35); display: flex; align-items: center; justify-content: center; gap: 6px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          Update Session
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
 </body>
 
 </html>

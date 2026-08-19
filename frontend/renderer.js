@@ -1398,20 +1398,71 @@ setupJd.addEventListener('input', debounceUpdateScore);
 setupCompany.addEventListener('input', debounceUpdateScore);
 setupRole.addEventListener('input', debounceUpdateScore);
 
+// ── Live Upload & Prompt Status Banner Helper ──────────────────────────────
+function setStep2UploadStatus(message, type = 'uploading', autoDismissMs = 0) {
+  const statusEl = document.getElementById('step2-upload-status');
+  const spinnerEl = document.getElementById('step2-upload-spinner');
+  const textEl = document.getElementById('step2-upload-text');
+  if (!statusEl || !textEl) return;
+
+  statusEl.className = `upload-status-banner ${type}`;
+  statusEl.style.display = 'flex';
+  textEl.textContent = message;
+
+  if (spinnerEl) {
+    spinnerEl.style.display = type === 'uploading' ? 'inline-block' : 'none';
+    if (type === 'error') {
+      spinnerEl.className = 'upload-spinner upload-spinner-danger';
+    } else {
+      spinnerEl.className = 'upload-spinner';
+    }
+  }
+
+  if (autoDismissMs > 0) {
+    setTimeout(() => {
+      if (statusEl && statusEl.textContent.includes(message)) {
+        statusEl.style.display = 'none';
+      }
+    }, autoDismissMs);
+  }
+}
+
 // Extra Context Action Buttons
 const inputPromptBtn = document.getElementById('input-prompt-btn');
 const uploadDocBtn = document.getElementById('upload-doc-btn');
+const step2UploadResumeBtnEl = document.getElementById('step2-upload-resume-btn');
 
 const promptModal = document.getElementById('prompt-modal');
 const modalPromptName = document.getElementById('modal-prompt-name');
 const modalPromptContent = document.getElementById('modal-prompt-content');
 const modalPromptCancel = document.getElementById('modal-prompt-cancel');
 const modalPromptSave = document.getElementById('modal-prompt-save');
+const modalPromptStatus = document.getElementById('modal-prompt-status');
+const modalPromptStatusText = document.getElementById('modal-prompt-status-text');
+const modalPromptSpinner = document.getElementById('modal-prompt-spinner');
+
+function updateModalPromptTypingStatus() {
+  if (!modalPromptStatus || !modalPromptStatusText) return;
+  const nameLen = modalPromptName ? modalPromptName.value.trim().length : 0;
+  const contentLen = modalPromptContent ? modalPromptContent.value.trim().length : 0;
+  if (nameLen > 0 || contentLen > 0) {
+    modalPromptStatus.className = 'upload-status-banner uploading';
+    modalPromptStatus.style.display = 'flex';
+    if (modalPromptSpinner) modalPromptSpinner.style.display = 'none';
+    modalPromptStatusText.innerHTML = `<span class="typing-dot-pulse"></span> Drafting instruction prompt (${contentLen} chars)...`;
+  } else {
+    modalPromptStatus.style.display = 'none';
+  }
+}
+
+if (modalPromptName) modalPromptName.addEventListener('input', updateModalPromptTypingStatus);
+if (modalPromptContent) modalPromptContent.addEventListener('input', updateModalPromptTypingStatus);
 
 if (inputPromptBtn && promptModal) {
   inputPromptBtn.addEventListener('click', () => {
     modalPromptName.value = '';
     modalPromptContent.value = '';
+    if (modalPromptStatus) modalPromptStatus.style.display = 'none';
     promptModal.style.display = 'flex';
   });
 }
@@ -1426,10 +1477,24 @@ if (modalPromptSave && promptModal) {
   modalPromptSave.addEventListener('click', async () => {
     const promptName = modalPromptName.value.trim();
     const promptContent = modalPromptContent.value.trim();
-    if (!promptName || !promptContent) return;
+    if (!promptName || !promptContent) {
+      if (modalPromptStatus && modalPromptStatusText) {
+        modalPromptStatus.className = 'upload-status-banner error';
+        modalPromptStatus.style.display = 'flex';
+        if (modalPromptSpinner) modalPromptSpinner.style.display = 'none';
+        modalPromptStatusText.textContent = 'Please enter both a Prompt Name and Content.';
+      }
+      return;
+    }
 
     modalPromptSave.disabled = true;
-    modalPromptSave.textContent = 'Saving...';
+    modalPromptSave.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
+    if (modalPromptStatus && modalPromptStatusText) {
+      modalPromptStatus.className = 'upload-status-banner uploading';
+      modalPromptStatus.style.display = 'flex';
+      if (modalPromptSpinner) modalPromptSpinner.style.display = 'inline-block';
+      modalPromptStatusText.textContent = `Uploading custom prompt "${promptName}" to knowledge base...`;
+    }
 
     try {
       const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
@@ -1450,9 +1515,23 @@ if (modalPromptSave && promptModal) {
       backendDocs.push(data);
       await loadDropdowns();
       setupDocSelect.value = data.id;
-      promptModal.style.display = 'none';
+
+      if (modalPromptStatus && modalPromptStatusText) {
+        modalPromptStatus.className = 'upload-status-banner success';
+        if (modalPromptSpinner) modalPromptSpinner.style.display = 'none';
+        modalPromptStatusText.textContent = `✓ Prompt "${promptName}" uploaded successfully!`;
+      }
+      setStep2UploadStatus(`✓ Custom prompt "${promptName}" added to knowledge bank`, 'success', 3500);
+      setTimeout(() => {
+        promptModal.style.display = 'none';
+      }, 700);
     } catch (e) {
       console.error('[Stealth] Custom prompt save failed:', e.message);
+      if (modalPromptStatus && modalPromptStatusText) {
+        modalPromptStatus.className = 'upload-status-banner error';
+        if (modalPromptSpinner) modalPromptSpinner.style.display = 'none';
+        modalPromptStatusText.textContent = `Upload failed: ${e.message}`;
+      }
       showInlineError('Failed to save custom prompt instructions.', document.getElementById('setup-step-2'));
     } finally {
       modalPromptSave.disabled = false;
@@ -1531,13 +1610,20 @@ async function updateResumeJdScore() {
   }
 }
 
-// File upload event handlers
+// File upload event handlers (with live visual progress feedback)
 setupResumeFile.addEventListener('change', async () => {
   if (!setupResumeFile.files.length) return;
   const file = setupResumeFile.files[0];
   const formData = new FormData();
   formData.append('file', file);
   formData.append('user_id', normalizeUserId(USER_ID));
+
+  const uploadBtn = document.getElementById('step2-upload-resume-btn');
+  if (uploadBtn) {
+    uploadBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
+    uploadBtn.classList.add('btn-uploading-active');
+  }
+  setStep2UploadStatus(`⏳ Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
@@ -1551,6 +1637,15 @@ setupResumeFile.addEventListener('change', async () => {
     await loadDropdowns();
     setupResumeSelect.value = data.id;
     renderContextChips();
+    setStep2UploadStatus(`✓ Resume "${file.name}" uploaded and parsed successfully!`, 'success', 3500);
+
+    if (uploadBtn) {
+      uploadBtn.innerHTML = '✓ Uploaded';
+      setTimeout(() => {
+        uploadBtn.innerHTML = '📁 Upload';
+        uploadBtn.classList.remove('btn-uploading-active');
+      }, 1500);
+    }
   } catch (e) {
     console.warn('[Stealth] Remote resume upload failed — falling back to local file parsing:', e.message);
     try {
@@ -1567,9 +1662,23 @@ setupResumeFile.addEventListener('change', async () => {
       setupResumeSelect.appendChild(opt);
       setupResumeSelect.value = localResume.id;
       renderContextChips();
+      setStep2UploadStatus(`✓ Local resume "${file.name}" loaded successfully!`, 'success', 3500);
+
+      if (uploadBtn) {
+        uploadBtn.innerHTML = '✓ Loaded';
+        setTimeout(() => {
+          uploadBtn.innerHTML = '📁 Upload';
+          uploadBtn.classList.remove('btn-uploading-active');
+        }, 1500);
+      }
     } catch (readErr) {
       console.error('[Stealth] Local resume read failed:', readErr);
+      setStep2UploadStatus(`⚠️ Failed to parse resume "${file.name}": ${readErr.message}`, 'error', 5000);
       showInlineError('Failed to read resume file.', document.getElementById('setup-step-2'));
+      if (uploadBtn) {
+        uploadBtn.innerHTML = '📁 Upload';
+        uploadBtn.classList.remove('btn-uploading-active');
+      }
     }
   } finally {
     setupResumeFile.value = '';
@@ -1584,6 +1693,12 @@ setupDocFile.addEventListener('change', async () => {
   formData.append('document_type', 'document');
   formData.append('user_id', normalizeUserId(USER_ID));
 
+  if (uploadDocBtn) {
+    uploadDocBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
+    uploadDocBtn.classList.add('btn-uploading-active');
+  }
+  setStep2UploadStatus(`⏳ Uploading reference document: "${file.name}"...`, 'uploading');
+
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
     const res = await fetch(`${base}/api/knowledge/upload`, {
@@ -1597,6 +1712,15 @@ setupDocFile.addEventListener('change', async () => {
     selectedDocIdsSet.add(data.id);
     if (addContextMenu) addContextMenu.style.display = 'none';
     renderContextChips();
+    setStep2UploadStatus(`✓ Document "${file.name}" added to knowledge bank!`, 'success', 3500);
+
+    if (uploadDocBtn) {
+      uploadDocBtn.innerHTML = '✓ Uploaded';
+      setTimeout(() => {
+        uploadDocBtn.innerHTML = '📁 Upload Doc';
+        uploadDocBtn.classList.remove('btn-uploading-active');
+      }, 1500);
+    }
   } catch (e) {
     console.warn('[Stealth] Remote document upload failed — falling back to local file parsing:', e.message);
     try {
@@ -1611,9 +1735,23 @@ setupDocFile.addEventListener('change', async () => {
       selectedDocIdsSet.add(localDoc.id);
       if (addContextMenu) addContextMenu.style.display = 'none';
       renderContextChips();
+      setStep2UploadStatus(`✓ Local document "${file.name}" attached to memory!`, 'success', 3500);
+
+      if (uploadDocBtn) {
+        uploadDocBtn.innerHTML = '✓ Loaded';
+        setTimeout(() => {
+          uploadDocBtn.innerHTML = '📁 Upload Doc';
+          uploadDocBtn.classList.remove('btn-uploading-active');
+        }, 1500);
+      }
     } catch (readErr) {
       console.error('[Stealth] Local document read failed:', readErr);
+      setStep2UploadStatus(`⚠️ Failed to parse document "${file.name}": ${readErr.message}`, 'error', 5000);
       showInlineError('Failed to read reference document file.', document.getElementById('setup-step-2'));
+      if (uploadDocBtn) {
+        uploadDocBtn.innerHTML = '📁 Upload Doc';
+        uploadDocBtn.classList.remove('btn-uploading-active');
+      }
     }
   } finally {
     setupDocFile.value = '';
@@ -2305,8 +2443,10 @@ startSessionBtn.addEventListener('click', async () => {
 });
 
 
-// Stop session button event handler
-stopSessionBtn.addEventListener('click', async () => {
+// Unified End Session function
+async function endSession() {
+  console.log('[Session] Ending session and resetting state...');
+
   // 1. Immediately stop audio recording & native transcription if active
   try {
     if (typeof stopRecording === 'function') {
@@ -2443,7 +2583,19 @@ stopSessionBtn.addEventListener('click', async () => {
   if (typeof loadDropdowns === 'function') {
     loadDropdowns();
   }
-});
+}
+
+// Bind End Session actions to both Stop Button & Timer elements
+if (stopSessionBtn) {
+  stopSessionBtn.addEventListener('click', endSession);
+}
+if (sessionTimerElement) {
+  sessionTimerElement.addEventListener('click', endSession);
+}
+const stopBtnTimerEl = document.getElementById('stop-btn-timer');
+if (stopBtnTimerEl) {
+  stopBtnTimerEl.addEventListener('click', endSession);
+}
 
 
 // -------------------------------------------------------------
@@ -3780,14 +3932,41 @@ aiAnswerBtn.addEventListener('click', () => {
   queryAssistant(null, false);
 });
 
-// Manual Question Submission
+// Manual Question Submission with Live Upload / Prompting Status
+const aiInputStatusEl = document.getElementById('ai-input-status');
+const aiInputStatusText = document.getElementById('ai-input-status-text');
+
+if (aiInput) {
+  aiInput.addEventListener('input', () => {
+    if (!aiInputStatusEl || !aiInputStatusText) return;
+    const val = aiInput.value.trim();
+    if (val.length > 0) {
+      aiInputStatusEl.style.display = 'flex';
+      aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> Drafting prompt question (${val.length} chars)...`;
+    } else {
+      aiInputStatusEl.style.display = 'none';
+    }
+  });
+}
+
 function handleManualAISubmit() {
   const query = aiInput.value.trim();
   if (!query) return;
   aiInput.value = '';
 
+  if (aiInputStatusEl && aiInputStatusText) {
+    aiInputStatusEl.style.display = 'flex';
+    aiInputStatusText.innerHTML = `<span class="upload-spinner" style="width:9px;height:9px;"></span> Uploading prompt to AI model & generating response...`;
+  }
+
   // Trigger query with manual context
-  queryAssistant(query, true);
+  Promise.resolve(queryAssistant(query, true)).finally(() => {
+    if (aiInputStatusEl) {
+      setTimeout(() => {
+        aiInputStatusEl.style.display = 'none';
+      }, 1200);
+    }
+  });
 }
 
 aiSend.addEventListener('click', handleManualAISubmit);
