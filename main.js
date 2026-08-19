@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard } = require('electron');
 app.setName('RM');
 app.name = 'RM';
 const path = require('path');
@@ -25,6 +25,115 @@ let mainWindow;
 let activeSessionId = null;
 let activeSessionStartTime = null;
 let isToolbarMode = false;
+
+// ── Low-Level Stealth Keyboard Capture Process ───
+let stealthKeyHookProcess = null;
+let isStealthTypingActive = false;
+
+function ensureKeyHookBinary() {
+  const exePath = path.join(__dirname, 'stealth_keyhook.exe');
+  if (fs.existsSync(exePath)) return exePath;
+
+  const csPath = path.join(__dirname, 'stealth_keyhook.cs');
+  if (fs.existsSync(csPath)) {
+    const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
+    if (fs.existsSync(cscPath)) {
+      try {
+        const { execSync } = require('child_process');
+        console.log('[Stealth KeyHook] Compiling stealth_keyhook.cs...');
+        execSync(`"${cscPath}" /target:exe /out:"${exePath}" /optimize+ "${csPath}"`);
+        if (fs.existsSync(exePath)) {
+          console.log('[Stealth KeyHook] Successfully compiled stealth_keyhook.exe');
+          return exePath;
+        }
+      } catch (e) {
+        console.error('[Stealth KeyHook] Failed to compile keyhook:', e.message);
+      }
+    }
+  }
+  return null;
+}
+
+function initStealthKeyHook() {
+  if (process.platform !== 'win32') return;
+  if (stealthKeyHookProcess) return;
+
+  const exePath = ensureKeyHookBinary();
+  if (!exePath) {
+    console.warn('[Stealth KeyHook] stealth_keyhook.exe binary not found.');
+    return;
+  }
+
+  try {
+    const { spawn } = require('child_process');
+    stealthKeyHookProcess = spawn(exePath, [], {
+      stdio: ['pipe', 'pipe', 'ignore'],
+      windowsHide: true
+    });
+
+    let buffer = '';
+    stealthKeyHookProcess.stdout.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop(); // keep remainder
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('KEY:')) {
+          try {
+            const jsonStr = trimmed.substring(4);
+            const keyData = JSON.parse(jsonStr);
+
+            if (keyData.action === 'enter' || keyData.action === 'escape') {
+              isStealthTypingActive = false;
+            } else if (keyData.action === 'toggle') {
+              toggleStealthTyping();
+              continue;
+            }
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('stealth-key-input', keyData);
+            }
+          } catch (err) {
+            console.error('[Stealth KeyHook] Parse error:', err.message, trimmed);
+          }
+        }
+      }
+    });
+
+    stealthKeyHookProcess.on('error', (err) => {
+      console.warn('[Stealth KeyHook] Process error:', err.message);
+    });
+
+    stealthKeyHookProcess.on('exit', (code) => {
+      console.log(`[Stealth KeyHook] Process exited with code ${code}`);
+      stealthKeyHookProcess = null;
+    });
+
+    console.log('[Stealth KeyHook] Initialized successfully');
+  } catch (e) {
+    console.error('[Stealth KeyHook] Initialization failed:', e.message);
+  }
+}
+
+function setStealthTyping(active) {
+  isStealthTypingActive = Boolean(active);
+  if (stealthKeyHookProcess && stealthKeyHookProcess.stdin && !stealthKeyHookProcess.stdin.destroyed) {
+    const cmd = isStealthTypingActive ? 'START_TYPING\n' : 'STOP_TYPING\n';
+    try {
+      stealthKeyHookProcess.stdin.write(cmd);
+    } catch (e) { }
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('stealth-typing-state', { active: isStealthTypingActive });
+  }
+  console.log(`[Stealth KeyHook] Stealth typing state: ${isStealthTypingActive}`);
+}
+
+function toggleStealthTyping() {
+  setStealthTyping(!isStealthTypingActive);
+}
 
 // Persistent Bounds (Width, Height, X, Y, Panel Size) file path
 function getBoundsFilePath() {
@@ -362,6 +471,7 @@ function createWindow() {
   mainWindow.show();
   mainWindow.setFocusable(true);
   mainWindow.setResizable(false);
+  initStealthKeyHook();
 
   // Forward all renderer logs to the terminal
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -405,6 +515,27 @@ function createWindow() {
     }
   });
 
+  // Stealth typing mode toggle handler
+  ipcMain.on('set-stealth-typing', (event, active) => {
+    setStealthTyping(active);
+  });
+
+  // Clipboard read handler
+  ipcMain.handle('read-clipboard-text', () => {
+    try {
+      return clipboard.readText();
+    } catch (e) {
+      return '';
+    }
+  });
+
+  // Clipboard write handler
+  ipcMain.on('write-clipboard-text', (event, text) => {
+    try {
+      clipboard.writeText(String(text || ''));
+    } catch (e) { }
+  });
+
   // Register dynamic global shortcuts with OS window manager
   ipcMain.on('register-global-shortcuts', (event, shortcuts) => {
     try {
@@ -445,6 +576,9 @@ function createWindow() {
         try {
           const registered = globalShortcut.register(shortcutStr, () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
+              if (action === 'askQuestion') {
+                toggleStealthTyping();
+              }
               mainWindow.webContents.send('global-shortcut-triggered', action);
             }
           });
@@ -1623,6 +1757,15 @@ if (!gotTheLock) {
     });
   });
 }
+
+app.on('before-quit', () => {
+  if (stealthKeyHookProcess) {
+    try {
+      stealthKeyHookProcess.stdin.write('EXIT\n');
+      stealthKeyHookProcess.kill();
+    } catch (e) { }
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

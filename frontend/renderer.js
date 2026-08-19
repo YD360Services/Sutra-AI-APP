@@ -4172,9 +4172,16 @@ if (aiInput) {
 }
 
 function handleManualAISubmit() {
-  const query = aiInput.value.trim();
+  const query = aiInput ? aiInput.value.trim() : '';
   if (!query) return;
-  aiInput.value = '';
+  if (aiInput) aiInput.value = '';
+
+  if (typeof updateStealthTypingUI === 'function') {
+    updateStealthTypingUI(false);
+  }
+  if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+    window.electronAPI.setStealthTyping(false);
+  }
 
   if (aiInputStatusEl && aiInputStatusText) {
     aiInputStatusEl.style.display = 'flex';
@@ -4191,10 +4198,15 @@ function handleManualAISubmit() {
   });
 }
 
-aiSend.addEventListener('click', handleManualAISubmit);
-aiInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') handleManualAISubmit();
-});
+if (aiSend) aiSend.addEventListener('click', handleManualAISubmit);
+if (aiInput) {
+  aiInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleManualAISubmit();
+    }
+  });
+}
 
 recordBtn.addEventListener('click', toggleRecording);
 if (micBtnAi) {
@@ -5555,23 +5567,15 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
   }
 
-  // Focus Manual Question Input Shortcut (e.g. Ctrl+M)
+  // Focus / Trigger Manual Question Input Shortcut (e.g. Ctrl+M or Ctrl+\)
   if (checkShortcut('askQuestion', e)) {
     e.preventDefault();
-    const aiBtn = document.getElementById('ai-btn');
-    const aiPanel = document.getElementById('ai-panel');
-    const aiInput = document.getElementById('ai-input');
-
-    if (aiPanel && (aiPanel.style.display === 'none' || getComputedStyle(aiPanel).display === 'none')) {
-      if (aiBtn) aiBtn.click();
+    if (typeof openPanel === 'function') openPanel('ai');
+    if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+      window.electronAPI.setStealthTyping(true);
     }
-
-    if (aiInput) {
-      if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-        window.electronAPI.setFocusable(true);
-      }
-      aiInput.focus();
-      aiInput.select();
+    if (typeof updateStealthTypingUI === 'function') {
+      updateStealthTypingUI(true);
     }
   }
 
@@ -5909,9 +5913,17 @@ setTimeout(() => {
         evt.preventDefault();
         const aiSendBtn = document.getElementById('ai-send');
         if (aiSendBtn) aiSendBtn.click();
+        if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+          window.electronAPI.setStealthTyping(false);
+        }
+        updateStealthTypingUI(false);
         aiInput.blur();
       } else if (evt.key === 'Escape') {
         evt.preventDefault();
+        if (window.electronAPI && typeof window.electronAPI.setStealthTyping === 'function') {
+          window.electronAPI.setStealthTyping(false);
+        }
+        updateStealthTypingUI(false);
         aiInput.blur();
       }
     });
@@ -5932,24 +5944,163 @@ setTimeout(() => {
   if (savedOpacity) applyOpacity(savedOpacity);
 }, 500);
 
+// ── Global Stealth Typing Manager (Zero Focus Loss) ──────────────────────────
+let isStealthTyping = false;
+
+function updateStealthTypingUI(active) {
+  isStealthTyping = Boolean(active);
+  const aiInput = document.getElementById('ai-input');
+  const aiInputStatusEl = document.getElementById('ai-input-status');
+  const aiInputStatusText = document.getElementById('ai-input-status-text');
+
+  if (active) {
+    if (typeof openPanel === 'function') openPanel('ai');
+    if (aiInput) {
+      aiInput.classList.add('stealth-typing-active');
+      const len = aiInput.value.length;
+      aiInput.setSelectionRange(len, len);
+    }
+    if (aiInputStatusEl && aiInputStatusText) {
+      aiInputStatusEl.style.display = 'flex';
+      const count = aiInput ? aiInput.value.length : 0;
+      aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> ⚡ <strong>Stealth Typing Active</strong> • Type & press Enter to ask (Ctrl+\\ or Esc to exit)${count > 0 ? ` (${count} chars)` : ''}`;
+    }
+  } else {
+    if (aiInput) {
+      aiInput.classList.remove('stealth-typing-active');
+    }
+    if (aiInputStatusEl && aiInputStatusText) {
+      const val = aiInput ? aiInput.value.trim() : '';
+      if (val.length > 0) {
+        aiInputStatusEl.style.display = 'flex';
+        aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> Drafting prompt question (${val.length} chars)...`;
+      } else {
+        aiInputStatusEl.style.display = 'none';
+      }
+    }
+  }
+}
+
+if (window.electronAPI && typeof window.electronAPI.onStealthTypingState === 'function') {
+  window.electronAPI.onStealthTypingState((state) => {
+    updateStealthTypingUI(state && state.active);
+  });
+}
+
+if (window.electronAPI && typeof window.electronAPI.onStealthKeyInput === 'function') {
+  window.electronAPI.onStealthKeyInput(async (data) => {
+    if (!data) return;
+    const aiInput = document.getElementById('ai-input');
+    if (!aiInput) return;
+
+    if (data.action === 'char') {
+      const char = data.char || '';
+      const start = (typeof aiInput.selectionStart === 'number') ? aiInput.selectionStart : aiInput.value.length;
+      const end = (typeof aiInput.selectionEnd === 'number') ? aiInput.selectionEnd : aiInput.value.length;
+      const val = aiInput.value;
+      aiInput.value = val.substring(0, start) + char + val.substring(end);
+      const newPos = start + char.length;
+      aiInput.setSelectionRange(newPos, newPos);
+      aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+      updateStealthTypingUI(true);
+    } else if (data.action === 'backspace') {
+      const start = (typeof aiInput.selectionStart === 'number') ? aiInput.selectionStart : 0;
+      const end = (typeof aiInput.selectionEnd === 'number') ? aiInput.selectionEnd : 0;
+      const val = aiInput.value;
+      if (start !== end) {
+        aiInput.value = val.substring(0, start) + val.substring(end);
+        aiInput.setSelectionRange(start, start);
+      } else if (start > 0) {
+        if (data.ctrl) {
+          const left = val.substring(0, start);
+          const right = val.substring(start);
+          const match = left.match(/(?:\s*\S+|\s+)$/);
+          const deleteLen = match ? match[0].length : 1;
+          const newPos = Math.max(0, start - deleteLen);
+          aiInput.value = val.substring(0, newPos) + right;
+          aiInput.setSelectionRange(newPos, newPos);
+        } else {
+          aiInput.value = val.substring(0, start - 1) + val.substring(start);
+          aiInput.setSelectionRange(start - 1, start - 1);
+        }
+      }
+      aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+      updateStealthTypingUI(true);
+    } else if (data.action === 'delete') {
+      const start = (typeof aiInput.selectionStart === 'number') ? aiInput.selectionStart : 0;
+      const end = (typeof aiInput.selectionEnd === 'number') ? aiInput.selectionEnd : 0;
+      const val = aiInput.value;
+      if (start !== end) {
+        aiInput.value = val.substring(0, start) + val.substring(end);
+        aiInput.setSelectionRange(start, start);
+      } else if (start < val.length) {
+        aiInput.value = val.substring(0, start) + val.substring(start + 1);
+        aiInput.setSelectionRange(start, start);
+      }
+      aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+      updateStealthTypingUI(true);
+    } else if (data.action === 'paste') {
+      let pasteText = '';
+      if (window.electronAPI && typeof window.electronAPI.readClipboardText === 'function') {
+        try { pasteText = await window.electronAPI.readClipboardText(); } catch (e) { }
+      }
+      if (!pasteText && navigator.clipboard) {
+        try { pasteText = await navigator.clipboard.readText(); } catch (e) { }
+      }
+      if (pasteText) {
+        const start = (typeof aiInput.selectionStart === 'number') ? aiInput.selectionStart : 0;
+        const end = (typeof aiInput.selectionEnd === 'number') ? aiInput.selectionEnd : 0;
+        const val = aiInput.value;
+        aiInput.value = val.substring(0, start) + pasteText + val.substring(end);
+        const newPos = start + pasteText.length;
+        aiInput.setSelectionRange(newPos, newPos);
+        aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+        updateStealthTypingUI(true);
+      }
+    } else if (data.action === 'selectAll') {
+      aiInput.select();
+    } else if (data.action === 'copy' || data.action === 'cut') {
+      const start = (typeof aiInput.selectionStart === 'number') ? aiInput.selectionStart : 0;
+      const end = (typeof aiInput.selectionEnd === 'number') ? aiInput.selectionEnd : 0;
+      if (start !== end) {
+        const selText = aiInput.value.substring(start, end);
+        if (window.electronAPI && typeof window.electronAPI.writeClipboardText === 'function') {
+          window.electronAPI.writeClipboardText(selText);
+        }
+        if (data.action === 'cut') {
+          aiInput.value = aiInput.value.substring(0, start) + aiInput.value.substring(end);
+          aiInput.setSelectionRange(start, start);
+          aiInput.dispatchEvent(new Event('input', { bubbles: true }));
+          updateStealthTypingUI(true);
+        }
+      }
+    } else if (data.action === 'nav') {
+      const pos = (typeof aiInput.selectionStart === 'number') ? aiInput.selectionStart : 0;
+      if (data.key === 'ArrowLeft') {
+        const newPos = Math.max(0, pos - 1);
+        aiInput.setSelectionRange(newPos, newPos);
+      } else if (data.key === 'ArrowRight') {
+        const newPos = Math.min(aiInput.value.length, pos + 1);
+        aiInput.setSelectionRange(newPos, newPos);
+      }
+    } else if (data.action === 'enter') {
+      updateStealthTypingUI(false);
+      const aiSendBtn = document.getElementById('ai-send');
+      if (aiSendBtn) aiSendBtn.click();
+    } else if (data.action === 'escape') {
+      updateStealthTypingUI(false);
+    }
+  });
+}
+
 // Global Shortcut OS Trigger Handler
 if (window.electronAPI && typeof window.electronAPI.onGlobalShortcutTriggered === 'function') {
   window.electronAPI.onGlobalShortcutTriggered((action) => {
     console.log('[Stealth UI] Global shortcut triggered:', action);
     if (action === 'askQuestion') {
       if (typeof openPanel === 'function') openPanel('ai');
-      if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-        window.electronAPI.setFocusable(true);
-      }
-      if (window.electronAPI && typeof window.electronAPI.setIgnoreMouseEvents === 'function') {
-        window.electronAPI.setIgnoreMouseEvents(false);
-      }
-      const aiInput = document.getElementById('ai-input');
-      if (aiInput) {
-        setTimeout(() => {
-          aiInput.focus();
-          aiInput.select();
-        }, 50);
+      if (typeof updateStealthTypingUI === 'function') {
+        updateStealthTypingUI(true);
       }
     } else if (action === 'capture') {
       const captureBtn = document.getElementById('capture-btn');
@@ -5958,7 +6109,7 @@ if (window.electronAPI && typeof window.electronAPI.onGlobalShortcutTriggered ==
       const aiSendBtn = document.getElementById('ai-send');
       const aiAnswerBtn = document.getElementById('ai-answer-btn');
       const aiInput = document.getElementById('ai-input');
-      if (aiInput && document.activeElement === aiInput && aiInput.value.trim() !== '') {
+      if (aiInput && (document.activeElement === aiInput || isStealthTyping) && aiInput.value.trim() !== '') {
         if (aiSendBtn) aiSendBtn.click();
       } else {
         if (aiAnswerBtn) aiAnswerBtn.click();

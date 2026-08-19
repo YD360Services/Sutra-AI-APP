@@ -1574,4 +1574,18 @@ input, textarea, [contenteditable], .setup-input, .setup-textarea {
   cursor: wait !important;
 }
 
+/* Stealth Typing Active Mode Glow & Styling */
+.stealth-typing-active {
+  border-color: #2dd4bf !important;
+  box-shadow: 0 0 12px rgba(45, 212, 191, 0.45), inset 0 0 6px rgba(45, 212, 191, 0.2) !important;
+  background: rgba(15, 23, 42, 0.96) !important;
+  color: #ffffff !important;
+  outline: none !important;
+}
+
+.stealth-typing-active::placeholder {
+  color: rgba(45, 212, 191, 0.6) !important;
+}
+
+
 
