@@ -3168,8 +3168,6 @@ const recordBtn = document.getElementById('record-btn');
 const recordText = document.getElementById('record-text');
 const recordDot = recordBtn.querySelector('.record-dot');
 const transcriptBlock = document.getElementById('transcript-block');
-const clearTranscriptBtn = document.getElementById('clear-transcript-btn');
-const copyTranscriptBtn = document.getElementById('copy-transcript-btn');
 const answerBlock = document.getElementById('answer-block');
 const aiAnswerBtn = document.getElementById('ai-answer-btn');
 const copyAnswerBtn = document.getElementById('copy-answer-btn');
@@ -3695,14 +3693,6 @@ function resetRecordButton() {
   }
 }
 
-// Clear Transcript
-clearTranscriptBtn.addEventListener('click', () => {
-  accumulatedTranscript = '';
-  lastAnswerOffset = 0;
-  transcriptBlock.textContent = '';
-  transcriptBlock.dataset.placeholder = 'true';
-});
-
 // Sync user-typed/pasted text in the contenteditable transcript box → accumulatedTranscript
 transcriptBlock.addEventListener('input', () => {
   const typed = transcriptBlock.textContent.trim();
@@ -3715,16 +3705,6 @@ transcriptBlock.addEventListener('paste', (e) => {
   e.preventDefault();
   const text = (e.clipboardData || window.clipboardData).getData('text/plain');
   document.execCommand('insertText', false, text);
-});
-
-// Copy Transcript
-copyTranscriptBtn.addEventListener('click', () => {
-  const text = accumulatedTranscript.trim() || transcriptBlock.textContent.trim();
-  if (text) {
-    navigator.clipboard.writeText(text);
-    copyTranscriptBtn.textContent = 'Copied!';
-    setTimeout(() => { copyTranscriptBtn.textContent = 'Copy'; }, 1500);
-  }
 });
 
 // Copy Answer (header button — copies current visible text)
