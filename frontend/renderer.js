@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load local context (L4) on startup for offline use
   try {
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
-    
+
     // Only prefill form if this is an explicit web launch
     if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
       if (setupCompany && offlineUserContext.company) setupCompany.value = offlineUserContext.company;
@@ -390,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ...offlineUserContext,
       auto_start: false,
       is_web_launch: false
-    }).catch(() => {});
+    }).catch(() => { });
 
     setTimeout(() => {
       const startBtn = document.getElementById('start-session-btn');
@@ -970,7 +970,7 @@ async function loadDropdowns() {
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
     const normUserId = normalizeUserId(USER_ID);
-    
+
     // Fetch Resumes
     const resResume = await fetch(`${base}/api/resumes?user_id=${normUserId}`);
     if (resResume.ok) {
@@ -1090,7 +1090,7 @@ const selectedSessionIdsSet = new Set();
 
 function createChip({ tag, name, theme, onRemove }) {
   const chip = document.createElement('div');
-  
+
   const themes = {
     resume: {
       bg: 'linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(147, 51, 234, 0.06) 100%)',
@@ -1142,7 +1142,7 @@ function createChip({ tag, name, theme, onRemove }) {
     animation: fadeIn 0.18s ease-out;
     max-width: 100%;
   `;
-  
+
   const tagBadge = document.createElement('span');
   tagBadge.textContent = tag;
   tagBadge.style.cssText = `
@@ -1168,7 +1168,7 @@ function createChip({ tag, name, theme, onRemove }) {
     white-space: nowrap;
   `;
   textSpan.title = name;
-  
+
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.textContent = '✕';
@@ -1291,23 +1291,23 @@ const setupPromptSelect = document.getElementById('setup-prompt-select');
 
 function setContextFilterTab(activeTab) {
   const tabs = [
-    { 
-      btn: filterDocsBtn, 
-      sec: contextDocsSection, 
-      name: 'docs', 
-      helper: '📁 Reference notes, cheat sheets & STAR stories the AI will consult for technical answers.' 
+    {
+      btn: filterDocsBtn,
+      sec: contextDocsSection,
+      name: 'docs',
+      helper: '📁 Reference notes, cheat sheets & STAR stories the AI will consult for technical answers.'
     },
-    { 
-      btn: filterPromptsBtn, 
-      sec: contextPromptsSection, 
-      name: 'prompts', 
-      helper: '✍️ Custom behavioral rules to instruct how the AI should talk or format responses.' 
+    {
+      btn: filterPromptsBtn,
+      sec: contextPromptsSection,
+      name: 'prompts',
+      helper: '✍️ Custom behavioral rules to instruct how the AI should talk or format responses.'
     },
-    { 
-      btn: filterSessionsBtn, 
-      sec: contextSessionsSection, 
-      name: 'sessions', 
-      helper: '🕒 Memory from a previous interview round to keep questions & answers consistent.' 
+    {
+      btn: filterSessionsBtn,
+      sec: contextSessionsSection,
+      name: 'sessions',
+      helper: '🕒 Memory from a previous interview round to keep questions & answers consistent.'
     }
   ];
 
@@ -2898,9 +2898,10 @@ function updateClickThrough(clientX, clientY) {
   }
 }
 
-// Focus Management: in floating overlay mode, keep window non-activating so bottom apps keep focus,
-// but dynamically enable focusable when user clicks into a text input so they can type.
-// We do NOT call win.focus() — so the background window never loses OS activation.
+// Focus Management:
+// During live toolbar mode, NEVER call setFocusable(true) — that removes WS_EX_NOACTIVATE
+// from the native window, causing the OS to activate Electron and fire blur on the background app.
+// Instead, use focusWebContents() which routes keyboard to the webContents without native activation.
 let _focusOutTimer = null;
 
 document.addEventListener('focusin', (e) => {
@@ -2911,37 +2912,24 @@ document.addEventListener('focusin', (e) => {
       e.target.isContentEditable ||
       e.target.getAttribute('contenteditable') === 'true'
     );
-    if (isInput && window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-      // Cancel any pending focusout debounce — user moved between inputs
+    // Skip range/slider inputs — they receive mouse events, not keyboard events
+    const isSlider = e.target && e.target.tagName === 'INPUT' && e.target.type === 'range';
+    if (isInput && !isSlider && window.electronAPI && typeof window.electronAPI.focusWebContents === 'function') {
       if (_focusOutTimer) { clearTimeout(_focusOutTimer); _focusOutTimer = null; }
-      window.electronAPI.setFocusable(true);
+      window.electronAPI.focusWebContents();
     }
   }
 });
 
 document.addEventListener('focusout', (e) => {
-  if (toolbarView && toolbarView.style.display !== 'none') {
-    if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-      // Debounce: only disable focusable if no other input gains focus within 120ms.
-      // This handles cases like tabbing between fields or brief internal re-renders.
-      if (_focusOutTimer) clearTimeout(_focusOutTimer);
-      _focusOutTimer = setTimeout(() => {
-        _focusOutTimer = null;
-        // Only disable if the currently focused element is not also an input
-        const active = document.activeElement;
-        const stillInInput = active && (
-          active.tagName === 'INPUT' ||
-          active.tagName === 'TEXTAREA' ||
-          active.isContentEditable ||
-          active.getAttribute('contenteditable') === 'true'
-        );
-        if (!stillInInput) {
-          window.electronAPI.setFocusable(false);
-        }
-      }, 120);
-    }
-  }
+  // No-op: we no longer toggle setFocusable during toolbar mode.
+  // The window stays non-activating (setFocusable(false)) the entire time.
+  // Keyboard routing is handled by focusWebContents(), which doesn't need cleanup.
+  if (_focusOutTimer) clearTimeout(_focusOutTimer);
+  _focusOutTimer = null;
 });
+
+
 
 window.addEventListener('mouseleave', () => {
   isMouseInsideWindow = false;
@@ -3354,7 +3342,7 @@ async function ensureAudioPipelineReady() {
       console.log(`[Deepgram STT] Status: ${data.status} (Provider: ${data.provider})`);
       recordBtn.style.pointerEvents = 'auto';
       if (micBtnAi) micBtnAi.style.pointerEvents = 'auto';
-      
+
       if (data.status === 'listening') {
         ensureMediaRecorderRunning(true);
       } else if (data.status === 'error' || data.status === 'closed') {
@@ -3436,7 +3424,7 @@ function startLocalSpeechRecognition() {
     return;
   }
   if (localSpeechRecognition) {
-    try { localSpeechRecognition.stop(); } catch(e) {}
+    try { localSpeechRecognition.stop(); } catch (e) { }
   }
   try {
     localSpeechRecognition = new SpeechRecognition();
@@ -3460,12 +3448,12 @@ function startLocalSpeechRecognition() {
     localSpeechRecognition.onerror = (e) => {
       console.warn('[WebSpeech STT Fallback] Error:', e.error);
       isWebSpeechDisabled = true;
-      try { localSpeechRecognition.stop(); } catch(err) {}
+      try { localSpeechRecognition.stop(); } catch (err) { }
     };
 
     localSpeechRecognition.onend = () => {
       if (isRecording && !isWebSpeechDisabled) {
-        try { localSpeechRecognition.start(); } catch(e) {}
+        try { localSpeechRecognition.start(); } catch (e) { }
       }
     };
 
@@ -5639,24 +5627,24 @@ function isTargetEditableOrInModal(target) {
 }
 
 document.addEventListener('mousedown', (e) => {
-  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-    if (isTargetEditableOrInModal(e.target)) {
-      window.electronAPI.setFocusable(true);
-    } else {
-      window.electronAPI.setFocusable(false);
-    }
-  }
+  // IMPORTANT: Do NOT call setFocusable(true) here — even for sliders or inputs.
+  // setFocusable(true) removes WS_EX_NOACTIVATE, causing the OS to activate Electron
+  // on the very next click/drag, which steals focus from the background window.
+  // Keyboard input is handled separately via focusWebContents() in the focusin handler.
+  // Sliders (range inputs) are entirely mouse-driven — they never need keyboard focus.
 }, true);
 
 document.addEventListener('focusin', (e) => {
-  if (window.electronAPI && typeof window.electronAPI.setFocusable === 'function') {
-    if (isTargetEditableOrInModal(e.target)) {
-      // Cancel any pending focusout debounce so switching between settings inputs stays smooth
-      if (typeof _focusOutTimer !== 'undefined' && _focusOutTimer) {
-        clearTimeout(_focusOutTimer);
-        _focusOutTimer = null;
-      }
-      window.electronAPI.setFocusable(true);
+  // Skip sliders — they don't need keyboard routing
+  const isSlider = e.target && e.target.tagName === 'INPUT' && e.target.type === 'range';
+  if (!isSlider && isTargetEditableOrInModal(e.target)) {
+    if (typeof _focusOutTimer !== 'undefined' && _focusOutTimer) {
+      clearTimeout(_focusOutTimer);
+      _focusOutTimer = null;
+    }
+    // Use focusWebContents — routes keys to renderer WITHOUT native window activation
+    if (window.electronAPI && typeof window.electronAPI.focusWebContents === 'function') {
+      window.electronAPI.focusWebContents();
     }
   }
 }, true);

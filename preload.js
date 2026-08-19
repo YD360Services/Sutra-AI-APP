@@ -17,6 +17,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   moveWindowAbsolute: (x, y) => ipcRenderer.send('move-window-absolute', x, y),
   setWindowOpacity: (opacity) => ipcRenderer.send('set-window-opacity', opacity),
   setFocusable: (focusable) => ipcRenderer.send('set-focusable', focusable),
+  // Route keyboard to the webContents WITHOUT making Electron the active OS window.
+  // Use this instead of setFocusable(true) during live toolbar mode so background apps don't blur.
+  focusWebContents: () => ipcRenderer.send('focus-webcontents'),
   setAlwaysOnTop: (level) => ipcRenderer.send('set-always-on-top', level),
   setStealthMode: (enabled) => ipcRenderer.send('set-stealth-mode', enabled),
   setContentProtection: (enable) => ipcRenderer.send('set-content-protection', enable),
