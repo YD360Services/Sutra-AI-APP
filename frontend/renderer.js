@@ -330,6 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       // Populate liveSessionData so Edit Session is immediately pre-filled with web data
       liveSessionData = {
+        sessionName: offlineUserContext.session_name || offlineUserContext.company || '',
         company: offlineUserContext.company || '',
         role: offlineUserContext.role || '',
         jd: offlineUserContext.job_description || '',
@@ -341,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (setupCompany) setupCompany.value = '';
       if (setupRole) setupRole.value = '';
       if (setupJd) setupJd.value = '';
-      liveSessionData = { company: '', role: '', jd: '', resumeId: '', docId: '' };
+      liveSessionData = { sessionName: '', company: '', role: '', jd: '', resumeId: '', docId: '' };
     }
     console.log('[Stealth] Initialized setup form:', offlineUserContext);
   } catch (e) {
@@ -2101,6 +2102,7 @@ setupBackBtn.addEventListener('click', () => {
 // ── Edit Session Feature ──────────────────────────────────────────────────────
 // Tracks the current live session data so the edit modal can be pre-populated.
 let liveSessionData = {
+  sessionName: '',
   company: '',
   role: '',
   jd: '',
@@ -2113,49 +2115,91 @@ const editSessionCloseBtn = document.getElementById('edit-session-close');
 const editSessionCancelBtn = document.getElementById('edit-session-cancel');
 const editSessionSaveBtn = document.getElementById('edit-session-save');
 const editSessionStatus = document.getElementById('edit-session-status');
+const editSessionSpinner = document.getElementById('edit-session-spinner');
+const editSessionStatusText = document.getElementById('edit-session-status-text');
+const editSessionNameInput = document.getElementById('edit-session-name');
 const editCompanyInput = document.getElementById('edit-company');
 const editRoleInput = document.getElementById('edit-role');
 const editJdInput = document.getElementById('edit-jd');
 const editResumeSelect = document.getElementById('edit-resume-select');
+const editResumeFile = document.getElementById('edit-resume-file');
+const editUploadResumeBtn = document.getElementById('edit-upload-resume-btn');
 const editDocSelect = document.getElementById('edit-doc-select');
+const editDocFile = document.getElementById('edit-doc-file');
+const editUploadDocBtn = document.getElementById('edit-upload-doc-btn');
+const editInputPromptBtn = document.getElementById('edit-input-prompt-btn');
 const editSessionBtn = document.getElementById('edit-session-btn');
+
+function setEditSessionStatus(message, type = 'uploading', autoDismissMs = 0) {
+  if (!editSessionStatus || !editSessionStatusText) return;
+  editSessionStatus.className = `upload-status-banner ${type}`;
+  editSessionStatus.style.display = 'flex';
+  editSessionStatusText.textContent = message;
+
+  if (editSessionSpinner) {
+    editSessionSpinner.style.display = type === 'uploading' ? 'inline-block' : 'none';
+    if (type === 'error') {
+      editSessionSpinner.className = 'upload-spinner upload-spinner-danger';
+    } else {
+      editSessionSpinner.className = 'upload-spinner';
+    }
+  }
+
+  if (autoDismissMs > 0) {
+    setTimeout(() => {
+      if (editSessionStatus && editSessionStatusText.textContent.includes(message)) {
+        editSessionStatus.style.display = 'none';
+      }
+    }, autoDismissMs);
+  }
+}
+
+function populateEditResumeOptions(selectedId) {
+  if (!editResumeSelect) return;
+  editResumeSelect.innerHTML = '<option value="">-- No Resume --</option>';
+  const activeId = selectedId !== undefined ? selectedId : liveSessionData.resumeId;
+  backendResumes.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = `📄 ${r.file_name || r.id}`;
+    if (String(r.id) === String(activeId)) opt.selected = true;
+    editResumeSelect.appendChild(opt);
+  });
+}
+
+function populateEditDocOptions(selectedId) {
+  if (!editDocSelect) return;
+  editDocSelect.innerHTML = '<option value="">-- No Document / Prompt --</option>';
+  const activeId = selectedId !== undefined ? selectedId : liveSessionData.docId;
+  backendDocs.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.id;
+    opt.textContent = (d.document_type === 'prompt' ? '✍️ ' : '📚 ') + (d.document_name || d.id);
+    if (String(d.id) === String(activeId)) opt.selected = true;
+    editDocSelect.appendChild(opt);
+  });
+}
 
 /** Opens the edit session modal and populates all fields with live session data */
 function openEditSessionModal() {
   if (!editSessionModal) return;
 
   // Populate fields with current live session data
+  if (editSessionNameInput) editSessionNameInput.value = liveSessionData.sessionName || '';
   if (editCompanyInput) editCompanyInput.value = liveSessionData.company || '';
   if (editRoleInput) editRoleInput.value = liveSessionData.role || '';
   if (editJdInput) editJdInput.value = liveSessionData.jd || '';
 
-  // Populate resume options from cached list
-  if (editResumeSelect) {
-    editResumeSelect.innerHTML = '<option value="">-- No Resume --</option>';
-    backendResumes.forEach(r => {
-      const opt = document.createElement('option');
-      opt.value = r.id;
-      opt.textContent = r.file_name || r.id;
-      if (r.id === liveSessionData.resumeId) opt.selected = true;
-      editResumeSelect.appendChild(opt);
-    });
-  }
-
-  // Populate doc options from cached list
-  if (editDocSelect) {
-    editDocSelect.innerHTML = '<option value="">-- No Document --</option>';
-    backendDocs.forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d.id;
-      opt.textContent = d.document_name || d.id;
-      if (d.id === liveSessionData.docId) opt.selected = true;
-      editDocSelect.appendChild(opt);
-    });
-  }
+  // Populate dropdowns from cache
+  populateEditResumeOptions();
+  populateEditDocOptions();
 
   // Hide status, reset button
-  if (editSessionStatus) { editSessionStatus.style.display = 'none'; editSessionStatus.textContent = ''; }
-  if (editSessionSaveBtn) { editSessionSaveBtn.disabled = false; editSessionSaveBtn.textContent = ''; editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session'; }
+  if (editSessionStatus) { editSessionStatus.style.display = 'none'; }
+  if (editSessionSaveBtn) {
+    editSessionSaveBtn.disabled = false;
+    editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session';
+  }
 
   editSessionModal.style.display = 'flex';
   window.electronAPI.setIgnoreMouseEvents(false);
@@ -2175,24 +2219,160 @@ if (editSessionBtn) {
 if (editSessionCloseBtn) editSessionCloseBtn.addEventListener('click', closeEditSessionModal);
 if (editSessionCancelBtn) editSessionCancelBtn.addEventListener('click', closeEditSessionModal);
 
+// Edit Session Modal Resume Upload Handler
+if (editUploadResumeBtn && editResumeFile) {
+  editUploadResumeBtn.addEventListener('click', () => editResumeFile.click());
+  editResumeFile.addEventListener('change', async () => {
+    if (!editResumeFile.files.length) return;
+    const file = editResumeFile.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('user_id', normalizeUserId(USER_ID));
+
+    editUploadResumeBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
+    editUploadResumeBtn.classList.add('btn-uploading-active');
+    setEditSessionStatus(`⏳ Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
+
+    try {
+      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const res = await fetch(`${base}/api/resumes/upload`, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      backendResumes.push(data);
+      await loadDropdowns();
+      liveSessionData.resumeId = data.id;
+      populateEditResumeOptions(data.id);
+      setEditSessionStatus(`✓ Resume "${file.name}" uploaded and selected!`, 'success', 3500);
+
+      editUploadResumeBtn.innerHTML = '✓ Uploaded';
+      setTimeout(() => {
+        editUploadResumeBtn.innerHTML = '📁 Upload';
+        editUploadResumeBtn.classList.remove('btn-uploading-active');
+      }, 1500);
+    } catch (e) {
+      console.warn('[EditSession] Remote resume upload failed, falling back to local file parsing:', e.message);
+      try {
+        const text = await file.text();
+        const localResume = {
+          id: 'local_res_' + Date.now(),
+          file_name: file.name,
+          parsed_content: text
+        };
+        backendResumes.push(localResume);
+        liveSessionData.resumeId = localResume.id;
+        populateEditResumeOptions(localResume.id);
+        setEditSessionStatus(`✓ Local resume "${file.name}" loaded successfully!`, 'success', 3500);
+        editUploadResumeBtn.innerHTML = '✓ Loaded';
+        setTimeout(() => {
+          editUploadResumeBtn.innerHTML = '📁 Upload';
+          editUploadResumeBtn.classList.remove('btn-uploading-active');
+        }, 1500);
+      } catch (readErr) {
+        console.error('[EditSession] Local resume read failed:', readErr);
+        setEditSessionStatus(`⚠️ Failed to parse resume: ${readErr.message}`, 'error', 5000);
+        editUploadResumeBtn.innerHTML = '📁 Upload';
+        editUploadResumeBtn.classList.remove('btn-uploading-active');
+      }
+    } finally {
+      editResumeFile.value = '';
+    }
+  });
+}
+
+// Edit Session Modal Document Upload Handler
+if (editUploadDocBtn && editDocFile) {
+  editUploadDocBtn.addEventListener('click', () => editDocFile.click());
+  editDocFile.addEventListener('change', async () => {
+    if (!editDocFile.files.length) return;
+    const file = editDocFile.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('document_type', 'document');
+    formData.append('user_id', normalizeUserId(USER_ID));
+
+    editUploadDocBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
+    editUploadDocBtn.classList.add('btn-uploading-active');
+    setEditSessionStatus(`⏳ Uploading reference document: "${file.name}"...`, 'uploading');
+
+    try {
+      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const res = await fetch(`${base}/api/knowledge/upload`, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      backendDocs.push(data);
+      await loadDropdowns();
+      liveSessionData.docId = data.id;
+      populateEditDocOptions(data.id);
+      setEditSessionStatus(`✓ Document "${file.name}" added to knowledge bank!`, 'success', 3500);
+
+      editUploadDocBtn.innerHTML = '✓ Uploaded';
+      setTimeout(() => {
+        editUploadDocBtn.innerHTML = '📁 Upload Doc';
+        editUploadDocBtn.classList.remove('btn-uploading-active');
+      }, 1500);
+    } catch (e) {
+      console.warn('[EditSession] Remote doc upload failed, falling back to local:', e.message);
+      try {
+        const text = await file.text();
+        const localDoc = {
+          id: 'local_doc_' + Date.now(),
+          document_name: file.name,
+          document_type: 'document',
+          content: text
+        };
+        backendDocs.push(localDoc);
+        liveSessionData.docId = localDoc.id;
+        populateEditDocOptions(localDoc.id);
+        setEditSessionStatus(`✓ Local document "${file.name}" attached to memory!`, 'success', 3500);
+        editUploadDocBtn.innerHTML = '✓ Loaded';
+        setTimeout(() => {
+          editUploadDocBtn.innerHTML = '📁 Upload Doc';
+          editUploadDocBtn.classList.remove('btn-uploading-active');
+        }, 1500);
+      } catch (readErr) {
+        console.error('[EditSession] Local doc read failed:', readErr);
+        setEditSessionStatus(`⚠️ Failed to parse document: ${readErr.message}`, 'error', 5000);
+        editUploadDocBtn.innerHTML = '📁 Upload Doc';
+        editUploadDocBtn.classList.remove('btn-uploading-active');
+      }
+    } finally {
+      editDocFile.value = '';
+    }
+  });
+}
+
+// Edit Session Modal Custom Prompt Creator
+if (editInputPromptBtn && promptModal) {
+  editInputPromptBtn.addEventListener('click', () => {
+    modalPromptName.value = '';
+    modalPromptContent.value = '';
+    if (modalPromptStatus) modalPromptStatus.style.display = 'none';
+    promptModal.style.display = 'flex';
+  });
+}
+
 if (editSessionSaveBtn) {
   editSessionSaveBtn.addEventListener('click', async () => {
-    const newCompany = (editCompanyInput?.value || '').trim() || liveSessionData.company;
-    const newRole = (editRoleInput?.value || '').trim() || liveSessionData.role;
+    const newCompany = (editCompanyInput?.value || '').trim() || liveSessionData.company || 'Stealth Practice';
+    const enteredSessionName = (editSessionNameInput?.value || '').trim();
+    // If no session name is provided, use Company Name as the session name
+    const finalSessionName = enteredSessionName || newCompany;
+    const newRole = (editRoleInput?.value || '').trim() || liveSessionData.role || 'Software Engineer';
     const newJd = (editJdInput?.value || '').trim();
     const newResumeId = editResumeSelect?.value || '';
     const newDocId = editDocSelect?.value || '';
 
     editSessionSaveBtn.disabled = true;
-    editSessionSaveBtn.textContent = 'Updating...';
+    editSessionSaveBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Updating...';
+    setEditSessionStatus('⏳ Updating session configuration & syncing context with AI...', 'uploading');
 
-    // 1. Patch backend session metadata (company/role)
+    // 1. Patch backend session metadata (company/role/session_name)
     if (backendUrl && sessionToken) {
       try {
         await window.electronAPI.updateBackendSession(sessionToken, {
           company_name: newCompany,
           role_name: newRole,
-          session_name: `${newCompany} (${selectedSessionType})`
+          session_name: finalSessionName
         });
       } catch (e) {
         console.warn('[EditSession] Backend patch failed:', e.message);
@@ -2200,9 +2380,9 @@ if (editSessionSaveBtn) {
     }
 
     // 2. Update the L4 context so the AI uses updated data for future answers
-    const resumeObj = backendResumes.find(r => r.id === newResumeId);
+    const resumeObj = backendResumes.find(r => String(r.id) === String(newResumeId));
     const resume = resumeObj ? resumeObj.parsed_content : '';
-    const docObj = backendDocs.find(d => d.id === newDocId);
+    const docObj = backendDocs.find(d => String(d.id) === String(newDocId));
     const docText = docObj ? docObj.content : '';
     const isPrompt = docObj ? (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt') || docObj.document_name.toLowerCase().includes('instruction')) : false;
 
@@ -2225,20 +2405,14 @@ if (editSessionSaveBtn) {
     }
 
     // 3. Update local live session tracking state
-    liveSessionData = { company: newCompany, role: newRole, jd: newJd, resumeId: newResumeId, docId: newDocId };
+    liveSessionData = { sessionName: finalSessionName, company: newCompany, role: newRole, jd: newJd, resumeId: newResumeId, docId: newDocId };
 
     // 4. Show success and close
-    if (editSessionStatus) {
-      editSessionStatus.style.display = 'block';
-      editSessionStatus.style.background = 'rgba(16,185,129,0.12)';
-      editSessionStatus.style.border = '1px solid rgba(16,185,129,0.3)';
-      editSessionStatus.style.color = '#10b981';
-      editSessionStatus.textContent = '✓ Session context updated — AI will use new data for next answer.';
-    }
+    setEditSessionStatus(`✓ Session "${finalSessionName}" updated — AI will use new context!`, 'success', 2000);
     editSessionSaveBtn.disabled = false;
     editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session';
 
-    setTimeout(() => closeEditSessionModal(), 1800);
+    setTimeout(() => closeEditSessionModal(), 1200);
   });
 }
 
@@ -2282,7 +2456,11 @@ function stopSessionTimer() {
 // Start session button event handler
 startSessionBtn.addEventListener('click', async () => {
   hasActiveAnswer = false;
+  const sessionNameInput = document.getElementById('setup-session-name');
+  const customSessionName = (sessionNameInput?.value || '').trim();
   const company = setupCompany.value.trim() || 'Stealth Practice';
+  // If no session name is given, take company name as session name
+  const finalSessionName = customSessionName || company;
   const role = setupRole.value.trim() || 'Software Engineer';
   const jd = setupJd.value.trim();
 
@@ -2331,7 +2509,7 @@ startSessionBtn.addEventListener('click', async () => {
     backendUrl = (await window.electronAPI.getBackendUrl()) || '';
     if (backendUrl) {
       const session = await window.electronAPI.createBackendSession(USER_ID, {
-        session_name: `${company} (${selectedSessionType})`,
+        session_name: finalSessionName,
         company_name: company,
         role_name: role,
         language: preferredLanguage,
@@ -2373,6 +2551,7 @@ startSessionBtn.addEventListener('click', async () => {
 
   // Capture current session data for the Edit Session modal
   liveSessionData = {
+    sessionName: finalSessionName,
     company,
     role,
     jd,
@@ -5758,6 +5937,7 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
 
     // Bind directly to liveSessionData so Edit Session modal has the exact web-entered content
     liveSessionData = {
+      sessionName: config.session_name || config.company || '',
       company: config.company || '',
       role: config.role || '',
       jd: config.jd || config.job_description || '',

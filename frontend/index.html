@@ -153,6 +153,12 @@
             </div>
           </div>
 
+          <div class="setup-form-group" style="margin-bottom: 8px;">
+            <label class="setup-label">Session Name <span style="font-weight: 400; text-transform: none; color: var(--text-muted); font-size: 9.5px;">(Optional — defaults to Company Name)</span></label>
+            <input type="text" id="setup-session-name" class="setup-input" placeholder="e.g. Google Mock Interview (defaults to Company Name)"
+              style="cursor: default !important; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;" />
+          </div>
+
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
             <div class="setup-form-group" style="margin: 0; position: relative;">
               <label class="setup-label">Company Name <span style="color: #ef4444;">*</span></label>
@@ -959,6 +965,16 @@
           style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.6); border-radius: 8px; width: 28px; height: 28px;  outline: none; display: flex; align-items: center; justify-content: center; font-size: 14px; transition: all 0.2s;">✕</button>
       </div>
 
+      <!-- Session Name (Optional — defaults to Company Name) -->
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <label
+          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">
+          Session Name <span style="font-weight: 400; text-transform: none; color: var(--text-muted); font-size: 9.5px;">(Defaults to Company Name)</span>
+        </label>
+        <input type="text" id="edit-session-name" class="setup-input" placeholder="e.g. Google Mock Round (defaults to Company Name)"
+          style="padding: 9px 12px; font-size: 13px; cursor: default !important;" />
+      </div>
+
       <!-- Company & Role -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
         <div style="display: flex; flex-direction: column; gap: 5px; position: relative;">
@@ -987,26 +1003,50 @@
           style="height: 90px; font-size: 12px; resize: vertical; cursor: default !important;"></textarea>
       </div>
 
-      <!-- Resume -->
+      <!-- Candidate Resume Section with Upload -->
       <div style="display: flex; flex-direction: column; gap: 5px;">
         <label
-          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Resume</label>
-        <select id="edit-resume-select" class="setup-input"
-          style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
+          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em; display: flex; align-items: center; justify-content: space-between;">
+          <span>📄 Candidate Resume</span>
+        </label>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <select id="edit-resume-select" class="setup-input"
+            style="flex: 1; font-size: 12px; padding: 7px 10px; cursor: default !important; height: 32px;"></select>
+          <button id="edit-upload-resume-btn" type="button" class="interactive"
+            style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 32px; display: flex; align-items: center; gap: 4px; transition: all 0.2s;">
+            📁 Upload
+          </button>
+        </div>
+        <input type="file" id="edit-resume-file" style="display: none;" accept=".pdf,.docx,.doc,.txt" />
       </div>
 
-      <!-- Extra Context Doc -->
+      <!-- Extra Context Document / Prompt Section with Upload & Create -->
       <div style="display: flex; flex-direction: column; gap: 5px;">
         <label
-          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em;">Extra
-          Context Document</label>
-        <select id="edit-doc-select" class="setup-input"
-          style="font-size: 13px; padding: 9px 12px; cursor: default !important;"></select>
+          style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.06em; display: flex; align-items: center; justify-content: space-between;">
+          <span>📚 Knowledge & Reference Document / Prompt</span>
+        </label>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <select id="edit-doc-select" class="setup-input"
+            style="flex: 1; font-size: 12px; padding: 7px 10px; cursor: default !important; height: 32px;"></select>
+          <button id="edit-upload-doc-btn" type="button" class="interactive"
+            style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #e2e8f0; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 600; cursor: pointer; white-space: nowrap; outline: none; height: 32px; display: flex; align-items: center; gap: 4px;">
+            📁 Upload Doc
+          </button>
+          <button id="edit-input-prompt-btn" type="button" class="interactive"
+            style="background: rgba(45,212,191,0.14); border: 1px solid rgba(45,212,191,0.35); color: #2dd4bf; border-radius: 7px; padding: 0 10px; font-size: 10.5px; font-weight: 700; cursor: pointer; white-space: nowrap; outline: none; height: 32px; display: flex; align-items: center; gap: 4px;">
+            ✍️ + Create
+          </button>
+        </div>
+        <input type="file" id="edit-doc-file" style="display: none;" accept=".pdf,.docx,.doc,.txt,.md" />
       </div>
 
-      <!-- Status message -->
-      <div id="edit-session-status"
-        style="display: none; padding: 8px 12px; border-radius: 8px; font-size: 11px; font-weight: 600;"></div>
+      <!-- Live Upload / Edit Status Banner -->
+      <div id="edit-session-status" class="upload-status-banner uploading"
+        style="display: none; padding: 7px 12px; font-size: 11px;">
+        <span class="upload-spinner" id="edit-session-spinner"></span>
+        <span id="edit-session-status-text" style="flex: 1;"></span>
+      </div>
 
       <!-- Action Buttons -->
       <div style="display: flex; gap: 10px; margin-top: 2px;">
