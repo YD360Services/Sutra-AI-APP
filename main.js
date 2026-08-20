@@ -36,20 +36,45 @@ let stealthKeyHookProcess = null;
 let isStealthTypingActive = false;
 
 function ensureKeyHookBinary() {
-  const exePath = path.join(__dirname, 'stealth_keyhook.exe');
-  if (fs.existsSync(exePath)) return exePath;
+  const unpackedExe = path.join(process.resourcesPath || '', 'app.asar.unpacked', 'stealth_keyhook.exe');
+  const localExe = path.join(__dirname, 'stealth_keyhook.exe');
+  const userDataExe = path.join(app.getPath('userData'), 'stealth_keyhook.exe');
 
-  const csPath = path.join(__dirname, 'stealth_keyhook.cs');
-  if (fs.existsSync(csPath)) {
-    const cscPath = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
-    if (fs.existsSync(cscPath)) {
+  const candidatePaths = [
+    app.isPackaged ? unpackedExe : localExe,
+    unpackedExe,
+    userDataExe,
+    localExe
+  ];
+
+  for (const p of candidatePaths) {
+    if (p && !p.includes('.asar\\') && !p.includes('.asar/') && fs.existsSync(p)) return p;
+  }
+
+  // If precompiled exe not found, compile from C# source (built into all Windows machines)
+  const candidateCsPaths = [
+    app.isPackaged ? path.join(process.resourcesPath || '', 'app.asar.unpacked', 'stealth_keyhook.cs') : path.join(__dirname, 'stealth_keyhook.cs'),
+    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'stealth_keyhook.cs'),
+    path.join(process.resourcesPath || '', 'stealth_keyhook.cs'),
+    path.join(__dirname, 'stealth_keyhook.cs')
+  ];
+
+  let csPath = candidateCsPaths.find(p => p && !p.includes('.asar\\') && !p.includes('.asar/') && fs.existsSync(p));
+  if (csPath) {
+    const cscCandidates = [
+      'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe',
+      'C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\csc.exe'
+    ];
+    const cscPath = cscCandidates.find(p => fs.existsSync(p));
+    if (cscPath) {
       try {
+        const targetExe = path.join(app.getPath('userData'), 'stealth_keyhook.exe');
         const { execSync } = require('child_process');
-        console.log('[Stealth KeyHook] Compiling stealth_keyhook.cs...');
-        execSync(`"${cscPath}" /target:exe /out:"${exePath}" /optimize+ "${csPath}"`);
-        if (fs.existsSync(exePath)) {
+        console.log('[Stealth KeyHook] Compiling stealth_keyhook.cs to:', targetExe);
+        execSync(`"${cscPath}" /target:exe /out:"${targetExe}" /optimize+ "${csPath}"`);
+        if (fs.existsSync(targetExe)) {
           console.log('[Stealth KeyHook] Successfully compiled stealth_keyhook.exe');
-          return exePath;
+          return targetExe;
         }
       } catch (e) {
         console.error('[Stealth KeyHook] Failed to compile keyhook:', e.message);
@@ -167,8 +192,28 @@ function loadSavedBounds() {
   try {
     const file = getBoundsFilePath();
     if (fs.existsSync(file)) {
-      const data = fs.readFileSync(file, 'utf8');
-      return JSON.parse(data);
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (data && typeof data.x === 'number' && typeof data.y === 'number') {
+        let width = data.width || 600;
+        let height = data.height || 56;
+
+        // Ensure minimum sensible bounds
+        if (width < 48) width = 600;
+        if (height < 36) height = 56;
+
+        const rect = { x: data.x, y: data.y, width, height };
+        const displays = screen.getAllDisplays();
+        const isVisible = displays.some(display => {
+          const bounds = display.bounds;
+          return rect.x < bounds.x + bounds.width &&
+            rect.x + rect.width > bounds.x &&
+            rect.y < bounds.y + bounds.height &&
+            rect.y + rect.height > bounds.y;
+        });
+        if (isVisible) {
+          return { ...data, ...rect };
+        }
+      }
     }
   } catch (e) {
     console.error('[Stealth Bounds] Error reading saved bounds:', e.message);
@@ -183,7 +228,6 @@ function saveSavedBounds(bounds) {
     const existing = loadSavedBounds() || {};
     const merged = { ...existing, ...bounds };
     fs.writeFileSync(file, JSON.stringify(merged, null, 2), 'utf8');
-    console.log('[Stealth Bounds] Saved window state:', merged);
   } catch (e) {
     console.error('[Stealth Bounds] Error saving bounds:', e.message);
   }
@@ -346,69 +390,9 @@ function loadSessionConfig() {
   return null;
 }
 
-function loadSavedBounds() {
-  const filePath = path.join(app.getPath('userData'), 'stealth_window_state.json');
-  if (fs.existsSync(filePath)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      if (data && typeof data.x === 'number' && typeof data.y === 'number') {
-        let width = data.width || 600;
-        let height = data.height || 56;
 
-        // Ignore small dimensions (shrunk state bounds)
-        if (width < 100 || height < 100) {
-          return null;
-        }
 
-        // Sanitize bounds to prevent vertical stick glitches
-        if (width < 300) width = 600;
-        if (height < 40) height = 56;
 
-        const rect = { x: data.x, y: data.y, width, height };
-        const displays = screen.getAllDisplays();
-        const isVisible = displays.some(display => {
-          const bounds = display.bounds;
-          return rect.x < bounds.x + bounds.width &&
-            rect.x + rect.width > bounds.x &&
-            rect.y < bounds.y + bounds.height &&
-            rect.y + rect.height > bounds.y;
-        });
-        if (isVisible) {
-          return rect;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to load saved window bounds:', e.message);
-    }
-  }
-  return null;
-}
-
-function saveSavedBounds(bounds) {
-  if (!bounds || typeof bounds.x !== 'number' || typeof bounds.y !== 'number') {
-    return;
-  }
-  const filePath = path.join(app.getPath('userData'), 'stealth_window_state.json');
-  try {
-    let existing = {};
-    if (fs.existsSync(filePath)) {
-      try {
-        existing = JSON.parse(fs.readFileSync(filePath, 'utf8')) || {};
-      } catch (e) { }
-    }
-
-    const dataToSave = {
-      x: bounds.x,
-      y: bounds.y,
-      width: (bounds.width >= 100) ? bounds.width : (existing.width || 600),
-      height: (bounds.height >= 100) ? bounds.height : (existing.height || 56)
-    };
-
-    fs.writeFileSync(filePath, JSON.stringify(dataToSave, null, 2), 'utf8');
-  } catch (e) {
-    console.error('Failed to save window bounds:', e.message);
-  }
-}
 
 function createWindow() {
 
@@ -457,8 +441,8 @@ function createWindow() {
     transparent: true,
     alwaysOnTop: true,
     resizable: true,
-    skipTaskbar: true,
-    type: 'toolbar',
+    skipTaskbar: false,
+    focusable: true,
     minWidth: 0,
     minHeight: 0,
     webPreferences: {
@@ -466,12 +450,12 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
-      sandbox: true,
+      sandbox: false,
       allowRunningInsecureContent: false,
     },
   });
 
-  // Keep window visible on top of full-screen applications and across workspaces/virtual desktops
+  // Keep window visible on top of applications
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
@@ -503,6 +487,7 @@ function createWindow() {
 
   mainWindow.show();
   mainWindow.setFocusable(true);
+  mainWindow.focus();
   mainWindow.setResizable(false);
   initStealthKeyHook();
 
@@ -1336,8 +1321,8 @@ function createWindow() {
             win.setBounds(clampBoundsToScreen(
               Math.round(savedBounds.x),
               Math.round(savedBounds.y),
-              Math.round(savedBounds.width),
-              Math.round(savedBounds.height)
+              Math.round(width || savedBounds.width),
+              Math.round(height || savedBounds.height)
             ));
             return;
           }
@@ -1364,13 +1349,16 @@ function createWindow() {
         if (targetX !== null) {
           x = targetX;
         } else if (position === 'top' || position === 'bottom') {
-          // Grow/shrink symmetrically around the horizontal center
-          x = bounds.x - Math.round((width - bounds.width) / 2);
+          // Keep toolbar horizontally stable — only adjust x when width actually changes
+          if (width !== bounds.width) {
+            x = bounds.x - Math.round((width - bounds.width) / 2);
+          }
         }
 
         if (targetY !== null) {
           y = targetY;
         } else if (position === 'bottom') {
+          // When bottom-docked, anchor the bottom edge so it expands upwards
           y = bounds.y + (bounds.height - height);
         } else if (position === 'left') {
           // X and Y stay locked to bounds.x and bounds.y
@@ -1510,11 +1498,20 @@ function createWindow() {
   mainWindow.on('move', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
-      // Only save bounds when in toolbar mode (not setup wizard which has height=580).
-      // Saving height=580 corrupts the toolbar's saved position.
-      if (isToolbarMode || bounds.height < 200) {
-        saveSavedBounds(bounds);
-      }
+      saveSavedBounds(bounds);
+      try {
+        mainWindow.webContents.send('window-moved', bounds);
+      } catch (e) { }
+    }
+  });
+
+  mainWindow.on('moved', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const bounds = mainWindow.getBounds();
+      saveSavedBounds(bounds);
+      try {
+        mainWindow.webContents.send('window-moved', bounds);
+      } catch (e) { }
     }
   });
 
@@ -1708,17 +1705,17 @@ function parseDeepLinkUrl(urlStr) {
     const params = url.searchParams;
     const config = {};
     if (params.get('session_name')) config.session_name = params.get('session_name');
-    if (params.get('company'))      config.company       = params.get('company');
-    if (params.get('role'))         config.role          = params.get('role');
-    if (params.get('jd'))           config.jd            = params.get('jd');
-    if (params.get('job_description')) config.jd        = params.get('job_description');
-    if (params.get('type'))         config.type          = params.get('type');
-    if (params.get('model'))        config.model         = params.get('model');
-    if (params.get('language'))     config.language      = params.get('language');
-    if (params.get('resume_id'))    config.resume_id     = params.get('resume_id');
-    if (params.get('doc_id'))       config.doc_id        = params.get('doc_id');
-    if (params.get('prompt_id'))    config.prompt_id     = params.get('prompt_id');
-    if (params.get('auto_answer'))  config.auto_answer   = params.get('auto_answer') === 'true';
+    if (params.get('company')) config.company = params.get('company');
+    if (params.get('role')) config.role = params.get('role');
+    if (params.get('jd')) config.jd = params.get('jd');
+    if (params.get('job_description')) config.jd = params.get('job_description');
+    if (params.get('type')) config.type = params.get('type');
+    if (params.get('model')) config.model = params.get('model');
+    if (params.get('language')) config.language = params.get('language');
+    if (params.get('resume_id')) config.resume_id = params.get('resume_id');
+    if (params.get('doc_id')) config.doc_id = params.get('doc_id');
+    if (params.get('prompt_id')) config.prompt_id = params.get('prompt_id');
+    if (params.get('auto_answer')) config.auto_answer = params.get('auto_answer') === 'true';
     if (params.get('save_transcript')) config.save_transcript = params.get('save_transcript') === 'true';
     if (Object.keys(config).length > 0) {
       config.auto_start = true;

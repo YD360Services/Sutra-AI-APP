@@ -17,10 +17,12 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/electron/**",
+      "stealth_keyhook.exe",
+      "stealth_keyhook.cs",
       "*.env"
     ],
     "directories": {
-      "output": "dist"
+      "output": "dist_bin"
     },
     "protocols": [
       {
@@ -67,6 +69,8 @@
       "frontend/**/*",
       "icon.ico",
       ".env",
+      "stealth_keyhook.exe",
+      "stealth_keyhook.cs",
       "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md,readme}",
       "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!**/node_modules/*.d.ts",

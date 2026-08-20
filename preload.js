@@ -79,7 +79,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getSavedBounds: () => ipcRenderer.invoke('get-saved-bounds'),
   restoreSavedBounds: () => ipcRenderer.invoke('restore-saved-bounds'),
-  saveWindowBounds: () => ipcRenderer.invoke('save-window-bounds'),
+  saveWindowBounds: (bounds) => ipcRenderer.invoke('save-window-bounds', bounds),
+  onWindowMoved: (cb) => ipcRenderer.on('window-moved', (_, data) => cb(data)),
 
   // Update a session on the backend (e.g. save duration and complete status)
   updateBackendSession: (sessionId, data) => ipcRenderer.invoke('update-backend-session', sessionId, data),

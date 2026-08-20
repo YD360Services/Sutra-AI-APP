@@ -969,6 +969,12 @@ code {
   flex-direction: column-reverse;
 }
 
+.app-container.position-bottom #toolbar-view {
+  flex-direction: column-reverse !important;
+  padding-top: 0 !important;
+  padding-bottom: 56px !important;
+}
+
 .app-container.position-bottom .toolbar-wrapper {
   top: auto;
   bottom: 4px;
@@ -980,6 +986,21 @@ code {
 .app-container.position-bottom .toolbar-wrapper:hover {
   border-color: var(--border-hover);
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+}
+
+.app-container.position-bottom .layer-strip {
+  margin: 0 auto 6px !important;
+}
+
+.app-container.position-bottom #settings-popup {
+  top: auto !important;
+  bottom: 56px !important;
+}
+
+.app-container.position-bottom [data-tooltip]:hover::after {
+  top: auto !important;
+  bottom: calc(100% + 12px) !important;
+  animation: tooltip-fade-up 0.15s ease-out forwards !important;
 }
 
 .app-container.position-bottom .panels-container {

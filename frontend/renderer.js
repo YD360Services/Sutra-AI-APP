@@ -62,20 +62,23 @@ let isDraggingWindow = false;
 let activeTab = null; // 'ai', 'code', or null
 let toolbarPosition = 'top'; // 'top' or 'bottom'
 
-function updateDynamicToolbarPosition() {
-  const screenHeight = window.screen.availHeight || 1080;
-  const windowY = window.screenY;
+function updateDynamicToolbarPosition(bounds = null) {
+  const screenHeight = window.screen.availHeight || window.screen.height || 1080;
+  const windowY = (bounds && typeof bounds.y === 'number') ? bounds.y : window.screenY;
 
-  if (windowY > screenHeight / 2) {
-    toolbarPosition = 'bottom';
-  } else {
-    toolbarPosition = 'top';
-  }
+  const newPosition = (windowY > screenHeight / 2) ? 'bottom' : 'top';
+  toolbarPosition = newPosition;
 
   const appContainer = document.querySelector('.app-container');
   if (appContainer) {
     appContainer.classList.toggle('position-bottom', toolbarPosition === 'bottom');
   }
+}
+
+if (window.electronAPI && typeof window.electronAPI.onWindowMoved === 'function') {
+  window.electronAPI.onWindowMoved((bounds) => {
+    updateDynamicToolbarPosition(bounds);
+  });
 }
 
 let hasActiveAnswer = false;
@@ -2559,11 +2562,13 @@ startSessionBtn.addEventListener('click', async () => {
   }
 
   // Load saved bounds if any
+  updateDynamicToolbarPosition();
   const savedState = await window.electronAPI.getSavedBounds();
   if (savedState) {
     currentWidth = Math.max(WIDTH, savedState.width || WIDTH);
     currentHeight = savedState.height || COLLAPSED_HEIGHT;
     await window.electronAPI.restoreSavedBounds();
+    updateDynamicToolbarPosition(savedState);
 
     // Restore the active panel state
     const savedActiveTab = safeGetItem('stealth_activeTab') || null;
@@ -2577,7 +2582,7 @@ startSessionBtn.addEventListener('click', async () => {
     currentWidth = WIDTH;
     currentHeight = COLLAPSED_HEIGHT;
     pendingProgrammaticResizes++;
-    window.electronAPI.resizeWindow(WIDTH, COLLAPSED_HEIGHT, 'top', true);
+    window.electronAPI.resizeWindow(WIDTH, COLLAPSED_HEIGHT, toolbarPosition, true);
   }
 
   // ── 3-LAYER HUD: Open the AI panel so the intro answer has a visible home ──
@@ -3033,6 +3038,9 @@ function updateWindowSize(reposition = false, targetX = null, targetY = null) {
   // If minimized (shrunk), do not let updateWindowSize override the small 48x48 bounds
   if (isShrunk) return;
 
+  // Synchronize toolbar top vs bottom docking state
+  updateDynamicToolbarPosition();
+
   // If in setup wizard view, do not resize the window (keep 600x580 bounds)
   if (setupView && setupView.style.display !== 'none') {
     return;
@@ -3064,18 +3072,17 @@ function updateWindowSize(reposition = false, targetX = null, targetY = null) {
 
     let targetHeight;
     if (settingsOpen || editModalOpen) {
-      targetHeight = Math.max(600, toolbarH + transcriptH + aiLayerH + 100);
+      targetHeight = Math.max(540, toolbarH + transcriptH + aiLayerH + 60);
     } else if (!isMouseInsideWindow && !aiLayerVisible) {
       targetHeight = toolbarH; // just the navbar when nothing else is visible
     } else {
-      // Provide ample canvas headroom when ai layer is visible so vertical resizing is 100% realtime with zero lag
-      targetHeight = aiLayerVisible ? Math.max(850, toolbarH + transcriptH + aiLayerH + 80) : (toolbarH + transcriptH + aiLayerH + 8);
+      // Fit exactly to visible layers without phantom bottom space
+      targetHeight = toolbarH + transcriptH + aiLayerH + 16;
     }
 
     const currentPanelWidth = parseFloat(safeGetItem('stealth_panelWidth') || '620');
     document.documentElement.style.setProperty('--panel-width', currentPanelWidth + 'px');
-    // Keep transparent canvas wide (1240px) when 3rd layer is open so width can resize without OS window shifts
-    const targetWinWidth = aiLayerVisible ? 1240 : WIDTH;
+    const targetWinWidth = Math.max(WIDTH, Math.round(currentPanelWidth + 24));
 
     pendingProgrammaticResizes++;
     window.electronAPI.resizeWindow(targetWinWidth, targetHeight, toolbarPosition, reposition, targetX, targetY);
@@ -5657,6 +5664,27 @@ document.addEventListener('mousedown', (e) => {
     }
     if (typeof updateStealthTypingUI === 'function') {
       updateStealthTypingUI(false);
+    }
+  }
+
+  // Dismiss settings popup & shortcuts subpopup on outside click
+  const settingsPopupEl = document.getElementById('settings-popup');
+  const shortcutsSubpopupEl = document.getElementById('shortcuts-subpopup');
+  const positionBtnEl = document.getElementById('position-btn');
+
+  if (settingsPopupEl && settingsPopupEl.style.display !== 'none') {
+    const isInsideSettings = settingsPopupEl.contains(e.target) || e.target === settingsPopupEl;
+    const isInsidePositionBtn = positionBtnEl && (positionBtnEl.contains(e.target) || e.target === positionBtnEl);
+    if (!isInsideSettings && !isInsidePositionBtn) {
+      settingsPopupEl.style.display = 'none';
+    }
+  }
+
+  if (shortcutsSubpopupEl && shortcutsSubpopupEl.style.display !== 'none') {
+    const isInsideShortcuts = shortcutsSubpopupEl.contains(e.target) || e.target === shortcutsSubpopupEl;
+    const isInsidePositionBtn = positionBtnEl && (positionBtnEl.contains(e.target) || e.target === positionBtnEl);
+    if (!isInsideShortcuts && !isInsidePositionBtn) {
+      shortcutsSubpopupEl.style.display = 'none';
     }
   }
 }, true);
