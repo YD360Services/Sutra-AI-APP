@@ -7,18 +7,15 @@ const https = require('https');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 
-// Helper to keep window bounds reasonably inside the screen workspace.
-// Allows parking at screen edges (user can tuck toolbar to left/right edge),
-// but prevents the window from going fully off-screen (min 48px must stay visible).
+// Helper to keep window bounds strictly inside the screen workspace.
+// Ensures navbar, transcript layer, and answer panel always remain fully visible on screen.
 function clampBoundsToScreen(x, y, width, height) {
   try {
     const activeDisplay = screen.getDisplayMatching({ x, y, width, height });
     const { x: screenX, y: screenY, width: screenWidth, height: screenHeight } = activeDisplay.workArea;
-    const EDGE_MARGIN = 48; // minimum px that must stay visible on screen
 
-    // Allow parking at edges: only block going fully off-screen
-    const clampedX = Math.max(screenX - width + EDGE_MARGIN, Math.min(x, screenX + screenWidth - EDGE_MARGIN));
-    // Y stays fully on screen (never go above top or below bottom)
+    // Window must stay fully inside the screen workArea on all sides (left, right, top, bottom)
+    const clampedX = Math.max(screenX, Math.min(x, screenX + screenWidth - width));
     const clampedY = Math.max(screenY, Math.min(y, screenY + screenHeight - height));
     return { x: clampedX, y: clampedY, width, height };
   } catch (e) {
@@ -211,7 +208,8 @@ function loadSavedBounds() {
             rect.y + rect.height > bounds.y;
         });
         if (isVisible) {
-          return { ...data, ...rect };
+          const clamped = clampBoundsToScreen(rect.x, rect.y, rect.width, rect.height);
+          return { ...data, ...clamped };
         }
       }
     }
@@ -1358,16 +1356,23 @@ function createWindow() {
         if (targetY !== null) {
           y = targetY;
         } else if (position === 'bottom') {
-          // When bottom-docked, anchor the bottom edge so it expands upwards
-          y = bounds.y + (bounds.height - height);
+          // When bottom-docked, anchor the bottom edge so it expands upwards only when height changes
+          if (height !== bounds.height) {
+            y = bounds.y + (bounds.height - height);
+          }
         } else if (position === 'left') {
           // X and Y stay locked to bounds.x and bounds.y
         } else if (position === 'right') {
-          x = bounds.x + (bounds.width - width);
+          if (width !== bounds.width) {
+            x = bounds.x + (bounds.width - width);
+          }
         }
       }
 
-      win.setBounds(clampBoundsToScreen(x, y, width, height));
+      const clamped = clampBoundsToScreen(x, y, width, height);
+      if (clamped.x !== bounds.x || clamped.y !== bounds.y || clamped.width !== bounds.width || clamped.height !== bounds.height) {
+        win.setBounds(clamped);
+      }
     }
   });
 
@@ -1498,7 +1503,6 @@ function createWindow() {
   mainWindow.on('move', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
-      saveSavedBounds(bounds);
       try {
         mainWindow.webContents.send('window-moved', bounds);
       } catch (e) { }
@@ -1508,9 +1512,14 @@ function createWindow() {
   mainWindow.on('moved', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
-      saveSavedBounds(bounds);
+      const clamped = clampBoundsToScreen(bounds.x, bounds.y, bounds.width, bounds.height);
+      if (clamped.x !== bounds.x || clamped.y !== bounds.y) {
+        mainWindow.setPosition(clamped.x, clamped.y);
+      }
+      const finalBounds = mainWindow.getBounds();
+      saveSavedBounds(finalBounds);
       try {
-        mainWindow.webContents.send('window-moved', bounds);
+        mainWindow.webContents.send('window-moved', finalBounds);
       } catch (e) { }
     }
   });

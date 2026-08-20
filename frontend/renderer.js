@@ -3017,7 +3017,8 @@ window.addEventListener('pointermove', (e) => {
     safeSetItem('stealth_answerHeight', newAnswerHeight.toString());
     document.documentElement.style.setProperty('--panel-width', newPanelWidth + 'px');
 
-    // 100% GPU DOM resize only — ZERO OS window repositioning = ZERO shaking!
+    // Update window dimensions in real-time so bottom row, Ask button, and resizer remain perfectly visible
+    updateWindowSize();
     return;
   }
 
