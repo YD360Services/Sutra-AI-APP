@@ -7,13 +7,18 @@ const https = require('https');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 
-// Helper to keep window bounds fully inside the screen workspace
+// Helper to keep window bounds reasonably inside the screen workspace.
+// Allows parking at screen edges (user can tuck toolbar to left/right edge),
+// but prevents the window from going fully off-screen (min 48px must stay visible).
 function clampBoundsToScreen(x, y, width, height) {
   try {
     const activeDisplay = screen.getDisplayMatching({ x, y, width, height });
     const { x: screenX, y: screenY, width: screenWidth, height: screenHeight } = activeDisplay.workArea;
+    const EDGE_MARGIN = 48; // minimum px that must stay visible on screen
 
-    const clampedX = Math.max(screenX, Math.min(x, screenX + screenWidth - width));
+    // Allow parking at edges: only block going fully off-screen
+    const clampedX = Math.max(screenX - width + EDGE_MARGIN, Math.min(x, screenX + screenWidth - EDGE_MARGIN));
+    // Y stays fully on screen (never go above top or below bottom)
     const clampedY = Math.max(screenY, Math.min(y, screenY + screenHeight - height));
     return { x: clampedX, y: clampedY, width, height };
   } catch (e) {
@@ -470,11 +475,25 @@ function createWindow() {
   mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  // Position centered at the top of the display
+  // Restore last saved window position, or default to centered at top of screen
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
-  const x = Math.round((screenWidth - winWidth) / 2) + screenX;
-  mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
+  const savedBounds = loadSavedBounds();
+  if (savedBounds) {
+    // User had moved the toolbar — restore their preferred position
+    mainWindow.setBounds({
+      x: savedBounds.x,
+      y: savedBounds.y,
+      width: winWidth,
+      height: winHeight
+    });
+    console.log('[Stealth] Restored saved window position:', savedBounds.x, savedBounds.y);
+  } else {
+    // First launch or no saved state — center at top of screen (original default)
+    const x = Math.round((screenWidth - winWidth) / 2) + screenX;
+    mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
+    console.log('[Stealth] No saved bounds — using default top-center position');
+  }
 
   // Load the root index.html (stealth toolbar)
   mainWindow.loadFile(path.join(__dirname, 'frontend', 'index.html'));
@@ -1307,8 +1326,12 @@ function createWindow() {
       }
 
       if (reposition) {
+        const savedBounds = loadSavedBounds();
+        const activeDisplay = screen.getDisplayMatching(bounds);
+        const { width: activeScreenWidth, height: activeScreenHeight, y: screenY, x: screenX } = activeDisplay.workArea;
+
         if (height !== 580) {
-          const savedBounds = loadSavedBounds();
+          // Toolbar collapse mode: restore exact saved size + position if available
           if (savedBounds) {
             win.setBounds(clampBoundsToScreen(
               Math.round(savedBounds.x),
@@ -1320,20 +1343,22 @@ function createWindow() {
           }
         }
 
-        const activeDisplay = screen.getDisplayMatching(bounds);
-        const { width: activeScreenWidth, height: activeScreenHeight, y: screenY, x: screenX } = activeDisplay.workArea;
-
-        x = Math.round((activeScreenWidth - width) / 2) + screenX;
-        y = screenY;
-
+        // Setup wizard (height=580) or no saved bounds:
+        // Respect explicit left/right/bottom snap positions exactly,
+        // but for 'top' restore saved X and Y (not hardcoded to roof).
         if (position === 'bottom') {
+          x = savedBounds ? Math.round(savedBounds.x) : Math.round((activeScreenWidth - width) / 2) + screenX;
           y = screenY + activeScreenHeight - height;
         } else if (position === 'left') {
-          x = screenX;
-          y = Math.round((activeScreenHeight - height) / 2) + screenY;
+          x = screenX; // snap to left edge exactly
+          y = savedBounds ? Math.round(savedBounds.y) : Math.round((activeScreenHeight - height) / 2) + screenY;
         } else if (position === 'right') {
-          x = screenX + activeScreenWidth - width;
-          y = Math.round((activeScreenHeight - height) / 2) + screenY;
+          x = screenX + activeScreenWidth - width; // snap to right edge exactly
+          y = savedBounds ? Math.round(savedBounds.y) : Math.round((activeScreenHeight - height) / 2) + screenY;
+        } else {
+          // 'top' (default) — restore saved position or center horizontally
+          x = savedBounds ? Math.round(savedBounds.x) : Math.round((activeScreenWidth - width) / 2) + screenX;
+          y = savedBounds ? Math.round(savedBounds.y) : screenY;
         }
       } else {
         if (targetX !== null) {
@@ -1485,14 +1510,20 @@ function createWindow() {
   mainWindow.on('move', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
-      saveSavedBounds(bounds);
+      // Only save bounds when in toolbar mode (not setup wizard which has height=580).
+      // Saving height=580 corrupts the toolbar's saved position.
+      if (isToolbarMode || bounds.height < 200) {
+        saveSavedBounds(bounds);
+      }
     }
   });
 
   mainWindow.on('resize', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       const bounds = mainWindow.getBounds();
-      saveSavedBounds(bounds);
+      if (isToolbarMode || bounds.height < 200) {
+        saveSavedBounds(bounds);
+      }
     }
   });
 }
@@ -1724,6 +1755,18 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('roundmate');
   app.setAsDefaultProtocolClient('sutra');
 }
+
+// ── Dev/Production userData Parity Fix ───────────────────────────────────────
+// In dev mode (npm start), Electron uses "Roaming\Electron" as userData, but
+// the installed app uses "Roaming\RM". This means stealth_context.json,
+// stealth_window_state.json, and all saved session state are MISSING in dev.
+// Fix: force dev mode to use the same folder as production so both environments
+// behave identically. This must be called before app.requestSingleInstanceLock().
+if (!app.isPackaged) {
+  app.setPath('userData', path.join(app.getPath('appData'), 'RM'));
+  console.log('[Dev Mode] userData forced to:', app.getPath('userData'));
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Ensure single instance
 const additionalData = { myKey: 'stealth-toolbar' };
