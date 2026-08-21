@@ -1447,6 +1447,34 @@ function createWindow() {
     triggerLaunchToolbar();
   });
 
+  // User Account & Tokens status handler for Desktop App
+  ipcMain.handle('get-user-account', async () => {
+    try {
+      const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');
+      if (fs.existsSync(accountPath)) {
+        return JSON.parse(fs.readFileSync(accountPath, 'utf8'));
+      }
+      const contextPath = path.join(app.getPath('userData'), 'stealth_context.json');
+      if (fs.existsSync(contextPath)) {
+        const ctx = JSON.parse(fs.readFileSync(contextPath, 'utf8'));
+        if (ctx.tokens_balance !== undefined || ctx.is_pro !== undefined) {
+          return {
+            isPro: ctx.is_pro === true || ctx.is_pro === 'true',
+            tokens: { balance: Number(ctx.tokens_balance) || 0 },
+            subscription: {
+              isActive: ctx.is_pro === true || ctx.is_pro === 'true',
+              planTitle: ctx.plan_title || 'Pro Pass',
+              expiresAt: ctx.expires_at || null
+            }
+          };
+        }
+      }
+    } catch (e) {
+      console.error('[Account] Error reading local account in IPC:', e.message);
+    }
+    return null;
+  });
+
   // Helper to complete active session on quit/close
   async function autoSaveActiveSession() {
     if (activeSessionId) {
@@ -1644,6 +1672,31 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ error: 'Invalid JSON body' }));
       }
     });
+  } else if (parsedUrl.pathname === '/sync-account') {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', () => {
+        try {
+          const accountData = JSON.parse(body || '{}');
+          const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');
+          fs.writeFileSync(accountPath, JSON.stringify(accountData, null, 2), 'utf8');
+          console.log('[Stealth Server] Synchronized user account tokens on port 48999:', accountData);
+
+          if (mainWindow) {
+            mainWindow.webContents.send('account-synced', accountData);
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'Account synced' }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to sync account: ' + e.message }));
+        }
+      });
+    } else {
+      res.writeHead(405);
+      res.end();
+    }
   } else if (parsedUrl.pathname === '/launch') {
     if (req.method === 'POST') {
       let body = '';
@@ -1664,9 +1717,31 @@ const server = http.createServer((req, res) => {
             language: config.language || '',
             doc_id: config.doc_id || '',
             auto_start: true,
-            is_web_launch: true
+            is_web_launch: true,
+            tokens_balance: config.tokens_balance,
+            is_pro: config.is_pro,
+            plan_title: config.plan_title,
+            expires_at: config.expires_at
           };
           fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
+
+          if (config.tokens_balance !== undefined || config.is_pro !== undefined) {
+            const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');
+            const accountData = {
+              isPro: config.is_pro === true || config.is_pro === 'true',
+              tokens: { balance: Number(config.tokens_balance) || 0 },
+              subscription: {
+                isActive: config.is_pro === true || config.is_pro === 'true',
+                planTitle: config.plan_title || 'Pro Pass',
+                expiresAt: config.expires_at || null
+              }
+            };
+            fs.writeFileSync(accountPath, JSON.stringify(accountData, null, 2), 'utf8');
+            if (mainWindow) {
+              mainWindow.webContents.send('account-synced', accountData);
+            }
+          }
+
           console.log('[Stealth Server] Updated session context on port 48999:', contextData);
 
           if (mainWindow) {
@@ -1706,8 +1781,8 @@ const server = http.createServer((req, res) => {
   }
 });
 
-// ─── Deep Link Protocol Handler (sutra://) ───────────────────────────────────
-// Parses a sutra://start-session?company=...&role=... URL into a session config
+// ─── Deep Link Protocol Handler (sutra:// & roundmate://) ─────────────────────
+// Parses a roundmate://start-session?company=...&role=... URL into a session config
 function parseDeepLinkUrl(urlStr) {
   try {
     const url = new URL(urlStr);
@@ -1726,6 +1801,27 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('prompt_id')) config.prompt_id = params.get('prompt_id');
     if (params.get('auto_answer')) config.auto_answer = params.get('auto_answer') === 'true';
     if (params.get('save_transcript')) config.save_transcript = params.get('save_transcript') === 'true';
+    if (params.get('tokens_balance') !== null) config.tokens_balance = params.get('tokens_balance');
+    if (params.get('is_pro') !== null) config.is_pro = params.get('is_pro');
+    if (params.get('plan_title') !== null) config.plan_title = params.get('plan_title');
+    if (params.get('expires_at') !== null) config.expires_at = params.get('expires_at');
+
+    if (config.tokens_balance !== undefined || config.is_pro !== undefined) {
+      try {
+        const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');
+        const accountData = {
+          isPro: config.is_pro === true || config.is_pro === 'true',
+          tokens: { balance: Number(config.tokens_balance) || 0 },
+          subscription: {
+            isActive: config.is_pro === true || config.is_pro === 'true',
+            planTitle: config.plan_title || 'Pro Pass',
+            expiresAt: config.expires_at || null
+          }
+        };
+        fs.writeFileSync(accountPath, JSON.stringify(accountData, null, 2), 'utf8');
+      } catch (_) {}
+    }
+
     if (Object.keys(config).length > 0) {
       config.auto_start = true;
       config.is_web_launch = true;

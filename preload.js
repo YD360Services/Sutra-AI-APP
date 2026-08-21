@@ -94,9 +94,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Reset session memory (new meeting)
   resetSessionMemory: (token) => ipcRenderer.invoke('reset-session-memory', token),
 
-  // ── Web Authentication Sync Handlers ──────────────────────────────
+  // ── Web Authentication & Account Sync Handlers ───────────────────
   openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),
   onSyncCredentials: (cb) => ipcRenderer.on('sync-credentials', (_, data) => cb(data)),
+  getUserAccount: () => ipcRenderer.invoke('get-user-account'),
+  onAccountSynced: (cb) => ipcRenderer.on('account-synced', (_, data) => cb(data)),
 
   // ── Deep Link Session Handler ─────────────────────────────────────
   // Fires when the app is opened via roundmate://start-session?... or sutra://start-session?... deep link

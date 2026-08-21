@@ -2457,8 +2457,40 @@ if (editSessionSaveBtn) {
 }
 
 
+let syncedDesktopAccount = null;
+
+// Initial account fetch via IPC from main process
+if (window.electronAPI && window.electronAPI.getUserAccount) {
+  window.electronAPI.getUserAccount().then(acc => {
+    if (acc) {
+      console.log('[Desktop Renderer] Loaded local account on startup:', acc);
+      syncedDesktopAccount = acc;
+      if (typeof updateWizardView === 'function') updateWizardView();
+    }
+  }).catch(() => {});
+}
+
+// Live account sync listener
+if (window.electronAPI && window.electronAPI.onAccountSynced) {
+  window.electronAPI.onAccountSynced((accountData) => {
+    console.log('[Desktop Renderer] Received live account sync:', accountData);
+    if (accountData) {
+      syncedDesktopAccount = accountData;
+      if (typeof updateWizardView === 'function') updateWizardView();
+    }
+  });
+}
+
 // ── User Token & Plan Gatekeeper in Desktop App ──────────────────────────────
 function getDesktopUserTokenStatus() {
+  if (syncedDesktopAccount) {
+    return {
+      isPro: syncedDesktopAccount.isPro === true,
+      tokens: syncedDesktopAccount.tokens || { balance: 0 },
+      subscription: syncedDesktopAccount.subscription || { isActive: false }
+    };
+  }
+
   const normUserId = normalizeUserId(USER_ID);
   try {
     const subKey = `roundmate-user-sub-${normUserId}`;
