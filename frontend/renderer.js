@@ -1849,6 +1849,50 @@ function updateWizardView() {
     setupBackBtn.style.display = 'block';
     setupNextBtn.style.display = 'none';
     startSessionBtn.style.display = 'block';
+
+    // Update Step 3 Token & Subscription Status Box
+    const tokenStatus = getDesktopUserTokenStatus();
+    const tokenIcon = document.getElementById('desktop-token-icon');
+    const tokenTitle = document.getElementById('desktop-token-title');
+    const tokenSubtitle = document.getElementById('desktop-token-subtitle');
+    const tokenBox = document.getElementById('desktop-token-status-box');
+    const topupLinkBtn = document.getElementById('desktop-topup-link-btn');
+
+    if (tokenStatus.isPro) {
+      if (tokenIcon) tokenIcon.textContent = '👑';
+      if (tokenTitle) tokenTitle.textContent = `${tokenStatus.subscription.planTitle || 'Unlimited Pro'} Active`;
+      if (tokenSubtitle) tokenSubtitle.textContent = 'Unlimited live interview streaming & background memory.';
+      if (tokenBox) {
+        tokenBox.style.background = 'rgba(20, 184, 166, 0.08)';
+        tokenBox.style.borderColor = 'rgba(20, 184, 166, 0.25)';
+      }
+      startSessionBtn.style.opacity = '1';
+      startSessionBtn.textContent = 'Start Session & Collapse';
+    } else if (tokenStatus.tokens.balance > 0) {
+      if (tokenIcon) tokenIcon.textContent = '⚡';
+      if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance} Session Token(s) Available`;
+      if (tokenSubtitle) tokenSubtitle.textContent = '1 token = 1 full hour of live stealth copilot assistance.';
+      if (tokenBox) {
+        tokenBox.style.background = 'rgba(56, 189, 248, 0.08)';
+        tokenBox.style.borderColor = 'rgba(56, 189, 248, 0.25)';
+      }
+      startSessionBtn.style.opacity = '1';
+      startSessionBtn.textContent = 'Start Session (Use 1 Token)';
+    } else {
+      if (tokenIcon) tokenIcon.textContent = '🔒';
+      if (tokenTitle) tokenTitle.textContent = 'Free Tier (0 Session Tokens)';
+      if (tokenSubtitle) tokenSubtitle.textContent = 'Purchase a token or subscribe to Pro to start live session.';
+      if (tokenBox) {
+        tokenBox.style.background = 'rgba(239, 68, 68, 0.08)';
+        tokenBox.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+      }
+      startSessionBtn.style.opacity = '0.7';
+      startSessionBtn.textContent = '⚡ Token Required to Start';
+    }
+
+    if (topupLinkBtn) {
+      topupLinkBtn.onclick = () => window.electronAPI.openExternalUrl('http://localhost:5173/#Billing');
+    }
   }
 }
 
@@ -2413,6 +2457,49 @@ if (editSessionSaveBtn) {
 }
 
 
+// ── User Token & Plan Gatekeeper in Desktop App ──────────────────────────────
+function getDesktopUserTokenStatus() {
+  const normUserId = normalizeUserId(USER_ID);
+  try {
+    const subKey = `roundmate-user-sub-${normUserId}`;
+    const tokensKey = `roundmate-user-tokens-${normUserId}`;
+
+    const rawSub = localStorage.getItem(subKey) || localStorage.getItem('roundmate-user-sub-guest');
+    const rawTokens = localStorage.getItem(tokensKey) || localStorage.getItem('roundmate-user-tokens-guest');
+
+    let sub = rawSub ? JSON.parse(rawSub) : { isActive: false, planType: 'free', expiresAt: null };
+    let tokens = rawTokens ? JSON.parse(rawTokens) : { balance: 0 };
+
+    const isPro = sub?.isActive && (sub.planType === 'weekly' || sub.planType === 'monthly' || sub.planType === 'yearly');
+    return {
+      isPro,
+      tokens: tokens || { balance: 0 },
+      subscription: sub
+    };
+  } catch (e) {
+    return { isPro: false, tokens: { balance: 0 }, subscription: { isActive: false } };
+  }
+}
+
+function consumeDesktopToken() {
+  const normUserId = normalizeUserId(USER_ID);
+  const status = getDesktopUserTokenStatus();
+  if (status.isPro) return { allowed: true };
+
+  if (status.tokens.balance > 0) {
+    const updated = {
+      ...status.tokens,
+      balance: Math.max(0, status.tokens.balance - 1)
+    };
+    try {
+      localStorage.setItem(`roundmate-user-tokens-${normUserId}`, JSON.stringify(updated));
+      localStorage.setItem('roundmate-user-tokens-guest', JSON.stringify(updated));
+    } catch (_) {}
+    return { allowed: true, remaining: updated.balance };
+  }
+  return { allowed: false, remaining: 0 };
+}
+
 let sessionTimerInterval = null;
 let sessionSecondsElapsed = 0;
 const sessionTimerElement = document.getElementById('session-timer');
@@ -2421,20 +2508,74 @@ function startSessionTimer() {
   if (sessionTimerInterval) clearInterval(sessionTimerInterval);
   sessionSecondsElapsed = 0;
   const stopBtnTimer = document.getElementById('stop-btn-timer');
+  const stopBtn = document.getElementById('stop-session-btn');
+  const status = getDesktopUserTokenStatus();
+
+  const allottedSeconds = 3600; // 1 hour per session token
+
   if (sessionTimerElement) {
     sessionTimerElement.textContent = '00:00';
-    // kept hidden — stop button shows the time now
   }
-  if (stopBtnTimer) stopBtnTimer.textContent = '00:00';
+  if (stopBtnTimer) stopBtnTimer.textContent = status.isPro ? '00:00' : '60:00';
 
   sessionTimerInterval = setInterval(() => {
     sessionSecondsElapsed++;
-    const m = Math.floor(sessionSecondsElapsed / 60).toString().padStart(2, '0');
-    const s = (sessionSecondsElapsed % 60).toString().padStart(2, '0');
-    const timeStr = `${m}:${s}`;
-    if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
-    const stopBtnTimer = document.getElementById('stop-btn-timer');
-    if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
+
+    if (status.isPro) {
+      const m = Math.floor(sessionSecondsElapsed / 60).toString().padStart(2, '0');
+      const s = (sessionSecondsElapsed % 60).toString().padStart(2, '0');
+      const timeStr = `${m}:${s}`;
+      if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
+      if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
+    } else {
+      const remainingSeconds = Math.max(0, allottedSeconds - sessionSecondsElapsed);
+      const m = Math.floor(remainingSeconds / 60).toString().padStart(2, '0');
+      const s = (remainingSeconds % 60).toString().padStart(2, '0');
+      const timeStr = `${m}:${s}`;
+      if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
+      if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
+
+      // Color coding & warnings on the stealth navbar stop button
+      if (stopBtn) {
+        if (remainingSeconds <= 60 && remainingSeconds > 0) {
+          stopBtn.style.background = 'rgba(239,68,68,0.9)';
+          stopBtn.style.animation = 'pulse 1s infinite';
+        } else if (remainingSeconds <= 300) {
+          stopBtn.style.background = 'rgba(245,158,11,0.85)';
+        }
+      }
+
+      // Token depleted in desktop live session
+      if (remainingSeconds <= 0) {
+        clearInterval(sessionTimerInterval);
+        showModalOverlay('Session Token Expired', `
+          <div style="text-align: center; padding: 18px 10px;">
+            <div style="font-size: 32px; margin-bottom: 12px;">⏳</div>
+            <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">1-Hour Token Time Concluded</h3>
+            <p style="font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px;">
+              Your 1-hour session token credit has ended. Top up tokens on the Web App or subscribe to Unlimited PRO to continue AI assistance.
+            </p>
+            <div style="display: flex; gap: 10px; justify-content: center;">
+              <button id="depleted-topup-btn" style="padding: 9px 18px; background: #2dd4bf; color: #0f172a; font-weight: 700; border-radius: 8px; border: none; font-size: 11px; cursor: pointer;">
+                ⚡ Top Up Tokens (Web)
+              </button>
+              <button id="depleted-exit-btn" style="padding: 9px 18px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-weight: 600; border-radius: 8px; font-size: 11px; cursor: pointer;">
+                Exit Session
+              </button>
+            </div>
+          </div>
+        `);
+        setTimeout(() => {
+          document.getElementById('depleted-topup-btn')?.addEventListener('click', () => {
+            window.electronAPI.openExternalUrl('http://localhost:5173/#Billing');
+          });
+          document.getElementById('depleted-exit-btn')?.addEventListener('click', () => {
+            document.getElementById('modal-close-btn')?.click();
+            stopSessionBtn?.click();
+          });
+        }, 50);
+      }
+    }
   }, 1000);
 }
 
@@ -2447,10 +2588,49 @@ function stopSessionTimer() {
   if (sessionTimerElement) sessionTimerElement.style.display = 'none';
   const stopBtnTimer = document.getElementById('stop-btn-timer');
   if (stopBtnTimer) stopBtnTimer.textContent = '00:00';
+  const stopBtn = document.getElementById('stop-session-btn');
+  if (stopBtn) {
+    stopBtn.style.background = '';
+    stopBtn.style.animation = '';
+  }
 }
 
-// Start session button event handler
+// Start session button event handler with token gatekeeper
 startSessionBtn.addEventListener('click', async () => {
+  // Token verification gatekeeper
+  const tokenStatus = getDesktopUserTokenStatus();
+  if (!tokenStatus.isPro && tokenStatus.tokens.balance <= 0) {
+    showModalOverlay('Session Token Required', `
+      <div style="text-align: center; padding: 18px 10px;">
+        <div style="font-size: 32px; margin-bottom: 12px;">⚡</div>
+        <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">0 Session Tokens Remaining</h3>
+        <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px;">
+          You need at least 1 Session Token or an active Unlimited Pro Subscription to launch live interview stealth assistance.
+        </p>
+        <div style="display: flex; gap: 10px; justify-content: center;">
+          <button id="gate-topup-btn" style="padding: 9px 18px; background: #2dd4bf; color: #0f172a; font-weight: 700; border-radius: 8px; border: none; font-size: 11.5px; cursor: pointer;">
+            ⚡ Open Billing & Top Up
+          </button>
+          <button id="gate-cancel-btn" style="padding: 9px 18px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-weight: 600; border-radius: 8px; font-size: 11.5px; cursor: pointer;">
+            Cancel
+          </button>
+        </div>
+      </div>
+    `);
+    setTimeout(() => {
+      document.getElementById('gate-topup-btn')?.addEventListener('click', () => {
+        window.electronAPI.openExternalUrl('http://localhost:5173/#Billing');
+      });
+      document.getElementById('gate-cancel-btn')?.addEventListener('click', () => {
+        document.getElementById('modal-close-btn')?.click();
+      });
+    }, 50);
+    return;
+  }
+
+  // Consume token if token model
+  consumeDesktopToken();
+
   hasActiveAnswer = false;
   const company = setupCompany.value.trim() || 'Stealth Practice';
   const role = setupRole.value.trim() || 'Software Engineer';
