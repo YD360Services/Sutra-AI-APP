@@ -94,24 +94,29 @@
 
       <!-- 1A. SYNC ACCOUNT VIEW -->
       <div id="setup-sync-view"
-        style="display: none; flex-direction: column; align-items: center; justify-content: center; height: 385px; text-align: center; padding: 20px;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent-chat)" stroke-width="1.5"
-          style="margin-bottom: 16px;">
-          <path d="M23 12a11 11 0 1 1-2.07-6.56L23 8"></path>
-          <path d="M17 8h6V2"></path>
-        </svg>
-        <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px;">Synchronizing with Web Account
-        </h3>
-        <p
-          style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.6; max-width: 320px; margin-bottom: 24px;">
-          Please log in to your web browser. We will automatically link your account and unlock the desktop app once
-          synced.
-        </p>
+        style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 24px 16px; text-align: center; gap: 10px;">
+        <!-- Lock icon -->
+        <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-chat)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div>
+          <h3 style="font-size: 12px; font-weight: 700; color: #fff; margin: 0 0 4px 0; letter-spacing: 0.01em;">You're logged out</h3>
+          <p style="font-size: 10.5px; color: var(--text-secondary); line-height: 1.5; margin: 0;">Sign in via browser to unlock the app.</p>
+        </div>
         <button id="manual-sync-btn" class="setup-btn-start interactive"
-          style="width: auto; padding: 10px 24px; display: flex; align-items: center; gap: 8px; justify-content: center; outline: none; ">
-          Link Account in Browser
+          style="width: 100%; padding: 8px 16px; display: flex; align-items: center; gap: 6px; justify-content: center; outline: none; font-size: 11px; font-weight: 700;">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3"></line>
+          </svg>
+          Sign In with Browser
         </button>
       </div>
+
 
       <!-- 1B. SETUP STEPS WRAPPER -->
       <div id="setup-steps-wrapper" style="display: flex; flex-direction: column; width: 100%;">
