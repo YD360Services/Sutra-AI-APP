@@ -36,6 +36,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@copilotx-db:5432/copilotx
       - REDIS_URL=redis://copilotx-redis:6379/0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
 volumes:
   postgres_data:

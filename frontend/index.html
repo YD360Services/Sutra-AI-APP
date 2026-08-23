@@ -331,13 +331,23 @@
                 🧠 AI Model
               </label>
               <select id="setup-model-select" class="setup-input" style="padding: 9px 10px; font-size: 13px;">
-                <option value="gpt-5.5" selected>GPT 5.5</option>
-                <option value="gpt-5.5-mini">GPT 5.5 Mini</option>
-                <option value="gptoss">OpenAI o3-mini (GPTOSS)</option>
-                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-                <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                <option value="llama-3.3-70b-specdec">Llama 3.3 70B</option>
-                <option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
+                <optgroup label="── OpenAI ──">
+                  <option value="gpt-5.5" selected>GPT 5.5</option>
+                  <option value="gpt-5.5-mini">GPT 5.5 Mini</option>
+                  <option value="gptoss">OpenAI o3-mini (GPTOSS)</option>
+                </optgroup>
+                <optgroup label="── Google Gemini ──">
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                </optgroup>
+                <optgroup label="── Anthropic Claude ──">
+                  <option value="claude-haiku">Claude Haiku 4.5 — Latest (Fast)</option>
+                  <option value="claude-sonnet">Claude Sonnet 5 — Latest (Best Quality)</option>
+                </optgroup>
+                <optgroup label="── Meta / Open Source (Groq) ──">
+                  <option value="llama-4-scout">Llama 4 Scout (Groq)</option>
+                  <option value="gptoss">GPT-OSS 20B (Groq)</option>
+                </optgroup>
               </select>
             </div>
 

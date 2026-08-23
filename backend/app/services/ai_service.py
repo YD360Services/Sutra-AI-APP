@@ -3,6 +3,7 @@ from google.genai import types
 from app.core.config import settings
 import logging
 import openai
+import anthropic as anthropic_sdk
 import json
 from datetime import datetime
 import os
@@ -115,6 +116,15 @@ if settings.OPENAI_API_KEY:
     except Exception as e:
         logger.error(f"Error initializing OpenAI client: {e}")
 
+# Initialize the Anthropic (Claude) Client
+anthropic_client = None
+if settings.ANTHROPIC_API_KEY:
+    try:
+        anthropic_client = anthropic_sdk.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        logger.info("Anthropic (Claude) API Client initialized successfully.")
+    except Exception as e:
+        logger.error(f"Error initializing Anthropic client: {e}")
+
 def fallback_answer(question: str) -> str:
     q = question.lower()
     if "redis" in q:
@@ -135,39 +145,33 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
     is_resume_parse = "resume" in sys_lower and "summar" in sys_lower
     is_mock = "mock" in model_lower or "mock" in sys_lower or "feedback" in sys_lower
 
-    # Helper mapping for clean API model strings
+    # Helper mapping for clean API model strings (Cost-Saving Aliased)
     def map_to_real_api_model(m: str) -> str:
         if not m:
             return ""
         ml = m.lower().replace(" ", "-") # normalize spaces to dashes
-        
-        # Explicit user mappings:
-        if "gpt-5.5" in ml and "mini" not in ml:
-            ml = "gpt-4.1"
-        elif "gemini-3.5-flash" in ml:
-            ml = "gemini-2.5-flash"
-        elif "gpt-5.5-mini" in ml:
-            ml = "gpt-5.4-mini"
-        elif "gptoss" in ml or "gpt-oss" in ml or "gpt-oss-20b" in ml:
-            return "gpt-oss-20b"
-        elif "o3-mini" in ml:
-            return "o3-mini"
 
-        # Final API routing maps:
-        if "gpt-4.1-mini" in ml or "gpt-5.4-mini" in ml or "5.4-mini" in ml or "gpt-4o-mini" in ml:
-            return "gpt-4o-mini"
-        if "gpt-4.1" in ml or "gpt-4o" in ml:
-            return "gpt-4o"
-        if "o1-mini" in ml:
-            return "o1-mini"
+        # ── 1. OpenAI Cost-Alias (Saves 90% vs Flagship) ──
+        # All GPT-5.5 requests route to the ultra-fast, budget-friendly gpt-5.5-mini
+        if "gpt-5.5" in ml or "gpt-4.1" in ml or "gpt-4o" in ml or "gpt-5" in ml:
+            return "gpt-5.5-mini"
+        elif "gptoss" in ml or "gpt-oss" in ml or "o3-mini" in ml:
+            return "openai/gpt-oss-20b"       # Groq-hosted OSS model ($0.20/1M)
+
+        # ── 2. Anthropic Claude Cost-Alias (Saves 50%-80% vs Sonnet) ──
+        # Routes all Claude requests (Sonnet/Opus/Haiku) to the fast, affordable Haiku 4.5
+        if "claude" in ml:
+            return "claude-haiku-4-5-20251001"
+
+        # ── 3. Google Gemini Cost-Alias (Saves 95% vs Pro) ──
+        # Routes Gemini requests directly to the fastest, cheapest Gemini 3.5 Flash ($0.15/$0.60 per 1M)
         if "gemini" in ml:
-            if "pro" in ml or "1.5-pro" in ml:
-                return "gemini-1.5-pro"
-            return "gemini-2.0-flash"
-        if "llama" in ml:
-            if "3.3" in ml or "70b" in ml:
-                return "llama-3.3-70b-specdec"
-            return "gpt-oss-20b"
+            return "gemini-3.5-flash"
+
+        # ── 4. Meta Llama / Groq Cost-Alias ──
+        if "llama" in ml or "scout" in ml:
+            return "meta-llama/llama-4-scout-17b-16e-instruct"
+
         return m
 
     # 1. Respect model_lower if explicitly requested
@@ -179,25 +183,25 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
     # 2. Fallbacks based on task types if model is not set
     if is_live_answer:
         if settings.OPENAI_API_KEY:
-            return "gpt-4o-mini"
+            return "gpt-5.5-mini"
         elif settings.GEMINI_API_KEY:
-            return "gemini-2.0-flash"
+            return "gemini-3.5-flash"
         elif settings.GROQ_API_KEY:
-            return "gpt-oss-20b"
+            return "meta-llama/llama-4-scout-17b-16e-instruct"
         return ""
     elif is_screenshot:
         if settings.OPENAI_API_KEY:
-            return "gpt-4o-mini"
+            return "gpt-5.5"
         elif settings.GEMINI_API_KEY:
-            return "gemini-2.0-flash"
-        return "gpt-4o-mini"
+            return "gemini-3.5-flash"
+        return "gpt-5.5"
     else:
         if settings.GROQ_API_KEY:
-            return "gpt-oss-20b"
+            return "meta-llama/llama-4-scout-17b-16e-instruct"
         elif settings.OPENAI_API_KEY:
-            return "gpt-4o-mini"
+            return "gpt-5.5-mini"
         elif settings.GEMINI_API_KEY:
-            return "gemini-2.0-flash"
+            return "gemini-3.5-flash"
         return ""
 
 async def call_llm(prompt: str, system_prompt: str, model: str = None, response_json: bool = False, throw_on_error: bool = False, temperature: float = 0.3) -> str:
@@ -210,7 +214,14 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
         return fallback_answer(prompt)
 
     model_lower = model.lower()
-    is_groq = "llama" in model_lower or "mixtral" in model_lower or "gemma2" in model_lower or "groq" in model_lower
+    is_groq = (
+        "llama" in model_lower or "mixtral" in model_lower
+        or "gemma2" in model_lower or "groq" in model_lower
+        or "meta-llama/" in model_lower              # Llama 4 Scout format
+        or ("openai/" in model_lower and "gpt-oss" in model_lower)  # gpt-oss-20b on Groq
+        or "qwen" in model_lower                      # Qwen models on Groq
+    )
+    is_claude = "claude" in model_lower
 
     log_file = None
 
@@ -238,6 +249,34 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
             return content
         except Exception as e:
             logger.error(f"Groq API generation error: {e}. Falling back...")
+            if log_file:
+                log_response(log_file, error=str(e))
+            if throw_on_error:
+                raise e
+            return fallback_answer(prompt)
+
+    elif is_claude:
+        # Anthropic (Claude) Flow — system prompt is a top-level param, NOT inside messages[]
+        if not anthropic_client:
+            if throw_on_error:
+                raise ValueError("Anthropic API Key or Client not configured.")
+            logger.warning("Anthropic Client not configured. Using local fallback.")
+            return fallback_answer(prompt)
+        try:
+            log_file = log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
+            response = await anthropic_client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=system_prompt,          # <-- Anthropic's unique API: system is top-level
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temperature,
+            )
+            content = response.content[0].text or ""
+            if log_file:
+                log_response(log_file, response_text=content)
+            return content
+        except Exception as e:
+            logger.error(f"Anthropic (Claude) API generation error: {e}. Falling back...")
             if log_file:
                 log_response(log_file, error=str(e))
             if throw_on_error:
@@ -343,7 +382,14 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
         return
 
     model_lower = model.lower()
-    is_groq = "llama" in model_lower or "mixtral" in model_lower or "gemma2" in model_lower or "groq" in model_lower
+    is_groq = (
+        "llama" in model_lower or "mixtral" in model_lower
+        or "gemma2" in model_lower or "groq" in model_lower
+        or "meta-llama/" in model_lower              # Llama 4 Scout format
+        or ("openai/" in model_lower and "gpt-oss" in model_lower)  # gpt-oss-20b on Groq
+        or "qwen" in model_lower                      # Qwen models on Groq
+    )
+    is_claude = "claude" in model_lower
 
     if is_groq:
         if not groq_client:
@@ -367,6 +413,25 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
                     yield chunk.choices[0].delta.content
         except Exception as e:
             logger.error(f"Groq streaming error: {e}")
+            yield fallback_answer(prompt)
+
+    elif is_claude:
+        # Anthropic (Claude) streaming flow
+        if not anthropic_client:
+            yield fallback_answer(prompt)
+            return
+        try:
+            log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
+            async with anthropic_client.messages.stream(
+                model=model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield text
+        except Exception as e:
+            logger.error(f"Anthropic (Claude) streaming error: {e}")
             yield fallback_answer(prompt)
 
     elif "gpt" in model_lower:

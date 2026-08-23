@@ -17,3 +17,4 @@ redis>=5.0.0
 aiosqlite
 pypdf
 python-docx
+anthropic>=0.34.0
