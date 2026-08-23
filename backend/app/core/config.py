@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "meta-llama/llama-4-scout-17b-16e-instruct"
     ANTHROPIC_MODEL: str = "claude-haiku-4-5-20251001"
     
+    # Admin & Security
+    INITIAL_ADMIN_EMAILS: str = "kirankumar82054@gmail.com,omkarvenkat09@gmail.com,y.bhanuchandar360@gmail.com"
+
     # Databases
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/copilotx"
     REDIS_URL: str = "redis://localhost:6379/0"
