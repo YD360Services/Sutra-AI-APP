@@ -6,14 +6,13 @@ from typing import List, Optional
 import uuid
 from datetime import datetime, timedelta
 
+from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import AdminEmail
 import logging
 
 router = APIRouter()
 logger = logging.getLogger("copilotx.admins")
-
-DEFAULT_ADMINS = ['kirankumar82054@gmail.com', 'omkarvenkat09@gmail.com', 'y.bhanuchandar360@gmail.com']
 
 class AdminEmailCreate(BaseModel):
     email: EmailStr
@@ -45,12 +44,17 @@ async def get_admins(db: AsyncSession = Depends(get_db)):
     admins = result.scalars().all()
     
     if not admins:
-        logger.info("No admins found in DB, seeding default admins.")
-        for email in DEFAULT_ADMINS:
+        logger.info("No admins found in DB, seeding default admins from config.")
+        initial_seeds = [
+            e.strip().lower() 
+            for e in getattr(settings, "INITIAL_ADMIN_EMAILS", "").split(",") 
+            if e.strip()
+        ]
+        for email in initial_seeds:
             new_admin = AdminEmail(email=email)
             db.add(new_admin)
         await db.commit()
-        return DEFAULT_ADMINS
+        return initial_seeds
         
     return list(admins)
 

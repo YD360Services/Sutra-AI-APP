@@ -5450,10 +5450,7 @@ function logoutLocalUser() {
   if (isRecording) {
     stopRecording();
   }
-  showSetupWizard();
-  if (typeof showModalOverlay === 'function') {
-    showModalOverlay('Logged Out', '<div style="text-align:center;padding:24px 0;color:var(--text-primary);font-size:13px;">Your account has been logged out successfully.</div>');
-  }
+  showSyncPage();
 }
 
 if (settingsLogoutBtn) {
