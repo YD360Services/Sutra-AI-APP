@@ -3,6 +3,8 @@ import logging
 import time
 from typing import Dict, Any, Optional
 
+from app.cache.redis import redis_cache
+
 logger = logging.getLogger("copilotx.prompt_builder")
 
 # 1. SPECIALIZED PROMPTS FOR EACH QUESTION TYPE
