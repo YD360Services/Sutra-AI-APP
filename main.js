@@ -1605,13 +1605,15 @@ function triggerLaunchToolbar() {
 // Start a local HTTP server to listen for launch triggers from the web browser
 const http = require('http');
 
-// Allowed origins for the internal controller (localhost only)
+// Allowed origins for the internal controller (localhost and production web app)
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:5173', 'http://127.0.0.1:5173',
   'http://localhost:3000', 'http://127.0.0.1:3000',
   'http://localhost:4173', 'http://127.0.0.1:4173',
   'http://localhost:2999', 'http://127.0.0.1:2999',
-  'http://localhost:8080', 'http://127.0.0.1:8080'
+  'http://localhost:8080', 'http://127.0.0.1:8080',
+  'https://roundmateai.com', 'https://www.roundmateai.com',
+  'http://roundmateai.com', 'http://www.roundmateai.com'
 ]);
 
 const server = http.createServer((req, res) => {
