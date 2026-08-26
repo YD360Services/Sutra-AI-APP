@@ -151,26 +151,29 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
             return ""
         ml = m.lower().replace(" ", "-") # normalize spaces to dashes
 
-        # ── 1. OpenAI Cost-Alias (Saves 90% vs Flagship) ──
-        # All GPT-5.5 requests route to the ultra-fast, budget-friendly gpt-5.5-mini
-        if "gpt-5.5" in ml or "gpt-4.1" in ml or "gpt-4o" in ml or "gpt-5" in ml:
-            return "gpt-5.5-mini"
-        elif "gptoss" in ml or "gpt-oss" in ml or "o3-mini" in ml:
-            return "openai/gpt-oss-20b"       # Groq-hosted OSS model ($0.20/1M)
-
-        # ── 2. Anthropic Claude Cost-Alias (Saves 50%-80% vs Sonnet) ──
-        # Routes all Claude requests (Sonnet/Opus/Haiku) to the fast, affordable Haiku 4.5
-        if "claude" in ml:
-            return "claude-haiku-4-5-20251001"
-
-        # ── 3. Google Gemini Cost-Alias (Saves 95% vs Pro) ──
-        # Routes Gemini requests directly to the fastest, cheapest Gemini 3.5 Flash ($0.15/$0.60 per 1M)
-        if "gemini" in ml:
+        # ── 1. Google Gemini Normalizer ──
+        if "3.7" in ml or "gemini-3.7" in ml or "lite" in ml:
+            return "gemini-3.5-flash-lite"
+        if "3.1" in ml or "gemini-3.1" in ml or "pro" in ml:
             return "gemini-3.5-flash"
+        if "gemini" in ml or "flash" in ml:
+            return "gemini-3.5-flash-lite"
 
-        # ── 4. Meta Llama / Groq Cost-Alias ──
-        if "llama" in ml or "scout" in ml:
-            return "meta-llama/llama-4-scout-17b-16e-instruct"
+        # ── 2. Anthropic Claude Normalizer ──
+        if "claude" in ml or "sonnet" in ml or "haiku" in ml:
+            return "claude-3-5-haiku"
+
+        # ── 3. Meta / Groq Normalizer ──
+        if "llama" in ml or "groq" in ml or "scout" in ml or "20b" in ml:
+            return "llama-3.1-8b-instant"
+
+        # ── 4. OpenAI GPTOSS Normalizer ──
+        if "o3" in ml or "gptoss" in ml:
+            return "gpt-4o-mini"
+
+        # ── 5. OpenAI GPT 5.6 / GPT 5.5 Normalizer ──
+        if "gpt-5.6" in ml or "gpt-5.5" in ml or "5.6" in ml or "5.5" in ml or "gpt" in ml:
+            return "gpt-5.5-mini"
 
         return m
 

@@ -235,9 +235,6 @@ class PromptBuilder:
         })
         
         await redis_cache.set_session_state(session_id, session_state)
-        
-        if not redis_cache._client:
-            redis_cache._local_cache[f"session:{session_id}"] = json.dumps(session_state)
             
         return session_state
 

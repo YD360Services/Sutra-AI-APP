@@ -1855,8 +1855,14 @@ function updateWizardView() {
     const tokenIcon = document.getElementById('desktop-token-icon');
     const tokenTitle = document.getElementById('desktop-token-title');
     const tokenSubtitle = document.getElementById('desktop-token-subtitle');
-    const tokenBox = document.getElementById('desktop-token-status-box');
-    const topupLinkBtn = document.getElementById('desktop-topup-link-btn');
+    const planExpiryBadge = document.getElementById('desktop-plan-expiry-badge');
+    const formatPackExpiryDate = (timestamp) => {
+      if (!timestamp) return 'No Expiry';
+      const ms = timestamp < 1e11 ? timestamp * 1000 : timestamp;
+      const d = new Date(ms);
+      if (isNaN(d.getTime())) return 'Active';
+      return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
 
     if (tokenStatus.isPro) {
       if (tokenIcon) tokenIcon.textContent = '👑';
@@ -1865,6 +1871,12 @@ function updateWizardView() {
       if (tokenBox) {
         tokenBox.style.background = 'rgba(20, 184, 166, 0.08)';
         tokenBox.style.borderColor = 'rgba(20, 184, 166, 0.25)';
+      }
+      if (planExpiryBadge) {
+        planExpiryBadge.textContent = `Exp: ${formatPackExpiryDate(tokenStatus.subscription?.expiresAt)}`;
+        planExpiryBadge.style.color = '#2dd4bf';
+        planExpiryBadge.style.background = 'rgba(45, 212, 191, 0.12)';
+        planExpiryBadge.style.borderColor = 'rgba(45, 212, 191, 0.35)';
       }
       startSessionBtn.style.opacity = '1';
       startSessionBtn.textContent = 'Start Session & Collapse';
@@ -1876,6 +1888,14 @@ function updateWizardView() {
         tokenBox.style.background = 'rgba(56, 189, 248, 0.08)';
         tokenBox.style.borderColor = 'rgba(56, 189, 248, 0.25)';
       }
+      if (planExpiryBadge) {
+        planExpiryBadge.textContent = tokenStatus.subscription?.expiresAt
+          ? `Exp: ${formatPackExpiryDate(tokenStatus.subscription.expiresAt)}`
+          : `${tokenStatus.tokens.balance} Token${tokenStatus.tokens.balance > 1 ? 's' : ''}`;
+        planExpiryBadge.style.color = '#38bdf8';
+        planExpiryBadge.style.background = 'rgba(56, 189, 248, 0.12)';
+        planExpiryBadge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+      }
       startSessionBtn.style.opacity = '1';
       startSessionBtn.textContent = 'Start Session (Use 1 Token)';
     } else {
@@ -1886,12 +1906,14 @@ function updateWizardView() {
         tokenBox.style.background = 'rgba(239, 68, 68, 0.08)';
         tokenBox.style.borderColor = 'rgba(239, 68, 68, 0.25)';
       }
+      if (planExpiryBadge) {
+        planExpiryBadge.textContent = 'Free Tier';
+        planExpiryBadge.style.color = '#94a3b8';
+        planExpiryBadge.style.background = 'rgba(255, 255, 255, 0.05)';
+        planExpiryBadge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+      }
       startSessionBtn.style.opacity = '0.7';
       startSessionBtn.textContent = '⚡ Token Required to Start';
-    }
-
-    if (topupLinkBtn) {
-      topupLinkBtn.onclick = () => window.electronAPI.openExternalUrl('http://localhost:5173/#Billing');
     }
   }
 }

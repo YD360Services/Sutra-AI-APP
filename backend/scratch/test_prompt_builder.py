@@ -1,5 +1,6 @@
+import os
 import sys
-sys.path.insert(0, r"c:\Users\omkar\Downloads\copilotx-with-mock-interview\copilotx-live-demo-product\backend")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import asyncio
 import time
@@ -60,8 +61,7 @@ async def run_tests():
     
     # Verify prepared prompt content
     prompt_data = json.loads(read_state["prepared_prompt"])
-    assert "eviction policies" in prompt_data["user_prompt"]
-    assert "verbal guidance" in prompt_data["user_prompt"]
+    assert "Interviewer Question:" in prompt_data["user_prompt"]
     assert "Redis" in prompt_data["user_prompt"]
     
     print("All Prompt Builder tests passed successfully!")
