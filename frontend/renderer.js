@@ -425,7 +425,7 @@ function formatDuration(seconds) {
 function getModeBadge(sessionName) {
   const n = (sessionName || '').toLowerCase();
   if (n.includes('coding test')) return { bg: 'rgba(245,158,11,0.12)', border: 'rgba(245,158,11,0.3)', color: '#fbbf24', label: 'Coding Test' };
-  if (n.includes('hr')) return { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', color: '#4ade80', label: 'HR Round' };
+  if (n.includes('hr') || n.includes('manager')) return { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.3)', color: '#4ade80', label: 'HR / Manager Round' };
   return { bg: 'rgba(20, 184, 166,0.12)', border: 'rgba(20, 184, 166,0.3)', color: '#2dd4bf', label: 'Interview+Coding' };
 }
 

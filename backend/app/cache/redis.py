@@ -126,6 +126,14 @@ class RedisCache:
             except Exception as e:
                 logger.warning(f"Redis error setting cache key {key}: {e}")
 
+    async def delete_cached_item(self, key: str):
+        self._local_cache.pop(key, None)
+        if self._client:
+            try:
+                await self._client.delete(key)
+            except Exception as e:
+                logger.warning(f"Redis error deleting cache key {key}: {e}")
+
     async def get_resume(self, resume_id: str) -> Optional[str]:
         return await self.get_cached_item(f"resume:{resume_id}")
 

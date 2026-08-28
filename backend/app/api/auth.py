@@ -19,6 +19,9 @@ class GoogleAuthRequest(BaseModel):
     name: Optional[str] = None
     access_token: Optional[str] = None
     is_mock: Optional[bool] = False
+    login_token: Optional[str] = None
+    device_type: Optional[str] = None
+    force: Optional[bool] = False
 
 class GoogleAuthResponse(BaseModel):
     id: uuid.UUID
@@ -92,17 +95,15 @@ async def google_auth(
             # Commit handled by the async session dependency or save manually
             await db.commit()
     
-    # Check if a valid token is already active in Redis to support simultaneous desktop/web logins on the same device
     user_key = f"active_login:{str(user.id)}"
-    existing_token = await redis_cache.get_cached_item(user_key)
+    device_key = f"active_login_device:{str(user.id)}"
     
-    if existing_token:
-        login_token = existing_token
-        logger.info(f"Reusing existing login token for user {user.email}: {login_token}")
-    else:
-        login_token = str(uuid.uuid4())
-        await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)  # 24 h
-        logger.info(f"New login token issued for user {user.email}: {login_token}")
+    # Generate / assign the new active session token for this user
+    login_token = payload.login_token or str(uuid.uuid4())
+    await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)  # 24 h
+    if payload.device_type:
+        await redis_cache.set_cached_item(device_key, payload.device_type, expire_seconds=86400)
+    logger.info(f"New login token assigned for user {user.email}: {login_token} ({payload.device_type or 'Default device'})")
     
     return {
         "id": user.id,
@@ -111,6 +112,95 @@ async def google_auth(
         "created_at": user.created_at.isoformat(),
         "login_token": login_token
     }
+
+
+class CheckExistingSessionRequest(BaseModel):
+    firebase_uid: str
+    email: Optional[str] = None
+    current_token: Optional[str] = None
+    device_type: Optional[str] = None
+
+@router.post("/auth/check-existing-session")
+async def check_existing_session(
+    payload: CheckExistingSessionRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Checks if a user already has an active session on another device before completing sign-in.
+    Does not issue or alter any active tokens.
+    """
+    user_repo = UserRepository(db)
+    user_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}")
+    user = await user_repo.get_by_id(user_id)
+    if not user and payload.email:
+        user = await user_repo.get_by_email(payload.email)
+    
+    if not user:
+        return {
+            "has_conflict": False,
+            "user_id": str(user_id)
+        }
+    
+    user_key = f"active_login:{str(user.id)}"
+    existing_token = await redis_cache.get_cached_item(user_key)
+    
+    if not existing_token:
+        return {
+            "has_conflict": False,
+            "user_id": str(user.id)
+        }
+    
+    # If the request originates from the same device / current token, it's not a conflict
+    if payload.current_token and existing_token == payload.current_token:
+        return {
+            "has_conflict": False,
+            "user_id": str(user.id)
+        }
+        
+    device_key = f"active_login_device:{str(user.id)}"
+    existing_device = await redis_cache.get_cached_item(device_key) or "Another Device"
+    
+    return {
+        "has_conflict": True,
+        "user_id": str(user.id),
+        "existing_device": existing_device,
+        "email": user.email
+    }
+
+
+class ForceLogoutRequest(BaseModel):
+    user_id: Optional[str] = None
+    firebase_uid: Optional[str] = None
+    email: Optional[str] = None
+
+@router.post("/auth/force-logout")
+async def force_logout(
+    payload: ForceLogoutRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Invalidates any existing active session tokens in Redis for the given user,
+    allowing the new device to sign in cleanly.
+    """
+    target_user_id = payload.user_id
+    if not target_user_id and payload.firebase_uid:
+        target_user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}"))
+        
+    if not target_user_id and payload.email:
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_email(payload.email)
+        if user:
+            target_user_id = str(user.id)
+            
+    if target_user_id:
+        user_key = f"active_login:{target_user_id}"
+        device_key = f"active_login_device:{target_user_id}"
+        await redis_cache.delete_cached_item(user_key)
+        await redis_cache.delete_cached_item(device_key)
+        logger.info(f"Force-logout executed for user {target_user_id} - active session revoked.")
+        return {"success": True, "message": "Previous session invalidated"}
+        
+    return {"success": False, "message": "User identifier required"}
 
 
 class CheckSessionRequest(BaseModel):
