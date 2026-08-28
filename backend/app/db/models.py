@@ -45,6 +45,9 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     plan: Mapped[str] = mapped_column(String(50), default="Free")
+    active_session_token: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    active_device_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

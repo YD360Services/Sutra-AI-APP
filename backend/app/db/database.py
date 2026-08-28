@@ -70,6 +70,22 @@ async def verify_and_initialize_db():
         except Exception:
             pass
 
+        user_cols = [
+            ("active_session_token", "TEXT"),
+            ("active_device_type", "TEXT"),
+            ("last_active_at", "TIMESTAMP")
+        ]
+        for col_name, col_type in user_cols:
+            try:
+                async with conn.begin_nested():
+                    if is_sqlite:
+                        await conn.execute(sa.text(f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"))
+                    else:
+                        await conn.execute(sa.text(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+            except Exception:
+                pass
+
+
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

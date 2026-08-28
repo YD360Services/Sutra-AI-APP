@@ -100,10 +100,15 @@ async def google_auth(
     
     # Generate / assign the new active session token for this user
     login_token = payload.login_token or str(uuid.uuid4())
+    user.active_session_token = login_token
+    user.active_device_type = payload.device_type or "Desktop / Laptop"
+    user.last_active_at = datetime.utcnow()
+    await db.commit()
+
     await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)  # 24 h
     if payload.device_type:
         await redis_cache.set_cached_item(device_key, payload.device_type, expire_seconds=86400)
-    logger.info(f"New login token assigned for user {user.email}: {login_token} ({payload.device_type or 'Default device'})")
+    logger.info(f"Active login token updated in DB for user {user.email}: {login_token} ({user.active_device_type})")
     
     return {
         "id": user.id,
@@ -141,8 +146,10 @@ async def check_existing_session(
             "user_id": str(user_id)
         }
     
-    user_key = f"active_login:{str(user.id)}"
-    existing_token = await redis_cache.get_cached_item(user_key)
+    existing_token = user.active_session_token
+    if not existing_token:
+        user_key = f"active_login:{str(user.id)}"
+        existing_token = await redis_cache.get_cached_item(user_key)
     
     if not existing_token:
         return {
@@ -157,8 +164,7 @@ async def check_existing_session(
             "user_id": str(user.id)
         }
         
-    device_key = f"active_login_device:{str(user.id)}"
-    existing_device = await redis_cache.get_cached_item(device_key) or "Another Device"
+    existing_device = user.active_device_type or "Another Device"
     
     return {
         "has_conflict": True,
@@ -179,25 +185,30 @@ async def force_logout(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Invalidates any existing active session tokens in Redis for the given user,
+    Invalidates any existing active session tokens for the given user,
     allowing the new device to sign in cleanly.
     """
-    target_user_id = payload.user_id
-    if not target_user_id and payload.firebase_uid:
-        target_user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}"))
-        
-    if not target_user_id and payload.email:
-        user_repo = UserRepository(db)
+    user_repo = UserRepository(db)
+    user = None
+    if payload.user_id:
+        try:
+            user = await user_repo.get_by_id(uuid.UUID(payload.user_id))
+        except Exception:
+            pass
+    if not user and payload.firebase_uid:
+        user_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}")
+        user = await user_repo.get_by_id(user_id)
+    if not user and payload.email:
         user = await user_repo.get_by_email(payload.email)
-        if user:
-            target_user_id = str(user.id)
-            
-    if target_user_id:
-        user_key = f"active_login:{target_user_id}"
-        device_key = f"active_login_device:{target_user_id}"
+
+    if user:
+        user.active_session_token = None
+        await db.commit()
+        user_key = f"active_login:{str(user.id)}"
+        device_key = f"active_login_device:{str(user.id)}"
         await redis_cache.delete_cached_item(user_key)
         await redis_cache.delete_cached_item(device_key)
-        logger.info(f"Force-logout executed for user {target_user_id} - active session revoked.")
+        logger.info(f"Force-logout executed for user {user.email} - active session revoked.")
         return {"success": True, "message": "Previous session invalidated"}
         
     return {"success": False, "message": "User identifier required"}
@@ -208,26 +219,49 @@ class CheckSessionRequest(BaseModel):
     login_token: str
 
 @router.post("/auth/check-session")
-async def check_session(payload: CheckSessionRequest):
+async def check_session(
+    payload: CheckSessionRequest,
+    db: AsyncSession = Depends(get_db)
+):
     """
-    Validates whether the current login_token is still the active one.
+    Validates whether the current login_token is still the active one in DB.
     Returns {"valid": true} if still active, {"valid": false} if another
-    login has taken over (i.e., the user logged in from a different device/tab).
+    login has taken over.
     """
-    user_key = f"active_login:{payload.user_id}"
-    stored_token = await redis_cache.get_cached_item(user_key)
-    
-    if not stored_token:
-        # The key was either cleared, expired, or the server restarted.
-        # Auto-restore it as the active token to prevent unnecessary logout.
-        await redis_cache.set_cached_item(user_key, payload.login_token, expire_seconds=86400)
-        stored_token = payload.login_token
+    user_repo = UserRepository(db)
+    user = None
+    try:
+        user_uuid = uuid.UUID(payload.user_id)
+        user = await user_repo.get_by_id(user_uuid)
+    except Exception:
+        pass
         
-    is_valid = stored_token == payload.login_token
+    if not user:
+        user = await user_repo.get_by_email(payload.user_id)
+        
+    if not user:
+        # Fallback to in-memory/cache
+        user_key = f"active_login:{payload.user_id}"
+        stored_token = await redis_cache.get_cached_item(user_key)
+        if not stored_token:
+            return {"valid": True}
+        return {"valid": stored_token == payload.login_token}
+        
+    if not user.active_session_token:
+        # First check, record token
+        user.active_session_token = payload.login_token
+        user.last_active_at = datetime.utcnow()
+        await db.commit()
+        return {"valid": True}
+        
+    is_valid = user.active_session_token == payload.login_token
     if not is_valid:
-        logger.info(f"Session check FAILED for user {payload.user_id} — token mismatch (kicked by newer login)")
-    
-    return {"valid": is_valid}
+        logger.info(f"Session check FAILED for user {user.email} — token mismatch (kicked by newer login on {user.active_device_type or 'other device'})")
+    else:
+        user.last_active_at = datetime.utcnow()
+        await db.commit()
+        
+    return {"valid": is_valid, "device": user.active_device_type or "Another Device"}
 
 
 from fastapi.responses import HTMLResponse
