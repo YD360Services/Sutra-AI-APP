@@ -98,17 +98,29 @@ async def google_auth(
     user_key = f"active_login:{str(user.id)}"
     device_key = f"active_login_device:{str(user.id)}"
     
-    # Generate / assign the new active session token for this user
-    login_token = payload.login_token or str(uuid.uuid4())
-    user.active_session_token = login_token
-    user.active_device_type = payload.device_type or "Desktop / Laptop"
-    user.last_active_at = datetime.utcnow()
-    await db.commit()
-
-    await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)  # 24 h
-    if payload.device_type:
-        await redis_cache.set_cached_item(device_key, payload.device_type, expire_seconds=86400)
-    logger.info(f"Active login token updated in DB for user {user.email}: {login_token} ({user.active_device_type})")
+    if payload.login_token:
+        # Explicit login: assign new token and overwrite active session
+        login_token = payload.login_token
+        user.active_session_token = login_token
+        user.active_device_type = payload.device_type or "Desktop / Laptop"
+        user.last_active_at = datetime.utcnow()
+        await db.commit()
+        await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)
+        if payload.device_type:
+            await redis_cache.set_cached_item(device_key, payload.device_type, expire_seconds=86400)
+        logger.info(f"[LOGIN] Active session claimed for {user.email}: token={login_token[:8]}... device={user.active_device_type}")
+    else:
+        # App reload / sync — return existing token WITHOUT overwriting
+        login_token = user.active_session_token
+        if not login_token:
+            login_token = await redis_cache.get_cached_item(user_key)
+        if not login_token:
+            login_token = str(uuid.uuid4())
+            user.active_session_token = login_token
+            user.last_active_at = datetime.utcnow()
+            await db.commit()
+            await redis_cache.set_cached_item(user_key, login_token, expire_seconds=86400)
+        logger.info(f"[SYNC] Returning existing session token for {user.email}: token={login_token[:8] if login_token else 'none'}...")
     
     return {
         "id": user.id,
