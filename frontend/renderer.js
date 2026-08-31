@@ -2621,7 +2621,7 @@ function startSessionTimer() {
         `);
         setTimeout(() => {
           document.getElementById('depleted-topup-btn')?.addEventListener('click', () => {
-            window.electronAPI.openExternalUrl('http://localhost:5173/#Billing');
+            window.electronAPI.openExternalUrl('https://www.roundmateai.com/#Billing');
           });
           document.getElementById('depleted-exit-btn')?.addEventListener('click', () => {
             document.getElementById('modal-close-btn')?.click();
@@ -2673,7 +2673,7 @@ startSessionBtn.addEventListener('click', async () => {
     `);
     setTimeout(() => {
       document.getElementById('gate-topup-btn')?.addEventListener('click', () => {
-        window.electronAPI.openExternalUrl('http://localhost:5173/#Billing');
+        window.electronAPI.openExternalUrl('https://www.roundmateai.com/#Billing');
       });
       document.getElementById('gate-cancel-btn')?.addEventListener('click', () => {
         document.getElementById('modal-close-btn')?.click();
@@ -5352,7 +5352,7 @@ function showSetupWizard() {
 async function triggerBrowserSync() {
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
-    const syncUrl = 'http://localhost:5173/sync?port=48999';
+    const syncUrl = 'https://www.roundmateai.com/sync?port=48999';
     window.electronAPI.openExternalUrl(syncUrl);
   } catch (err) {
     console.error('[Stealth Sync] Failed to launch external browser sync page:', err);

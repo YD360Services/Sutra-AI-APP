@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard, Tray, Menu } = require('electron');
 app.setName('RM');
 app.name = 'RM';
 const path = require('path');
@@ -6,6 +6,9 @@ const fs = require('fs');
 const https = require('https');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
+
+let tray = null;
+let isQuitting = false;
 
 // Helper to keep window bounds strictly inside the screen workspace.
 // Ensures navbar, transcript layer, and answer panel always remain fully visible on screen.
@@ -1494,16 +1497,16 @@ function createWindow() {
     }
   }
 
-  // Handle app minimize / close
+  // Handle app close (hides to tray to keep loopback port 48999 active)
   ipcMain.on('close-app', async () => {
-    try {
-      await autoSaveActiveSession();
-    } catch (e) { }
-    app.exit(0);
+    if (mainWindow) {
+      mainWindow.hide();
+    }
   });
 
-  // Kill entire Electron process (used by setup-view close button)
+  // Explicit quit of entire process
   ipcMain.on('quit-app', async () => {
+    isQuitting = true;
     try {
       await autoSaveActiveSession();
     } catch (e) { }
@@ -1517,10 +1520,18 @@ function createWindow() {
   });
 
   mainWindow.on('close', async (e) => {
-    if (activeSessionId) {
-      e.preventDefault(); // Stop window from closing instantly
-      await autoSaveActiveSession();
-      mainWindow.destroy(); // Now close cleanly
+    if (!isQuitting) {
+      e.preventDefault();
+      if (activeSessionId) {
+        await autoSaveActiveSession();
+      }
+      mainWindow.hide();
+    } else {
+      if (activeSessionId) {
+        e.preventDefault();
+        await autoSaveActiveSession();
+        mainWindow.destroy();
+      }
     }
   });
 
@@ -1898,6 +1909,53 @@ if (!gotTheLock) {
     }
   });
 
+  function setupSystemTray() {
+    if (tray) return;
+    try {
+      const iconPath = path.join(__dirname, 'icon.ico');
+      if (fs.existsSync(iconPath)) {
+        tray = new Tray(iconPath);
+        const contextMenu = Menu.buildFromTemplate([
+          {
+            label: 'Show RoundMate AI',
+            click: () => {
+              if (mainWindow) {
+                mainWindow.show();
+                mainWindow.focus();
+              }
+            }
+          },
+          {
+            label: 'Sync Status (Port 48999 Active)',
+            enabled: false
+          },
+          { type: 'separator' },
+          {
+            label: 'Quit RoundMate AI',
+            click: async () => {
+              isQuitting = true;
+              try {
+                await autoSaveActiveSession();
+              } catch (e) { }
+              app.quit();
+            }
+          }
+        ]);
+
+        tray.setToolTip('RoundMate AI (Stealth Assistant Active)');
+        tray.setContextMenu(contextMenu);
+        tray.on('double-click', () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('[System Tray] Could not initialize tray:', err.message);
+    }
+  }
+
   app.whenReady().then(() => {
     // Check if launched via roundmate:// or sutra:// deep link on Windows (URL will be in argv)
     const deepLinkArg = process.argv.find(arg => arg.startsWith('roundmate://') || arg.startsWith('sutra://'));
@@ -1906,6 +1964,7 @@ if (!gotTheLock) {
     }
 
     createWindow();
+    setupSystemTray();
 
     // Start local server only on the single main instance
     server.listen(48999, '127.0.0.1', () => {
@@ -1932,6 +1991,7 @@ if (!gotTheLock) {
 }
 
 app.on('before-quit', () => {
+  isQuitting = true;
   if (stealthKeyHookProcess) {
     try {
       stealthKeyHookProcess.stdin.write('EXIT\n');
@@ -1941,7 +2001,10 @@ app.on('before-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+  if (isQuitting) {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
   }
+  // Keep background daemon running in tray so port 48999 loopback server catches web logins
 });
