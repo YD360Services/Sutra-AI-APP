@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, cast, String, or_
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 import uuid
@@ -128,7 +128,10 @@ async def get_users(
     query = select(User)
     
     if plan and plan.lower() != 'all':
-        query = query.where(User.plan.ilike(plan))
+        if plan.lower() == 'paid':
+            query = query.where(~User.plan.ilike('%free%'), ~User.plan.ilike('%admin%'))
+        else:
+            query = query.where(User.plan.ilike(f"%{plan}%"))
         
     if recent_days and recent_days > 0:
         cutoff = datetime.utcnow() - timedelta(days=recent_days)
@@ -179,17 +182,19 @@ async def update_user_plan(
     db: AsyncSession = Depends(get_db)
 ):
     from app.db.models import User
+    from sqlalchemy import or_
     try:
+        user = None
         try:
             uid = uuid.UUID(user_id)
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user UUID format")
+            result = await db.execute(select(User).where(User.id == uid))
+            user = result.scalar_one_or_none()
+        except Exception:
+            pass
 
-        result = await db.execute(select(User).where(User.id == uid))
-        user = result.scalar_one_or_none()
         if not user:
-            # Fallback check string comparison
-            result = await db.execute(select(User).where(User.id == str(uid)))
+            # Fallback check by email or string comparison
+            result = await db.execute(select(User).where(or_(User.email == user_id.lower().trim(), cast(User.id, String) == user_id)))
             user = result.scalar_one_or_none()
 
         if not user:
