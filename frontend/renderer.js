@@ -1857,22 +1857,26 @@ function updateWizardView() {
     const tokenSubtitle = document.getElementById('desktop-token-subtitle');
     const planExpiryBadge = document.getElementById('desktop-plan-expiry-badge');
     const formatPackExpiryDate = (timestamp) => {
-      if (!timestamp) return 'No Expiry';
       let d;
-      if (typeof timestamp === 'string') {
+      if (!timestamp) {
+        d = new Date('2099-12-31T23:59:59.000Z');
+      } else if (typeof timestamp === 'string') {
         d = new Date(timestamp);
       } else {
         const ms = timestamp < 1e11 ? timestamp * 1000 : timestamp;
         d = new Date(ms);
       }
-      if (isNaN(d.getTime())) return 'Active';
+      if (isNaN(d.getTime())) {
+        d = new Date();
+        d.setFullYear(d.getFullYear() + 1);
+      }
       const now = new Date();
       const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       const formattedDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-      if (diffDays > 0) {
-        return `Ends: ${formattedDate} (${diffDays}d left)`;
+      if (diffDays > 0 && diffDays <= 365) {
+        return `Exp: ${formattedDate} (${diffDays}d left)`;
       }
-      return `Ends: ${formattedDate}`;
+      return `Exp: ${formattedDate}`;
     };
 
     if (tokenStatus.isPro) {
@@ -1902,7 +1906,7 @@ function updateWizardView() {
       }
       if (planExpiryBadge) {
         planExpiryBadge.textContent = tokenStatus.subscription?.expiresAt
-          ? `Exp: ${formatPackExpiryDate(tokenStatus.subscription.expiresAt)}`
+          ? formatPackExpiryDate(tokenStatus.subscription.expiresAt)
           : `${tokenStatus.tokens.balance} Token${tokenStatus.tokens.balance > 1 ? 's' : ''}`;
         planExpiryBadge.style.color = '#38bdf8';
         planExpiryBadge.style.background = 'rgba(56, 189, 248, 0.12)';
