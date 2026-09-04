@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-haiku-4-5-20251001"
     
     # Admin & Security
-    INITIAL_ADMIN_EMAILS: str = "kirankumar82054@gmail.com,omkarvenkat09@gmail.com,y.bhanuchandar360@gmail.com"
+    INITIAL_ADMIN_EMAILS: str = "kirankumar82054@gmail.com,omkarvenkat09@gmail.com,y.bhanuchandar360@gmail.com,omkarshendre999@gmail.com,admin@roundmate.ai"
 
     # Databases
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/copilotx"

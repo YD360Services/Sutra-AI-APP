@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 from app.core.config import settings
 from app.db.database import get_db
-from app.db.models import AdminEmail
+from app.db.models import AdminEmail, User, Session
 import logging
 
 router = APIRouter()
@@ -64,7 +64,6 @@ async def add_admin(
     db: AsyncSession = Depends(get_db)
 ):
     target_email = payload.email.lower().strip()
-    # Check if already exists
     result = await db.execute(select(AdminEmail).where(AdminEmail.email.ilike(target_email)))
     existing = result.scalar_one_or_none()
     
@@ -87,7 +86,6 @@ async def remove_admin(
     db: AsyncSession = Depends(get_db)
 ):
     target_email = email.lower().strip()
-    # Check if exists
     result = await db.execute(select(AdminEmail).where(AdminEmail.email.ilike(target_email)))
     admin = result.scalar_one_or_none()
     
@@ -97,7 +95,6 @@ async def remove_admin(
             detail="Admin not found"
         )
         
-    # Prevent deleting the last admin
     count_result = await db.execute(select(AdminEmail))
     count = len(count_result.scalars().all())
     
@@ -116,6 +113,8 @@ async def remove_admin(
 class UserPlanUpdate(BaseModel):
     plan: str
 
+# Support both /api/admins/users and /api/users routes
+@router.get("/admins/users")
 @router.get("/users")
 async def get_users(
     plan: Optional[str] = None,
@@ -124,7 +123,6 @@ async def get_users(
     recent_days: Optional[int] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    from app.db.models import User, Session
     query = select(User)
     
     if plan and plan.lower() != 'all':
@@ -159,12 +157,12 @@ async def get_users(
         sess_result = await db.execute(select(Session).where(Session.user_id == u.id))
         user_sessions = sess_result.scalars().all()
         session_count = len(user_sessions)
-        tokens_used = sum((s.duration_seconds or 0) * 15 for s in user_sessions) or (1400 if u.plan == "Pro" else (2500 if u.plan == "Enterprise" else 350))
+        tokens_used = sum((s.duration_seconds or 0) * 15 for s in user_sessions) or (1400 if (u.plan or '').lower() == "pro" else (2500 if (u.plan or '').lower() == "enterprise" else 350))
         
         output.append({
             "id": str(u.id),
             "email": u.email,
-            "name": u.name or u.email.split('@')[0].capitalize(),
+            "name": u.name or (u.email.split('@')[0].capitalize() if u.email else "Candidate User"),
             "plan": u.plan or "Free",
             "tokens_used": tokens_used,
             "session_count": session_count,
@@ -172,34 +170,35 @@ async def get_users(
         })
     return output
 
+# Support both /api/admins/users/{user_id}/plan and /api/users/{user_id}/plan
+@router.patch("/admins/users/{user_id}/plan")
 @router.patch("/users/{user_id}/plan")
 async def update_user_plan(
     user_id: str,
     payload: UserPlanUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    from app.db.models import User
     try:
+        user = None
         try:
             uid = uuid.UUID(user_id)
+            result = await db.execute(select(User).where(User.id == uid))
+            user = result.scalar_one_or_none()
         except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user UUID format")
+            pass
 
-        result = await db.execute(select(User).where(User.id == uid))
-        user = result.scalar_one_or_none()
         if not user:
-            # Fallback check string comparison
-            result = await db.execute(select(User).where(User.id == str(uid)))
+            result = await db.execute(select(User).where(User.email.ilike(user_id)))
             user = result.scalar_one_or_none()
 
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in database")
+            
         user.plan = payload.plan
         await db.commit()
-        return {"success": True, "user_id": user_id, "plan": payload.plan}
+        return {"success": True, "user_id": str(user.id), "plan": payload.plan}
     except HTTPException as e:
         raise e
     except Exception as e:
         logger.error(f"Error updating user plan: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
