@@ -162,12 +162,8 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         ml = m.lower().replace(" ", "-")
 
         # ── 1. Google Gemini Normalizer ──
-        if "2.0" in ml or "gemini-2" in ml:
-            return "gemini-2.0-flash"
-        if "1.5-pro" in ml or "pro" in ml:
-            return "gemini-1.5-pro"
-        if "gemini" in ml or "flash" in ml or "lite" in ml or "3.5" in ml or "3.7" in ml or "3.1" in ml:
-            return "gemini-2.0-flash"
+        if "gemini" in ml or "flash" in ml or "3.6" in ml or "3.7" in ml or "3.1" in ml or "2" in ml:
+            return "gemini-3.6-flash"
 
         # ── 2. Anthropic Claude Normalizer ──
         if "sonnet" in ml:
@@ -176,10 +172,10 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
             return "claude-3-5-haiku-20241022"
 
         # ── 3. Meta / Groq Normalizer ──
-        if "70b" in ml or "llama" in ml or "groq" in ml or "scout" in ml:
-            return "llama-3.3-70b-versatile"
-        if "8b" in ml or "instant" in ml:
-            return "llama-3.1-8b-instant"
+        if "groq" in ml or "oss" in ml or "llama" in ml or "scout" in ml or "120b" in ml:
+            return "openai/gpt-oss-120b"
+        if "qwen" in ml:
+            return "qwen/qwen3.8-27b"
 
         # ── 4. OpenAI Normalizer ──
         if "o3" in ml:
@@ -202,27 +198,25 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
     # 2. Fallbacks based on task types if model is not set
     if is_live_answer:
         if settings.GEMINI_API_KEY:
-            return "gemini-2.0-flash"
+            return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
             return "gpt-4o-mini"
         elif settings.GROQ_API_KEY:
-            return "llama-3.3-70b-versatile"
-        elif settings.ANTHROPIC_API_KEY:
-            return "claude-3-5-haiku-20241022"
+            return "openai/gpt-oss-120b"
         return ""
     elif is_screenshot:
         if settings.GEMINI_API_KEY:
-            return "gemini-2.0-flash"
+            return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
             return "gpt-4o"
-        return "gemini-2.0-flash"
+        return "gemini-3.6-flash"
     else:
         if settings.GEMINI_API_KEY:
-            return "gemini-2.0-flash"
+            return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
             return "gpt-4o-mini"
         elif settings.GROQ_API_KEY:
-            return "llama-3.3-70b-versatile"
+            return "openai/gpt-oss-120b"
         return ""
 
 async def call_llm(prompt: str, system_prompt: str, model: str = None, response_json: bool = False, throw_on_error: bool = False, temperature: float = 0.3) -> str:

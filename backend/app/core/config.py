@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
     
     # Standard Production Real Model Identifiers
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     DEEPGRAM_MODEL: str = "nova-2"
     OPENAI_MODEL: str = "gpt-4o-mini"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     ANTHROPIC_MODEL: str = "claude-3-5-haiku-20241022"
     
     # Admin & Security
