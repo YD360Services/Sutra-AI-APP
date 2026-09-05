@@ -1090,6 +1090,27 @@ function createWindow() {
         } catch (e) { }
       }
 
+      const normalizeModelIdentifier = (modelStr) => {
+        if (!modelStr) return 'gemini-2.0-flash';
+        const m = modelStr.toLowerCase().trim();
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.7') || m.includes('3.1')) {
+          return 'gemini-2.0-flash';
+        }
+        if (m.includes('haiku') || m.includes('sonnet') || m.includes('claude')) {
+          return 'claude-3-5-haiku-20241022';
+        }
+        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b')) {
+          return 'llama-3.3-70b-versatile';
+        }
+        if (m.includes('o3') || m.includes('gptoss')) {
+          return 'o3-mini';
+        }
+        if (m.includes('gpt') || m.includes('5.6') || m.includes('5.5') || m.includes('4o')) {
+          return 'gpt-4o-mini';
+        }
+        return modelStr;
+      };
+
       const newTranscript = (full_transcript && typeof last_offset === 'number') ? full_transcript.slice(last_offset).trim() : (full_transcript || '');
       const payload = {
         session_id: token || null,
@@ -1098,7 +1119,7 @@ function createWindow() {
         source_type: manual_question ? 'manual' : 'transcript',
         resume_content: resume || null,
         knowledge_content: jd || null,
-        model: model || null
+        model: normalizeModelIdentifier(model)
       };
 
       const { data, status } = await backendRequest(
@@ -1109,10 +1130,9 @@ function createWindow() {
       if (status >= 400 || !data) return { error: data?.detail || 'Backend error' };
 
       return {
-        answer: data.answer,
-        question_detected: data.question || manual_question || '',
-        new_offset: full_transcript.length,
-        latency_ms: Date.now() - startTime
+        answer: data.answer || '',
+        question: data.question || manual_question || '',
+        new_offset: (full_transcript || '').length
       };
     } catch (e) {
       console.error('[Backend IPC] query-backend failed:', e.message);
@@ -1138,6 +1158,27 @@ function createWindow() {
         } catch (e) { }
       }
 
+      const normalizeModelIdentifier = (modelStr) => {
+        if (!modelStr) return 'gemini-2.0-flash';
+        const m = modelStr.toLowerCase().trim();
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.7') || m.includes('3.1')) {
+          return 'gemini-2.0-flash';
+        }
+        if (m.includes('haiku') || m.includes('sonnet') || m.includes('claude')) {
+          return 'claude-3-5-haiku-20241022';
+        }
+        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b')) {
+          return 'llama-3.3-70b-versatile';
+        }
+        if (m.includes('o3') || m.includes('gptoss')) {
+          return 'o3-mini';
+        }
+        if (m.includes('gpt') || m.includes('5.6') || m.includes('5.5') || m.includes('4o')) {
+          return 'gpt-4o-mini';
+        }
+        return modelStr;
+      };
+
       // Format knowledge_content parameter to help the backend query the active database document / prompt
       let knowledgeContent = '';
       if (doc_id && doc_id !== '__upload__') {
@@ -1155,7 +1196,7 @@ function createWindow() {
         source_type: manual_question ? 'manual' : 'transcript',
         resume_content: resume_id || resume || null,
         knowledge_content: knowledgeContent || null,
-        model: model || null
+        model: normalizeModelIdentifier(model)
       };
 
       const backendUrl = (env.BACKEND_URL || '').trim();
