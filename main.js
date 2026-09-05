@@ -1091,16 +1091,19 @@ function createWindow() {
       }
 
       const normalizeModelIdentifier = (modelStr) => {
-        if (!modelStr) return 'gemini-2.0-flash';
+        if (!modelStr) return 'gemini-3.6-flash';
         const m = modelStr.toLowerCase().trim();
-        if (m.includes('gemini') || m.includes('flash') || m.includes('3.7') || m.includes('3.1')) {
-          return 'gemini-2.0-flash';
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.7') || m.includes('3.1') || m.includes('2')) {
+          return 'gemini-3.6-flash';
         }
-        if (m.includes('haiku') || m.includes('sonnet') || m.includes('claude')) {
-          return 'claude-3-5-haiku-20241022';
+        if (m.includes('sonnet')) {
+          return 'claude-sonnet-4-5-20250929';
         }
-        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b')) {
-          return 'llama-3.3-70b-versatile';
+        if (m.includes('haiku') || m.includes('claude')) {
+          return 'claude-haiku-4-5-20251001';
+        }
+        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
+          return 'openai/gpt-oss-120b';
         }
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
@@ -1159,16 +1162,19 @@ function createWindow() {
       }
 
       const normalizeModelIdentifier = (modelStr) => {
-        if (!modelStr) return 'gemini-2.0-flash';
+        if (!modelStr) return 'gemini-3.6-flash';
         const m = modelStr.toLowerCase().trim();
-        if (m.includes('gemini') || m.includes('flash') || m.includes('3.7') || m.includes('3.1')) {
-          return 'gemini-2.0-flash';
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.7') || m.includes('3.1') || m.includes('2')) {
+          return 'gemini-3.6-flash';
         }
-        if (m.includes('haiku') || m.includes('sonnet') || m.includes('claude')) {
-          return 'claude-3-5-haiku-20241022';
+        if (m.includes('sonnet')) {
+          return 'claude-sonnet-4-5-20250929';
         }
-        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b')) {
-          return 'llama-3.3-70b-versatile';
+        if (m.includes('haiku') || m.includes('claude')) {
+          return 'claude-haiku-4-5-20251001';
+        }
+        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
+          return 'openai/gpt-oss-120b';
         }
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';

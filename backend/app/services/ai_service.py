@@ -167,9 +167,9 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
 
         # ── 2. Anthropic Claude Normalizer ──
         if "sonnet" in ml:
-            return "claude-3-5-sonnet-20241022"
+            return "claude-sonnet-4-5-20250929"
         if "claude" in ml or "haiku" in ml:
-            return "claude-3-5-haiku-20241022"
+            return "claude-haiku-4-5-20251001"
 
         # ── 3. Meta / Groq Normalizer ──
         if "groq" in ml or "oss" in ml or "llama" in ml or "scout" in ml or "120b" in ml:
@@ -201,6 +201,8 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
             return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
             return "gpt-4o-mini"
+        elif settings.ANTHROPIC_API_KEY:
+            return "claude-haiku-4-5-20251001"
         elif settings.GROQ_API_KEY:
             return "openai/gpt-oss-120b"
         return ""

@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     DEEPGRAM_MODEL: str = "nova-2"
     OPENAI_MODEL: str = "gpt-4o-mini"
     GROQ_MODEL: str = "openai/gpt-oss-120b"
-    ANTHROPIC_MODEL: str = "claude-3-5-haiku-20241022"
+    ANTHROPIC_MODEL: str = "claude-haiku-4-5-20251001"
     
     # Admin & Security
     INITIAL_ADMIN_EMAILS: str = "kirankumar82054@gmail.com,omkarvenkat09@gmail.com,y.bhanuchandar360@gmail.com,omkarshendre999@gmail.com,admin@roundmate.ai"
