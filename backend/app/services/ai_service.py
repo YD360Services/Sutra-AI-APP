@@ -171,15 +171,17 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if "claude" in ml or "haiku" in ml:
             return "claude-haiku-4-5-20251001"
 
-        # ── 3. Meta / Groq Normalizer ──
-        if "groq" in ml or "oss" in ml or "llama" in ml or "scout" in ml or "120b" in ml:
+        # ── 3. OpenAI Reasoning (o3 / gptoss) ──
+        if "o3" in ml or ml == "gptoss":
+            return "o3-mini"
+
+        # ── 4. Meta / Groq Normalizer ──
+        if "groq" in ml or "llama" in ml or "scout" in ml or "120b" in ml or "gpt-oss" in ml or "oss-20b" in ml:
             return "openai/gpt-oss-120b"
         if "qwen" in ml:
             return "qwen/qwen3.8-27b"
 
-        # ── 4. OpenAI Normalizer ──
-        if "o3" in ml or "gptoss" in ml:
-            return "o3-mini"
+        # ── 5. OpenAI 5-Series & Mini ──
         if any(x in ml for x in ["5.4", "5.5", "5.6", "5-mini", "5.4-mini", "5.5-mini"]):
             return "gpt-5.4-mini"
         if "4o-mini" in ml:
@@ -236,7 +238,8 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
     is_groq = (
         "llama" in model_lower or "mixtral" in model_lower
         or "gemma2" in model_lower or "groq" in model_lower
-        or "qwen" in model_lower
+        or "qwen" in model_lower or "gpt-oss" in model_lower
+        or "/" in model_lower
     )
     is_claude = "claude" in model_lower
 
@@ -288,7 +291,6 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
                 max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
             )
             content = response.content[0].text or ""
             if log_file:
@@ -407,7 +409,8 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
     is_groq = (
         "llama" in model_lower or "mixtral" in model_lower
         or "gemma2" in model_lower or "groq" in model_lower
-        or "qwen" in model_lower
+        or "qwen" in model_lower or "gpt-oss" in model_lower
+        or "/" in model_lower
     )
     is_claude = "claude" in model_lower
 
