@@ -24,20 +24,17 @@ def _pick_vision_model(preferred_model: str = None):
 
     # If the user explicitly requested a Gemini model, honour it (Gemini has vision)
     if "gemini" in model_lower and settings.GEMINI_API_KEY and genai_client:
-        if "pro" in model_lower or "1.5" in model_lower:
-            return ("gemini", "gemini-2.5-flash")
-        return ("gemini", settings.GEMINI_MODEL or "gemini-3.5-flash")
+        return ("gemini", "gemini-3.6-flash")
 
-    # OpenAI vision path (gpt-5.5 / gpt-5.5-mini both support vision)
+    # OpenAI vision path (maps gpt-5.5 / gpt-5.5-mini / gpt-5.6 -> gpt-4o-mini or gpt-4o)
     if settings.OPENAI_API_KEY and openai_client:
-        # If user asked for a "heavier" GPT model → gpt-5.5; otherwise gpt-5.5-mini
-        if preferred_model and "mini" not in model_lower:
-            return ("openai", "gpt-5.5")
-        return ("openai", "gpt-5.5-mini")
+        if preferred_model and any(k in model_lower for k in ["5.6", "4o", "heavy", "pro"]):
+            return ("openai", "gpt-4o")
+        return ("openai", "gpt-4o-mini")
 
     # Fallback to Gemini even if the user didn't ask for it
     if settings.GEMINI_API_KEY and genai_client:
-        return ("gemini", settings.GEMINI_MODEL or "gemini-3.5-flash")
+        return ("gemini", "gemini-3.6-flash")
 
     raise ValueError(
         "No vision-capable API key configured. "
@@ -96,7 +93,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                 return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via OpenAI: {str(e)}"}}'
             logger.info("[Screenshot] Falling back to Gemini vision...")
             provider = "gemini"
-            vision_model = settings.GEMINI_MODEL or "gemini-3.5-flash"
+            vision_model = settings.GEMINI_MODEL or "gemini-3.6-flash"
 
     # ── Gemini Vision ──────────────────────────────────────────────────────────
     if provider == "gemini":
