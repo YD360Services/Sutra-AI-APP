@@ -178,12 +178,12 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
             return "qwen/qwen3.8-27b"
 
         # ── 4. OpenAI Normalizer ──
-        if "o3" in ml:
+        if "o3" in ml or "gptoss" in ml:
             return "o3-mini"
-        if "4o-mini" in ml or "mini" in ml or "5.5" in ml or "5.6" in ml or "4.1" in ml:
-            return "gpt-4o-mini"
-        if "4o" in ml or "gpt-4" in ml:
+        if "5.6" in ml or "4o" in ml or "gpt-4" in ml:
             return "gpt-4o"
+        if "5.5" in ml or "4o-mini" in ml or "mini" in ml:
+            return "gpt-4o-mini"
         if "gpt" in ml:
             return "gpt-4o-mini"
 
