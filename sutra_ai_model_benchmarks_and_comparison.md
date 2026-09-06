@@ -111,15 +111,15 @@ The table below maps the user-facing model selection in the **RoundMate AI App S
 
 | Display Label (Frontend) | Config Value (`model`) | Backend Normalized Alias | Speed / Latency (TTFT) | Cost (Input / Output per 1M Tokens) | Primary Use Case & Profile |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| **GPT 5.6** | `gpt-5.6` | `gpt-4o-mini` *(Cost-Saving Aliased)* | **~220 ms** | $0.15 / $0.60 | **Flagship All-Rounder:** Best for complex coding, system architecture, and multi-part questions. |
-| **GPT 5.5** | `gpt-5.5` | `gpt-4o-mini` *(Cost-Saving Aliased)* | **~180 ms** | $0.15 / $0.60 | **High-Speed GPT:** Optimized for fast conversational interview responses. |
-| **OpenAI o3-mini (GPTOSS)** | `gptoss` | `o3-mini` / `gpt-4o-mini` | **~600 ms** 🧠 | $1.10 / $4.40 | **Deep Reasoning:** Algorithmic problem-solving and rigorous logical deduction. |
-| **Gemini 3.7 Flash ⭐** | `gemini-3.7-flash` | `gemini-3.6-flash` *(Flash Lite)* | **~200 ms** ⚡ | $0.075 / $0.30 | **Best for Live Audio:** Sub-220ms TTFT (Time-To-First-Token) for real-time voice sessions. |
-| **Gemini 3.1 Pro** | `gemini-3.1-pro` | `gemini-3.6-flash` *(Pro Tier)* | **~350 ms** | $1.25 / $5.00 | **Deep Context:** 2M+ token context window for large documentation & codebase indexing. |
-| **Claude Haiku 4.5** | `claude-haiku` | `claude-haiku-4-5-20251001` | **~200 ms** ⚡ | $1.00 / $5.00 | **Ultra-Fast Claude:** Rapid interview Q&A with natural, concise phrasing. |
-| **Claude Sonnet 5** | `claude-sonnet` | `claude-sonnet-4-5-20250929` | **~380 ms** | $2.00 / $10.00 | **Premium Coding:** Deep refactoring, syntax nuances, and algorithmic architecture. |
-| **Llama 4 Scout (Groq)** | `llama-4-scout` | `openai/gpt-oss-120b` *(LPU)* | **~150 ms** 🚀 | $0.05 / $0.08 | **Next-Gen Open Weights:** High throughput on Groq LPU silicon. |
-| **GPT-OSS 20B (Groq)** | `gpt-oss-20b` | `openai/gpt-oss-120b` *(LPU)* | **~130 ms** 🚀 | $0.05 / $0.08 | **Lowest Latency:** Instantaneous responses on custom hardware. |
+| **GPT 5.6** | `gpt-5.6` | `gpt-5.5-mini` | **~220 ms** | $0.15 / $0.60 | **Flagship All-Rounder:** Best for complex coding, system architecture, and multi-part questions. |
+| **GPT 5.5** | `gpt-5.5` | `gpt-5.5-mini` | **~180 ms** | $0.15 / $0.60 | **High-Speed GPT:** Optimized for fast conversational interview responses. |
+| **OpenAI o3-mini (GPTOSS)** | `gptoss` | `gpt-4o-mini` | **~600 ms** 🧠 | $1.10 / $4.40 | **Deep Reasoning:** Algorithmic problem-solving and rigorous logical deduction. |
+| **Gemini 3.7 Flash ⭐** | `gemini-3.7-flash` | `gemini-3.5-flash-lite` | **~200 ms** ⚡ | $0.075 / $0.30 | **Best for Live Audio:** Sub-220ms TTFT (Time-To-First-Token) for real-time voice sessions. |
+| **Gemini 3.1 Pro** | `gemini-3.1-pro` | `gemini-3.5-flash` | **~350 ms** | $1.25 / $5.00 | **Deep Context:** 2M+ token context window for large documentation & codebase indexing. |
+| **Claude Haiku 4.5** | `claude-haiku` | `claude-3-5-haiku` | **~200 ms** ⚡ | $1.00 / $5.00 | **Ultra-Fast Claude:** Rapid interview Q&A with natural, concise phrasing. |
+| **Claude Sonnet 5** | `claude-sonnet` | `claude-3-5-haiku` | **~380 ms** | $2.00 / $10.00 | **Premium Coding:** Deep refactoring, syntax nuances, and algorithmic architecture. |
+| **Llama 4 Scout (Groq)** | `llama-4-scout` | `llama-3.1-8b-instant` | **~150 ms** 🚀 | $0.05 / $0.08 | **Next-Gen Open Weights:** High throughput on Groq LPU silicon. |
+| **GPT-OSS 20B (Groq)** | `gpt-oss-20b` | `llama-3.1-8b-instant` | **~130 ms** 🚀 | $0.05 / $0.08 | **Lowest Latency:** Instantaneous responses on custom hardware. |
 
 ---
 *Report Generated for RoundMate AI Repository Reference.*
