@@ -162,7 +162,9 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         ml = m.lower().replace(" ", "-")
 
         # ── 1. Google Gemini Normalizer ──
-        if "gemini" in ml or "flash" in ml or "3.6" in ml or "3.7" in ml or "3.1" in ml or "2" in ml:
+        if "3.7" in ml or "lite" in ml or "flash-lite" in ml:
+            return "gemini-3.5-flash-lite"
+        if "gemini" in ml or "flash" in ml or "3.6" in ml or "3.1" in ml or "pro" in ml or "2" in ml:
             return "gemini-3.6-flash"
 
         # ── 2. Anthropic Claude Normalizer ──

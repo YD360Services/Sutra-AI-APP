@@ -1093,7 +1093,10 @@ function createWindow() {
       const normalizeModelIdentifier = (modelStr) => {
         if (!modelStr) return 'gemini-3.6-flash';
         const m = modelStr.toLowerCase().trim();
-        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.7') || m.includes('3.1') || m.includes('2')) {
+        if (m.includes('3.7') || m.includes('lite') || m.includes('flash-lite')) {
+          return 'gemini-3.5-flash-lite';
+        }
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.1') || m.includes('pro') || m.includes('2')) {
           return 'gemini-3.6-flash';
         }
         if (m.includes('sonnet')) {
