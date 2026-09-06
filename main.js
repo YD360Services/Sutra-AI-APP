@@ -1108,11 +1108,17 @@ function createWindow() {
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
         }
-        if (m.includes('5.6') || m.includes('4o')) {
+        if (m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
+          return 'gpt-5.4-mini';
+        }
+        if (m.includes('4o-mini')) {
+          return 'gpt-4o-mini';
+        }
+        if (m.includes('4o')) {
           return 'gpt-4o';
         }
-        if (m.includes('gpt') || m.includes('5.5') || m.includes('mini')) {
-          return 'gpt-4o-mini';
+        if (m.includes('gpt') || m.includes('mini')) {
+          return 'gpt-5.4-mini';
         }
         return modelStr;
       };

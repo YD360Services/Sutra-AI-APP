@@ -111,9 +111,10 @@ The table below maps the user-facing model selection in the **RoundMate AI App S
 
 | Display Label (Frontend) | Config Value (`model`) | Backend Normalized Alias | Speed / Latency (TTFT) | Cost (Input / Output per 1M Tokens) | Primary Use Case & Profile |
 | :--- | :--- | :--- | :---: | :---: | :--- |
-| **GPT 5.6** | `gpt-5.6` | `gpt-5.5-mini` | **~220 ms** | $0.15 / $0.60 | **Flagship All-Rounder:** Best for complex coding, system architecture, and multi-part questions. |
-| **GPT 5.5** | `gpt-5.5` | `gpt-5.5-mini` | **~180 ms** | $0.15 / $0.60 | **High-Speed GPT:** Optimized for fast conversational interview responses. |
-| **OpenAI o3-mini (GPTOSS)** | `gptoss` | `gpt-4o-mini` | **~600 ms** 🧠 | $1.10 / $4.40 | **Deep Reasoning:** Algorithmic problem-solving and rigorous logical deduction. |
+| **GPT 5.4 Mini** | `gpt-5.4-mini` | `gpt-5.4-mini` | **~180 ms** ⚡ | $0.15 / $0.60 | **High-Speed GPT-5:** Official OpenAI 5-series distilled engine for low-latency live interview responses. |
+| **GPT 5.6** | `gpt-5.6` | `gpt-5.4-mini` | **~220 ms** | $0.15 / $0.60 | **Flagship All-Rounder:** Best for complex coding, system architecture, and multi-part questions. |
+| **GPT 5.5** | `gpt-5.5` | `gpt-5.4-mini` | **~180 ms** | $0.15 / $0.60 | **High-Speed GPT:** Optimized for fast conversational interview responses. |
+| **OpenAI o3-mini (GPTOSS)** | `gptoss` | `o3-mini` | **~600 ms** 🧠 | $1.10 / $4.40 | **Deep Reasoning:** Algorithmic problem-solving and rigorous logical deduction. |
 | **Gemini 3.7 Flash ⭐** | `gemini-3.7-flash` | `gemini-3.5-flash-lite` | **~200 ms** ⚡ | $0.075 / $0.30 | **Best for Live Audio:** Sub-220ms TTFT (Time-To-First-Token) for real-time voice sessions. |
 | **Gemini 3.1 Pro** | `gemini-3.1-pro` | `gemini-3.5-flash` | **~350 ms** | $1.25 / $5.00 | **Deep Context:** 2M+ token context window for large documentation & codebase indexing. |
 | **Claude Haiku 4.5** | `claude-haiku` | `claude-3-5-haiku` | **~200 ms** ⚡ | $1.00 / $5.00 | **Ultra-Fast Claude:** Rapid interview Q&A with natural, concise phrasing. |

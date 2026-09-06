@@ -30,7 +30,7 @@ def _pick_vision_model(preferred_model: str = None):
     if settings.OPENAI_API_KEY and openai_client:
         if preferred_model and any(k in model_lower for k in ["5.6", "4o", "heavy", "pro"]):
             return ("openai", "gpt-4o")
-        return ("openai", "gpt-4o-mini")
+        return ("openai", "gpt-5.4-mini")
 
     # Fallback to Gemini even if the user didn't ask for it
     if settings.GEMINI_API_KEY and genai_client:

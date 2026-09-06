@@ -180,12 +180,14 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         # ── 4. OpenAI Normalizer ──
         if "o3" in ml or "gptoss" in ml:
             return "o3-mini"
-        if "5.6" in ml or "4o" in ml or "gpt-4" in ml:
+        if any(x in ml for x in ["5.4", "5.5", "5.6", "5-mini", "5.4-mini", "5.5-mini"]):
+            return "gpt-5.4-mini"
+        if "4o-mini" in ml:
+            return "gpt-4o-mini"
+        if "4o" in ml:
             return "gpt-4o"
-        if "5.5" in ml or "4o-mini" in ml or "mini" in ml:
-            return "gpt-4o-mini"
-        if "gpt" in ml:
-            return "gpt-4o-mini"
+        if "mini" in ml or "gpt" in ml:
+            return "gpt-5.4-mini"
 
         return m
 
@@ -200,7 +202,7 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if settings.GEMINI_API_KEY:
             return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
-            return "gpt-4o-mini"
+            return "gpt-5.4-mini"
         elif settings.ANTHROPIC_API_KEY:
             return "claude-haiku-4-5-20251001"
         elif settings.GROQ_API_KEY:
@@ -210,13 +212,13 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if settings.GEMINI_API_KEY:
             return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
-            return "gpt-4o"
+            return "gpt-5.4-mini"
         return "gemini-3.6-flash"
     else:
         if settings.GEMINI_API_KEY:
             return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
-            return "gpt-4o-mini"
+            return "gpt-5.4-mini"
         elif settings.GROQ_API_KEY:
             return "openai/gpt-oss-120b"
         return ""
