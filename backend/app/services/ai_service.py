@@ -149,32 +149,43 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
     def map_to_real_api_model(m: str) -> str:
         if not m:
             return ""
-        ml = m.lower().replace(" ", "-") # normalize spaces to dashes
+        ml = m.lower().replace(" ", "-")  # normalize spaces to dashes
 
         # ── 1. Google Gemini Normalizer ──
-        if "3.7" in ml or "gemini-3.7" in ml or "lite" in ml:
+        # Must check before generic gemini/flash catch-all
+        if "gemini-3.5-flash-lite" in ml or "3.7" in ml or "lite" in ml:
             return "gemini-3.5-flash-lite"
-        if "3.1" in ml or "gemini-3.1" in ml or "pro" in ml:
+        if "gemini-3.5-flash" in ml or "3.1" in ml or "pro" in ml:
             return "gemini-3.5-flash"
         if "gemini" in ml or "flash" in ml:
             return "gemini-3.5-flash-lite"
 
         # ── 2. Anthropic Claude Normalizer ──
+        # Route haiku/sonnet aliases to haiku (cheaper). Preserve explicit full model strings.
         if "claude" in ml or "sonnet" in ml or "haiku" in ml:
-            return "claude-3-5-haiku"
+            if any(exact in ml for exact in ("claude-3-5-haiku", "claude-haiku", "claude-3-haiku")):
+                return ml  # pass exact model strings through unchanged
+            return "claude-3-5-haiku"  # default alias
 
         # ── 3. Meta / Groq Normalizer ──
-        if "llama" in ml or "groq" in ml or "scout" in ml or "20b" in ml:
-            return "llama-3.1-8b-instant"
+        if "meta-llama/" in ml or "llama" in ml or "groq" in ml or "scout" in ml:
+            return "meta-llama/llama-4-scout-17b-16e-instruct"
 
-        # ── 4. OpenAI GPTOSS Normalizer ──
-        if "o3" in ml or "gptoss" in ml:
+        # ── 4. OpenAI GPT-OSS / o-series Normalizer ──
+        # Only catch explicit o3/gptoss aliases — NOT generic 'gpt' prefix
+        if ml in ("o3", "gptoss", "gpt-oss", "gpt-oss-20b"):
             return "gpt-4o-mini"
 
-        # ── 5. OpenAI GPT 5.6 / GPT 5.5 Normalizer ──
-        if "gpt-5.6" in ml or "gpt-5.5" in ml or "5.6" in ml or "5.5" in ml or "gpt" in ml:
-            return "gpt-5.5-mini"
+        # ── 5. OpenAI GPT 5.x Normalizer ──
+        # Only normalize known GPT 5.x aliases — do NOT catch gpt-4.x strings
+        gpt5_aliases = ("gpt-5.6", "gpt-5.5", "gpt-5-mini", "gpt5", "gpt-5")
+        if any(alias in ml for alias in gpt5_aliases):
+            if "mini" in ml:
+                return "gpt-5.5-mini"
+            return "gpt-5.5"
 
+        # ── 6. Pass through all other model strings unchanged ──
+        # This preserves exact model names like gpt-4.1-mini, gpt-4o, gpt-4-turbo, etc.
         return m
 
     # 1. Respect model_lower if explicitly requested

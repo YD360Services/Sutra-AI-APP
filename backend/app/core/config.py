@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
+    # Set USE_SPEECHMATICS=false in .env to force Deepgram for all sessions
+    USE_SPEECHMATICS: bool = True
     GEMINI_MODEL: str = "gemini-3.5-flash"
     DEEPGRAM_MODEL: str = "nova-2"
     OPENAI_MODEL: str = "gpt-5.5"

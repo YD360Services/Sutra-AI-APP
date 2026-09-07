@@ -18,10 +18,12 @@ router = APIRouter()
 logger = logging.getLogger("copilotx.websockets")
 
 # Dictionary to hold the task reference per session to allow cancellation of obsolete tasks
-_active_analysis_tasks = {}
-_last_run_time = {}
+_active_analysis_tasks: dict = {}
+_last_run_time: dict = {}
+# Per-session last transcript timestamp for pause duration detection
+_last_transcript_time: dict = {}
 
-async def run_background_pipeline(session_id: str, transcript_text: str, client_ws: WebSocket):
+async def run_background_pipeline(session_id: str, transcript_text: str, client_ws: WebSocket, pause_duration: float = 0.0):
     now = time.time()
     # Throttle: only run pipeline at most once every 400ms per session
     last_time = _last_run_time.get(session_id, 0)
@@ -34,13 +36,20 @@ async def run_background_pipeline(session_id: str, transcript_text: str, client_
         if not old_task.done():
             # Let the active task finish to write context to Redis
             return
+        # Clean up completed task to prevent memory leak
+        del _active_analysis_tasks[session_id]
 
     _last_run_time[session_id] = now
     # Start the new task
-    task = asyncio.create_task(_process_pipeline(session_id, transcript_text, client_ws))
+    task = asyncio.create_task(_process_pipeline(session_id, transcript_text, client_ws, pause_duration))
     _active_analysis_tasks[session_id] = task
 
-async def _process_pipeline(session_id: str, transcript_text: str, client_ws: WebSocket):
+    # Auto-remove from map when done to prevent unbounded memory growth
+    def _cleanup_task(t: asyncio.Task):
+        _active_analysis_tasks.pop(session_id, None)
+    task.add_done_callback(_cleanup_task)
+
+async def _process_pipeline(session_id: str, transcript_text: str, client_ws: WebSocket, pause_duration: float = 0.0):
     start_time = time.time()
     try:
         # Load previous state from Redis
@@ -60,16 +69,17 @@ async def _process_pipeline(session_id: str, transcript_text: str, client_ws: We
         analysis = transcript_engine.analyze(
             raw_transcript=transcript_text,
             previous_state=prev_state_name,
-            pause_duration=0.0
+            pause_duration=pause_duration
         )
         t_duration = time.time() - t_start
         
         # 2. Context Orchestration (REDIS-ONLY FAST PATH)
         c_start = time.time()
         context = None
-        
-        # If cache exists and has metadata/context cached, read from Redis directly (0 DB queries)
-        if cached_session and cached_session.get("metadata_loaded"):
+
+        # If cache exists, has metadata loaded, AND jd_context is present, use Redis directly (0 DB queries)
+        # Note: jd_context guard prevents the silent "None loaded." fallback from a partial first-run write
+        if cached_session and cached_session.get("metadata_loaded") and cached_session.get("jd_context"):
             context = {
                 "resume_context": cached_session.get("resume_context", "None loaded."),
                 "knowledge_context": cached_session.get("knowledge_context", "None loaded."),
@@ -127,6 +137,8 @@ async def _process_pipeline(session_id: str, transcript_text: str, client_ws: We
                     "metadata_loaded": True,
                     "resume_context": context["resume_context"],
                     "knowledge_context": context["knowledge_context"],
+                    # FIX #1: jd_context was missing — silently fell back to "None loaded." every session
+                    "jd_context": context["jd_context"],
                     "previous_context": context["previous_context"],
                     "reasoning_focus": context["reasoning_focus"]
                 })
@@ -173,7 +185,8 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
     # Track this active socket connection in Redis
     await redis_cache.track_websocket(session_id, client_id, register=True)
 
-    use_speechmatics = True # Temporary test mode as requested
+    # FIX #5: Drive Speechmatics vs Deepgram via env/config — set USE_SPEECHMATICS=false in .env to force Deepgram.
+    use_speechmatics = settings.USE_SPEECHMATICS
     
     if use_speechmatics:
         sm_url = "wss://eu.rt.speechmatics.com/v2"
@@ -244,7 +257,13 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                             if is_final:
                                 await redis_cache.set_transcript(session_id, updated)
 
-                            asyncio.create_task(run_background_pipeline(session_id, updated, client_ws))
+                            # FIX #4: Compute real pause duration from inter-transcript gap
+                            now_ts = time.time()
+                            last_ts = _last_transcript_time.get(session_id, now_ts)
+                            actual_pause = now_ts - last_ts if is_final else 0.0
+                            _last_transcript_time[session_id] = now_ts
+
+                            asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
 
                             await client_ws.send_json({
                                 "type": "transcript",
@@ -302,8 +321,14 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     if is_final:
                         await redis_cache.set_transcript(session_id, updated)
 
+                    # FIX #4: Compute real pause duration from inter-transcript gap
+                    now_ts = time.time()
+                    last_ts = _last_transcript_time.get(session_id, now_ts)
+                    actual_pause = now_ts - last_ts if is_final else 0.0
+                    _last_transcript_time[session_id] = now_ts
+
                     # Run intent prediction & context retrieval pipeline asynchronously without blocking
-                    asyncio.create_task(run_background_pipeline(session_id, updated, client_ws))
+                    asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
 
                     await client_ws.send_json({
                         "type": "transcript",
