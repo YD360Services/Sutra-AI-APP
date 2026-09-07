@@ -58,31 +58,28 @@ app.add_middleware(
 import os
 from starlette.middleware.base import BaseHTTPMiddleware
 
+ENABLE_REQUEST_LOGGING = os.getenv("ENABLE_REQUEST_LOGGING", "false").lower() in ("true", "1")
+
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         # Allow WebSocket handshakes to pass through cleanly without HTTP interception
         if request.scope.get("type") != "http":
             return await call_next(request)
 
-        method = request.method
-        path = request.url.path
-        log_msg = f"Request: {method} {path}"
-        if request.query_params:
-            log_msg += f" ?{request.query_params}"
+        if ENABLE_REQUEST_LOGGING:
+            method = request.method
+            path = request.url.path
+            log_msg = f"Request: {method} {path}"
+            if request.query_params:
+                log_msg += f" ?{request.query_params}"
+            logger.debug(log_msg)
 
-        os.makedirs("logs", exist_ok=True)
-        with open("logs/request_debug.log", "a", encoding="utf-8") as f:
-            f.write(f"{log_msg}\n")
+        response = await call_next(request)
 
-        try:
-            response = await call_next(request)
-            with open("logs/request_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"Response: {response.status_code}\n")
-            return response
-        except Exception as e:
-            with open("logs/request_debug.log", "a", encoding="utf-8") as f:
-                f.write(f"Error: {e}\n")
-            raise e
+        if ENABLE_REQUEST_LOGGING:
+            logger.debug(f"Response: {response.status_code}")
+
+        return response
 
 app.add_middleware(RequestLoggingMiddleware)
 

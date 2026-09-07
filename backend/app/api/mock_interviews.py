@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import json
 import re
 import logging
@@ -243,3 +243,20 @@ async def mock_interview_evaluate(req: MockEvaluateRequest):
 
     avg_score = round(total_score / len(req.history)) if req.history else 75
     return {"score": avg_score, "summary": "Calculated score based on response depth and interview structure."}
+
+
+class NormalizeMemoriesRequest(BaseModel):
+    role: str = "Software Engineer"
+    company: str = "Target Company"
+    history: List[Dict[str, Any]] = []
+
+@router.post("/mock-interview/normalize-memories")
+async def normalize_memories(req: NormalizeMemoriesRequest):
+    """
+    Normalizes a candidate's completed mock interview session into structured
+    CandidateMemory items (STAR stories, metrics, key projects) before live interview.
+    """
+    from app.services.candidate_memory import CandidateMemoryStore
+    items = CandidateMemoryStore.normalize_mock_qas(req.history, role=req.role, company=req.company)
+    return {"memories": [item.model_dump() for item in items]}
+

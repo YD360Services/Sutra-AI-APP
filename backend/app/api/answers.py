@@ -19,31 +19,33 @@ from app.cache.redis import redis_cache
 router = APIRouter()
 logger = logging.getLogger("copilotx.answers")
 
+ENABLE_PROMPT_LOGGING = os.getenv("ENABLE_PROMPT_LOGGING", "false").lower() in ("true", "1")
+
 def _log_prompt_to_file(question: str, system_prompt: str, user_prompt: str, prompt_type: str, source_type: str):
-    """Write the exact system + user prompt sent to the LLM into logs/prompt_debug/ for debugging."""
-    try:
-        # Save logs absolutely under the backend/logs/prompt_debug directory
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        log_dir = os.path.join(base_dir, "logs", "prompt_debug")
-        os.makedirs(log_dir, exist_ok=True)
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
-        fname = os.path.join(log_dir, f"{ts}_{source_type}_{prompt_type}.txt")
-        with open(fname, "w", encoding="utf-8") as f:
-            f.write(f"=== PROMPT DEBUG LOG ===\n")
-            f.write(f"Timestamp     : {datetime.utcnow().isoformat()}\n")
-            f.write(f"Source Type   : {source_type}\n")
-            f.write(f"Prompt Type   : {prompt_type}\n")
-            f.write(f"Question      : {question}\n")
-            f.write(f"\n{'='*60}\n")
-            f.write(f"SYSTEM PROMPT :\n{'='*60}\n")
-            f.write(system_prompt or "(empty)")
-            f.write(f"\n\n{'='*60}\n")
-            f.write(f"USER / CONTEXT PROMPT :\n{'='*60}\n")
-            f.write(user_prompt or "(empty)")
-            f.write(f"\n{'='*60}\n")
-        logger.info(f"[PromptDebug] Logged prompt to {fname}")
-    except Exception as e:
-        logger.warning(f"[PromptDebug] Failed to write prompt log: {e}")
+    """Write the exact system + user prompt sent to the LLM asynchronously to eliminate disk I/O from the hot path."""
+    if not ENABLE_PROMPT_LOGGING:
+        return
+
+    def _write():
+        try:
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            log_dir = os.path.join(base_dir, "logs", "prompt_debug")
+            os.makedirs(log_dir, exist_ok=True)
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            fname = os.path.join(log_dir, f"{ts}_{source_type}_{prompt_type}.txt")
+            with open(fname, "w", encoding="utf-8") as f:
+                f.write(f"=== PROMPT DEBUG LOG ===\n")
+                f.write(f"Timestamp     : {datetime.utcnow().isoformat()}\n")
+                f.write(f"Source Type   : {source_type}\n")
+                f.write(f"Prompt Type   : {prompt_type}\n")
+                f.write(f"Question      : {question}\n")
+                f.write(f"\n{'='*60}\nSYSTEM PROMPT :\n{'='*60}\n{system_prompt or '(empty)'}\n")
+                f.write(f"\n{'='*60}\nUSER / CONTEXT PROMPT :\n{'='*60}\n{user_prompt or '(empty)'}\n")
+        except Exception as e:
+            logger.debug(f"[PromptDebug] Failed to write prompt log: {e}")
+
+    import threading
+    threading.Thread(target=_write, daemon=True).start()
 
 def get_system_prompt() -> str:
     from datetime import datetime
@@ -55,27 +57,35 @@ You are a real human candidate sitting in a live job interview today, {current_d
 You are NOT an AI assistant. You are the candidate.
 
 PRIMARY DIRECTIVE:
-You must answer every interviewer question exactly like a high-scoring MOCK INTERVIEW MODEL RESPONSE. Your answer must sound like a top 1% candidate who practiced this exact question in their Mock Interview sessions.
+You must answer every interviewer question exactly like a top 1% candidate who prepared this role thoroughly.
+Deliver your answer in the FIRST PERSON ("I", "my experience", "in my project", "I've built").
 
-MOCK INTERVIEW STYLE & PRACTICE INTEGRATION:
-- Deliver your answer in the FIRST PERSON ("I", "my experience", "in my project", "I've built").
-- Format the response as a structured, articulate, high-impact Mock Interview answer.
-- Actively incorporate the candidate's actual prepared points, STAR examples (Situation, Task, Action, Result), metrics, and model answers from past Mock Interviews for this role.
+TIME-TO-FIRST-TOKEN & STAR-FIRST FORMAT (CRITICAL):
+- For behavioral, situational, or past project experience questions, START IMMEDIATELY with the core STAR points so the candidate can speak instantly:
+  **Situation:** <1 crisp sentence setting the scene>
+  **Action:** <1-2 engineering or leadership actions YOU personally executed>
+  **Result:** <1 quantified outcome, metric, latency reduction, throughput, or business impact>
+- Follow immediately with 2-3 concise supporting bullet points (**Heading:** explanation).
+- For pure technical questions, start directly with the core solution and trade-offs using bold bullet headings.
+
+STRICT CANDIDATE GROUNDING (ANTI-HALLUCINATION):
+Priority Order:
+1. Exact relevant practiced answer from Candidate Memories
+2. Relevant STAR story from Candidate Memories
+3. Relevant candidate project / experience
+4. Resume evidence
+5. JD / company context
+6. General technical reasoning
+
+ABSOLUTE INTEGRITY RULES:
+- NEVER invent companies, job titles, responsibilities, projects, metrics, or technologies not in context.
+- If no direct experience exists for a specific tool, speak truthfully from adjacent experience ("In my previous projects I focused on X, but the fundamental concepts of Y apply similarly...").
 - Sound like a real, confident human candidate — direct, clear, confident, using natural spoken contractions (I've, I'd, I'm, that's, we've).
-
-HOW TO STRUCTURE THE MOCK INTERVIEW RESPONSE:
-- Give a detailed, structured response using bullet points. Each point MUST start with a bold side heading followed by explanation.
-- Format each bullet as: **Heading:** explanation text. Example: **Architecture & Tradeoffs:** In my recent project, I chose Redis over Memcached because we needed data persistence and pub/sub capabilities.
-- Start directly with the first bullet — no warm-up sentences, no AI preambles, no "Great question!".
-
-SOUND LIKE A REAL CANDIDATE:
-- Do NOT say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "As an AI", "Here is the answer".
-- Do NOT repeat the question or add a conversational conclusion at the end.
-- Speak with natural human confidence: "In my experience...", "What I've done previously is...", "Basically...".
+- Never say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "As an AI", "Here is the answer".
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer formulated as a top-tier Mock Interview candidate response — EACH bullet MUST start with a bold heading like **Heading:** followed by explanation. Use \\n- to separate bullets. No asterisks except for bold headings. No numbered lists."}}
+{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer starting with bold headings like **Heading:** followed by explanation. Use \\n- to separate bullets. No asterisks except for bold headings. No numbered lists."}}
 """.strip()
 
 
@@ -396,15 +406,44 @@ async def _prepare_answer_context(
             latest_question, session_category, session_name
         )
 
-    # 5. Load pre-assembled prompt from Redis (built by the background pipeline)
+    # 5. Check prewarmed context packet from speculative retrieval (Fastest path - 0ms DB latency)
     context_prompt = None
-    if payload.session_id and payload.source_type != "transcript":
+    if payload.session_id:
         try:
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
-            if cached_session and "prepared_prompt" in cached_session:
+            if cached_session and "prewarmed_context" in cached_session:
+                pw = cached_session["prewarmed_context"]
+                if isinstance(pw, dict):
+                    role_info = pw.get("role_info", f"Role: {session_name or 'Software Engineer'} at Target Company")
+                    context_prompt = f"""ROLE & COMPANY:
+{role_info}
+
+CANDIDATE MEMORIES (PRACTICED STAR STORIES & EXPERIENCES):
+{pw.get("candidate_memories", "None loaded.")}
+
+USER RESUME EVIDENCE:
+{pw.get("resume_context", "None loaded.")}
+
+JOB DESCRIPTION & FOCUS:
+{pw.get("jd_context", "None loaded.")}
+
+RECENT INTERVIEW Q&A:
+{pw.get("previous_context", "None.")}
+
+QUESTION TO ANSWER:
+{latest_question}
+
+SYSTEM MANDATE & INSTRUCTIONS:
+- You ARE the candidate sitting in the interview right now. Speak in the FIRST PERSON ("I", "my experience", "I've built", "in my project").
+- MANDATE: START IMMEDIATELY with the core STAR answer or technical points so the candidate can speak instantly.
+- REUSE THE CANDIDATE'S PREPARED STAR STORIES, METRICS, AND PRACTICED ANSWERS SHOWN ABOVE.
+- PRIORITY ORDER: 1. Practiced Answer -> 2. Relevant STAR Story -> 3. Candidate Experience -> 4. Resume -> 5. JD -> 6. General Reasoning.
+- NEVER fabricate projects, companies, metrics, or experiences not in context.
+- Talk like a confident candidate: direct, articulate, using spoken contractions: I've, I'd, I'm, that's.""".strip()
+                    logger.info(f"[FastPath] Used speculative prewarmed context packet for session {payload.session_id} (0ms DB latency)")
+            elif cached_session and "prepared_prompt" in cached_session and payload.source_type != "transcript":
                 prompt_data = json.loads(cached_session["prepared_prompt"])
                 user_p = prompt_data.get("user_prompt", "")
-                # Only use cached prompt when the current question is actually present in it
                 question_in_cache = (
                     latest_question
                     and len(latest_question) > 5
@@ -420,14 +459,10 @@ async def _prepare_answer_context(
                     logger.info(
                         f"Loaded matching prepared prompt from cache for session {payload.session_id}"
                     )
-                else:
-                    logger.info(
-                        f"Prepared prompt is stale/mismatched — rebuilding from DB for: {latest_question[:60]}"
-                    )
         except Exception as e:
-            logger.warning(f"Error loading prepared prompt from Redis: {e}")
+            logger.warning(f"Error checking prewarmed context in Redis: {e}")
 
-    # 6. Fallback: build context from DB
+    # 6. Fallback: build context from DB / orchestrator
     if not context_prompt:
         context_prompt = await build_session_context(
             session_id=session_uuid,
@@ -437,7 +472,7 @@ async def _prepare_answer_context(
             knowledge_content=payload.knowledge_content,
         )
 
-    # 7. Check for a stored self-introduction & self-heal missing summaries
+    # 7. Check for a stored self-introduction & self-heal missing summaries (non-blocking)
     stored_introduction = None
     resume_obj = None
     if payload.resume_content and len(payload.resume_content) < 100:
@@ -455,24 +490,29 @@ async def _prepare_answer_context(
         except Exception:
             pass
 
-    # Self-healing: generate summaries for old resumes that are missing them
+    # Self-healing: generate summaries asynchronously in background without blocking live answer!
     if resume_obj and not resume_obj.introduction:
-        try:
-            logger.info(
-                f"[Self-Healing] Generating missing summaries for resume: {resume_obj.file_name}"
-            )
-            from app.services.ai_service import generate_resume_summaries
-            summaries = await generate_resume_summaries(resume_obj.parsed_content)
-            resume_obj.introduction          = summaries.get("introduction")
-            resume_obj.professional_summary  = summaries.get("professional_summary")
-            resume_obj.career_journey        = summaries.get("career_journey")
-            resume_obj.strengths             = summaries.get("strengths")
-            resume_obj.project_summary       = summaries.get("project_summary")
-            db.add(resume_obj)
-            await db.commit()
-            logger.info("[Self-Healing] Summaries successfully generated and saved to DB.")
-        except Exception as she:
-            logger.warning(f"[Self-Healing] Failed to generate resume summaries: {she}")
+        async def _async_heal_resume(r_id, r_content):
+            try:
+                from app.services.ai_service import generate_resume_summaries
+                from app.db.database import SessionLocal
+                from app.db.models import Resume
+                summaries = await generate_resume_summaries(r_content)
+                async with SessionLocal() as db_heal:
+                    r = await db_heal.get(Resume, r_id)
+                    if r:
+                        r.introduction = summaries.get("introduction")
+                        r.professional_summary = summaries.get("professional_summary")
+                        r.career_journey = summaries.get("career_journey")
+                        r.strengths = summaries.get("strengths")
+                        r.project_summary = summaries.get("project_summary")
+                        await db_heal.commit()
+                        logger.info(f"[Self-Healing] Async summaries generated and saved for resume: {r_id}")
+            except Exception as she:
+                logger.warning(f"[Self-Healing] Failed to generate resume summaries: {she}")
+
+        import asyncio
+        asyncio.create_task(_async_heal_resume(resume_obj.id, resume_obj.parsed_content))
 
     # Detect introduction trigger
     if resume_obj and resume_obj.introduction:
@@ -895,19 +935,20 @@ async def prewarm_question_context(
                 async with SessionLocal() as db:
                     user_id = None
                     session_jd_id = None
+                    db_session = None
                     resume_content = payload.resume_content
                     knowledge_content = payload.knowledge_content
 
                     if session_id_parsed:
-                        from app.db.models import Session
-                        db_session = await db.get(Session, session_id_parsed)
-                        if db_session:
-                            user_id = db_session.user_id
-                            session_jd_id = db_session.jd_id
-                            if not resume_content:
-                                resume_content = db_session.resume_content
-                            if not knowledge_content:
-                                knowledge_content = db_session.knowledge_content
+                        try:
+                            from app.db.models import Session
+                            db_session = await db.get(Session, session_id_parsed)
+                            if db_session:
+                                user_id = db_session.user_id
+                                session_jd_id = db_session.job_description_id
+                        except Exception as dbe:
+                            logger.debug(f"Pre-warm session lookup fallback: {dbe}")
+                            db_session = None
 
                     context = await context_orchestrator.prepare_context(
                         session_id=session_id_parsed,
@@ -928,16 +969,27 @@ async def prewarm_question_context(
                         payload.partial_question
                     )
 
-                    # Update cached session state with metadata so background transcript pipeline skips DB
+                    # Update cached session state with metadata and prewarmed_context packet
                     cached_session = await redis_cache.get_session_state(payload.session_id)
                     if not cached_session:
                         cached_session = {}
+                    
+                    role_info = f"Role: {db_session.role_name if db_session else 'Software Engineer'} at {db_session.company_name if db_session else 'Target Company'}"
                     cached_session.update({
                         "metadata_loaded": True,
                         "resume_context": context["resume_context"],
                         "knowledge_context": context["knowledge_context"],
+                        "jd_context": context.get("jd_context", "None loaded."),
                         "previous_context": context["previous_context"],
-                        "reasoning_focus": context["reasoning_focus"]
+                        "reasoning_focus": context["reasoning_focus"],
+                        "prewarmed_context": {
+                            "role_info": role_info,
+                            "jd_context": context.get("jd_context", "None loaded."),
+                            "resume_context": context.get("resume_context", "None loaded."),
+                            "candidate_memories": context.get("knowledge_context", "None loaded."),
+                            "previous_context": context.get("previous_context", "None."),
+                            "keywords": keywords
+                        }
                     })
                     await redis_cache.set_session_state(payload.session_id, cached_session)
 

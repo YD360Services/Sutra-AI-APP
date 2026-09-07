@@ -26,6 +26,8 @@ def setup_database_session(database_url: str):
     connect_args = {}
     if is_sqlite:
         connect_args["check_same_thread"] = False
+    else:
+        connect_args["timeout"] = 2
         
     engine = create_async_engine(
         database_url,
