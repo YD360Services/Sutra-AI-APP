@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -235,45 +236,50 @@ async def check_session(
     payload: CheckSessionRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Validates whether the current login_token is still the active one in DB.
-    Returns {"valid": true} if still active, {"valid": false} if another
-    login has taken over.
-    """
+    admin_whitelist = ["omkarshendre999@gmail.com", "admin@roundmate.ai", "kirankumar82054@gmail.com", "omkarvenkat09@gmail.com", "y.bhanuchandar360@gmail.com"]
+    target_email = (payload.email or "").lower().strip()
+    if target_email in admin_whitelist or target_email.startswith("admin@"):
+        return {"valid": True, "has_session": True}
+
     user_repo = UserRepository(db)
     user = None
-    try:
-        user_uuid = uuid.UUID(payload.user_id)
-        user = await user_repo.get_by_id(user_uuid)
-    except Exception:
-        pass
+    if payload.user_id:
+        try:
+            user = await user_repo.get_by_id(uuid.UUID(payload.user_id))
+        except Exception:
+            pass
+    if not user and payload.firebase_uid:
+        try:
+            uid = uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}")
+            user = await user_repo.get_by_id(uid)
+        except Exception:
+            pass
+    if not user and payload.email:
+        user = await user_repo.get_by_email(payload.email)
         
     if not user:
-        user = await user_repo.get_by_email(payload.user_id)
-        
-    if not user:
-        # Fallback to in-memory/cache
-        user_key = f"active_login:{payload.user_id}"
-        stored_token = await redis_cache.get_cached_item(user_key)
-        if not stored_token:
-            return {"valid": True}
-        return {"valid": stored_token == payload.login_token}
-        
+        return {"valid": True, "has_session": False}
+
+    if user.email and (user.email.lower().strip() in admin_whitelist or user.email.lower().strip().startswith("admin@")):
+        return {"valid": True, "has_session": True}
+
     if not user.active_session_token:
-        # First check, record token
         user.active_session_token = payload.login_token
         user.last_active_at = datetime.utcnow()
         await db.commit()
-        return {"valid": True}
-        
-    is_valid = user.active_session_token == payload.login_token
-    if not is_valid:
-        logger.info(f"Session check FAILED for user {user.email} — token mismatch (kicked by newer login on {user.active_device_type or 'other device'})")
-    else:
+        return {"valid": True, "has_session": True}
+
+    is_valid = not payload.login_token or user.active_session_token == payload.login_token
+    if is_valid:
         user.last_active_at = datetime.utcnow()
         await db.commit()
-        
-    return {"valid": is_valid, "device": user.active_device_type or "Another Device"}
+
+    return {
+        "valid": is_valid,
+        "has_session": True,
+        "active_device": user.active_device_type or "Another Device",
+        "device": user.active_device_type or "Another Device"
+    }
 
 
 from fastapi.responses import HTMLResponse

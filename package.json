@@ -3,13 +3,17 @@
   "productName": "RM",
   "version": "1.0.1",
   "description": "RoundMate AI Stealth Desktop Application",
+  "author": "RoundMate AI <support@roundmateai.com>",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "server": "node server.js",
     "launch": "node launch.js",
     "dist": "electron-builder --win",
-    "dist:mac": "electron-builder --mac"
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:all": "electron-builder -mwl"
   },
   "build": {
     "appId": "com.roundmateai.stealthapp",
@@ -62,6 +66,52 @@
       "shortcutName": "RM",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "icon": "icon.ico"
+    },
+    "dmg": {
+      "title": "RoundMate AI ${version}",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "maintainer": "RoundMate AI <support@roundmateai.com>",
+      "icon": "icon.ico",
+      "mimeTypes": [
+        "x-scheme-handler/roundmate",
+        "x-scheme-handler/sutra"
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libnotify4",
+        "libxtst6",
+        "libnss3"
+      ]
     },
     "files": [
       "main.js",

@@ -86,44 +86,54 @@ def log_response(filename: Path, response_text: str = None, error: str = None):
     except Exception as e:
         logger.error(f"Failed to log response to {filename}: {e}")
 
-# Initialize the Gemini Client
+# Dynamic Client Initialization Helpers
 genai_client = None
-if settings.GEMINI_API_KEY:
-    try:
-        genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        logger.info("Gemini API Client initialized successfully.")
-    except Exception as e:
-        logger.error(f"Error initializing Gemini client: {e}")
-
-# Initialize the Groq Client
 groq_client = None
-if settings.GROQ_API_KEY:
-    try:
-        groq_client = openai.AsyncOpenAI(
-            api_key=settings.GROQ_API_KEY,
-            base_url="https://api.groq.com/openai/v1"
-        )
-        logger.info("Groq API Client initialized successfully.")
-    except Exception as e:
-        logger.error(f"Error initializing Groq client: {e}")
-
-# Initialize the OpenAI Client
 openai_client = None
-if settings.OPENAI_API_KEY:
-    try:
-        openai_client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        logger.info("OpenAI API Client initialized successfully.")
-    except Exception as e:
-        logger.error(f"Error initializing OpenAI client: {e}")
-
-# Initialize the Anthropic (Claude) Client
 anthropic_client = None
-if settings.ANTHROPIC_API_KEY:
-    try:
-        anthropic_client = anthropic_sdk.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-        logger.info("Anthropic (Claude) API Client initialized successfully.")
-    except Exception as e:
-        logger.error(f"Error initializing Anthropic client: {e}")
+
+def get_gemini_client():
+    global genai_client
+    if genai_client is None and settings.GEMINI_API_KEY:
+        try:
+            genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            logger.info("Gemini API Client initialized successfully.")
+        except Exception as e:
+            logger.error(f"Error initializing Gemini client: {e}")
+    return genai_client
+
+def get_groq_client():
+    global groq_client
+    if groq_client is None and settings.GROQ_API_KEY:
+        try:
+            groq_client = openai.AsyncOpenAI(
+                api_key=settings.GROQ_API_KEY,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            logger.info("Groq API Client initialized successfully.")
+        except Exception as e:
+            logger.error(f"Error initializing Groq client: {e}")
+    return groq_client
+
+def get_openai_client():
+    global openai_client
+    if openai_client is None and settings.OPENAI_API_KEY:
+        try:
+            openai_client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            logger.info("OpenAI API Client initialized successfully.")
+        except Exception as e:
+            logger.error(f"Error initializing OpenAI client: {e}")
+    return openai_client
+
+def get_anthropic_client():
+    global anthropic_client
+    if anthropic_client is None and settings.ANTHROPIC_API_KEY:
+        try:
+            anthropic_client = anthropic_sdk.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            logger.info("Anthropic (Claude) API Client initialized successfully.")
+        except Exception as e:
+            logger.error(f"Error initializing Anthropic client: {e}")
+    return anthropic_client
 
 def fallback_answer(question: str) -> str:
     q = question.lower()
@@ -145,44 +155,43 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
     is_resume_parse = "resume" in sys_lower and "summar" in sys_lower
     is_mock = "mock" in model_lower or "mock" in sys_lower or "feedback" in sys_lower
 
-    # Helper mapping for clean API model strings (Cost-Saving Aliased)
+    # Helper mapping for clean real API model strings
     def map_to_real_api_model(m: str) -> str:
         if not m:
             return ""
-        ml = m.lower().replace(" ", "-")  # normalize spaces to dashes
+        ml = m.lower().replace(" ", "-")
 
         # ── 1. Google Gemini Normalizer ──
-        # Must check before generic gemini/flash catch-all
-        if "gemini-3.5-flash-lite" in ml or "3.7" in ml or "lite" in ml:
+        if "3.7" in ml or "lite" in ml or "flash-lite" in ml:
             return "gemini-3.5-flash-lite"
-        if "gemini-3.5-flash" in ml or "3.1" in ml or "pro" in ml:
-            return "gemini-3.5-flash"
-        if "gemini" in ml or "flash" in ml:
-            return "gemini-3.5-flash-lite"
+        if "gemini" in ml or "flash" in ml or "3.6" in ml or "3.1" in ml or "pro" in ml or "2" in ml:
+            return "gemini-3.6-flash"
 
         # ── 2. Anthropic Claude Normalizer ──
-        # Route haiku/sonnet aliases to haiku (cheaper). Preserve explicit full model strings.
-        if "claude" in ml or "sonnet" in ml or "haiku" in ml:
-            if any(exact in ml for exact in ("claude-3-5-haiku", "claude-haiku", "claude-3-haiku")):
-                return ml  # pass exact model strings through unchanged
-            return "claude-3-5-haiku"  # default alias
+        if "sonnet" in ml:
+            return "claude-sonnet-4-5-20250929"
+        if "claude" in ml or "haiku" in ml:
+            return "claude-haiku-4-5-20251001"
 
-        # ── 3. Meta / Groq Normalizer ──
-        if "meta-llama/" in ml or "llama" in ml or "groq" in ml or "scout" in ml:
-            return "meta-llama/llama-4-scout-17b-16e-instruct"
+        # ── 3. OpenAI Reasoning (o3 / gptoss) ──
+        if "o3" in ml or ml == "gptoss":
+            return "o3-mini"
 
-        # ── 4. OpenAI GPT-OSS / o-series Normalizer ──
-        # Only catch explicit o3/gptoss aliases — NOT generic 'gpt' prefix
-        if ml in ("o3", "gptoss", "gpt-oss", "gpt-oss-20b"):
+        # ── 4. Meta / Groq Normalizer ──
+        if "groq" in ml or "llama" in ml or "scout" in ml or "120b" in ml or "gpt-oss" in ml or "oss-20b" in ml:
+            return "openai/gpt-oss-120b"
+        if "qwen" in ml:
+            return "qwen/qwen3.8-27b"
+
+        # ── 5. OpenAI 5-Series & Mini ──
+        if any(x in ml for x in ["5.4", "5.5", "5.6", "5-mini", "5.4-mini", "5.5-mini"]):
+            return "gpt-5.4-mini"
+        if "4o-mini" in ml:
             return "gpt-4o-mini"
-
-        # ── 5. OpenAI GPT 5.x Normalizer ──
-        # Only normalize known GPT 5.x aliases — do NOT catch gpt-4.x strings
-        gpt5_aliases = ("gpt-5.6", "gpt-5.5", "gpt-5-mini", "gpt5", "gpt-5")
-        if any(alias in ml for alias in gpt5_aliases):
-            if "mini" in ml:
-                return "gpt-5.5-mini"
-            return "gpt-5.5"
+        if "4o" in ml:
+            return "gpt-4o"
+        if "mini" in ml or "gpt" in ml:
+            return "gpt-5.4-mini"
 
         # ── 6. Pass through all other model strings unchanged ──
         # This preserves exact model names like gpt-4.1-mini, gpt-4o, gpt-4-turbo, etc.
@@ -196,26 +205,28 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
 
     # 2. Fallbacks based on task types if model is not set
     if is_live_answer:
-        if settings.OPENAI_API_KEY:
-            return "gpt-5.5-mini"
-        elif settings.GEMINI_API_KEY:
-            return "gemini-3.5-flash"
+        if settings.GEMINI_API_KEY:
+            return "gemini-3.6-flash"
+        elif settings.OPENAI_API_KEY:
+            return "gpt-5.4-mini"
+        elif settings.ANTHROPIC_API_KEY:
+            return "claude-haiku-4-5-20251001"
         elif settings.GROQ_API_KEY:
-            return "meta-llama/llama-4-scout-17b-16e-instruct"
+            return "openai/gpt-oss-120b"
         return ""
     elif is_screenshot:
-        if settings.OPENAI_API_KEY:
-            return "gpt-5.5"
-        elif settings.GEMINI_API_KEY:
-            return "gemini-3.5-flash"
-        return "gpt-5.5"
-    else:
-        if settings.GROQ_API_KEY:
-            return "meta-llama/llama-4-scout-17b-16e-instruct"
+        if settings.GEMINI_API_KEY:
+            return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
-            return "gpt-5.5-mini"
-        elif settings.GEMINI_API_KEY:
-            return "gemini-3.5-flash"
+            return "gpt-5.4-mini"
+        return "gemini-3.6-flash"
+    else:
+        if settings.GEMINI_API_KEY:
+            return "gemini-3.6-flash"
+        elif settings.OPENAI_API_KEY:
+            return "gpt-5.4-mini"
+        elif settings.GROQ_API_KEY:
+            return "openai/gpt-oss-120b"
         return ""
 
 async def call_llm(prompt: str, system_prompt: str, model: str = None, response_json: bool = False, throw_on_error: bool = False, temperature: float = 0.3) -> str:
@@ -231,16 +242,16 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
     is_groq = (
         "llama" in model_lower or "mixtral" in model_lower
         or "gemma2" in model_lower or "groq" in model_lower
-        or "meta-llama/" in model_lower              # Llama 4 Scout format
-        or ("openai/" in model_lower and "gpt-oss" in model_lower)  # gpt-oss-20b on Groq
-        or "qwen" in model_lower                      # Qwen models on Groq
+        or "qwen" in model_lower or "gpt-oss" in model_lower
+        or "/" in model_lower
     )
     is_claude = "claude" in model_lower
 
     log_file = None
 
     if is_groq:
-        if not groq_client:
+        client = get_groq_client()
+        if not client:
             if throw_on_error:
                 raise ValueError("Groq API Key or Client not configured.")
             logger.warning("Groq API Client not configured. Using local fallback.")
@@ -248,7 +259,7 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
         try:
             response_format = {"type": "json_object"} if response_json else None
             log_file = log_prompt(provider="groq", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
-            response = await groq_client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -271,19 +282,19 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
 
     elif is_claude:
         # Anthropic (Claude) Flow — system prompt is a top-level param, NOT inside messages[]
-        if not anthropic_client:
+        client = get_anthropic_client()
+        if not client:
             if throw_on_error:
                 raise ValueError("Anthropic API Key or Client not configured.")
             logger.warning("Anthropic Client not configured. Using local fallback.")
             return fallback_answer(prompt)
         try:
             log_file = log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
-            response = await anthropic_client.messages.create(
+            response = await client.messages.create(
                 model=model,
                 max_tokens=4096,
-                system=system_prompt,          # <-- Anthropic's unique API: system is top-level
+                system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
             )
             content = response.content[0].text or ""
             if log_file:
@@ -297,9 +308,10 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
                 raise e
             return fallback_answer(prompt)
 
-    elif "gpt" in model_lower:
+    elif "gpt" in model_lower or "o3" in model_lower:
         # OpenAI Flow
-        if not openai_client:
+        client = get_openai_client()
+        if not client:
             if throw_on_error:
                 raise ValueError("OpenAI API Key or Client not configured.")
             logger.warning("OpenAI API Client not configured. Using local fallback.")
@@ -320,7 +332,7 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
             if not model.lower().startswith("o"):
                 kwargs["temperature"] = temperature
                 
-            response = await openai_client.chat.completions.create(**kwargs)
+            response = await client.chat.completions.create(**kwargs)
             content = response.choices[0].message.content or ""
             if log_file:
                 log_response(log_file, response_text=content)
@@ -335,7 +347,8 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
     else:
         # Gemini Flow
         gemini_model = model if model else settings.GEMINI_MODEL
-        if not genai_client:
+        client = get_gemini_client()
+        if not client:
             if throw_on_error:
                 raise ValueError("Gemini Client not configured (no key).")
             logger.warning("Gemini Client not configured. Using local fallback.")
@@ -350,7 +363,7 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
 
             log_file = log_prompt(provider="gemini", model=gemini_model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
 
-            response = await genai_client.aio.models.generate_content(
+            response = await client.aio.models.generate_content(
                 model=gemini_model,
                 contents=prompt,
                 config=config
@@ -361,10 +374,11 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
             return content
         except Exception as e:
             logger.error(f"Gemini API generation error: {e}. Attempting OpenAI failover...")
-            if openai_client:
+            openai_fallback_client = get_openai_client()
+            if openai_fallback_client:
                 try:
                     response_format = {"type": "json_object"} if response_json else None
-                    openai_resp = await openai_client.chat.completions.create(
+                    openai_resp = await openai_fallback_client.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=[
                             {"role": "system", "content": system_prompt},
@@ -399,20 +413,20 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
     is_groq = (
         "llama" in model_lower or "mixtral" in model_lower
         or "gemma2" in model_lower or "groq" in model_lower
-        or "meta-llama/" in model_lower              # Llama 4 Scout format
-        or ("openai/" in model_lower and "gpt-oss" in model_lower)  # gpt-oss-20b on Groq
-        or "qwen" in model_lower                      # Qwen models on Groq
+        or "qwen" in model_lower or "gpt-oss" in model_lower
+        or "/" in model_lower
     )
     is_claude = "claude" in model_lower
 
     if is_groq:
-        if not groq_client:
+        client = get_groq_client()
+        if not client:
             yield fallback_answer(prompt)
             return
         try:
             response_format = {"type": "json_object"} if response_json else None
             log_prompt(provider="groq", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
-            response = await groq_client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -431,12 +445,13 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
 
     elif is_claude:
         # Anthropic (Claude) streaming flow
-        if not anthropic_client:
+        client = get_anthropic_client()
+        if not client:
             yield fallback_answer(prompt)
             return
         try:
             log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
-            async with anthropic_client.messages.stream(
+            async with client.messages.stream(
                 model=model,
                 max_tokens=4096,
                 system=system_prompt,
@@ -448,8 +463,9 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
             logger.error(f"Anthropic (Claude) streaming error: {e}")
             yield fallback_answer(prompt)
 
-    elif "gpt" in model_lower:
-        if not openai_client:
+    elif "gpt" in model_lower or "o3" in model_lower:
+        client = get_openai_client()
+        if not client:
             yield fallback_answer(prompt)
             return
         try:
@@ -469,7 +485,7 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
             if not model.lower().startswith("o"):
                 kwargs["temperature"] = 0.3
                 
-            response = await openai_client.chat.completions.create(**kwargs)
+            response = await client.chat.completions.create(**kwargs)
             async for chunk in response:
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
@@ -479,7 +495,8 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
     else:
         # Gemini Flow
         gemini_model = model if model else settings.GEMINI_MODEL
-        if not genai_client:
+        client = get_gemini_client()
+        if not client:
             yield fallback_answer(prompt)
             return
         try:
@@ -491,7 +508,7 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
                 config.response_mime_type = "application/json"
             log_prompt(provider="gemini", model=gemini_model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
 
-            response_stream = await genai_client.aio.models.generate_content_stream(
+            response_stream = await client.aio.models.generate_content_stream(
                 model=gemini_model,
                 contents=prompt,
                 config=config

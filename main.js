@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard, Tray, Menu, nativeImage } = require('electron');
 app.setName('RM');
 app.name = 'RM';
 const path = require('path');
@@ -1090,6 +1090,42 @@ function createWindow() {
         } catch (e) { }
       }
 
+      const normalizeModelIdentifier = (modelStr) => {
+        if (!modelStr) return 'gemini-3.6-flash';
+        const m = modelStr.toLowerCase().trim();
+        if (m.includes('3.7') || m.includes('lite') || m.includes('flash-lite')) {
+          return 'gemini-3.5-flash-lite';
+        }
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.1') || m.includes('pro') || m.includes('2')) {
+          return 'gemini-3.6-flash';
+        }
+        if (m.includes('sonnet')) {
+          return 'claude-sonnet-4-5-20250929';
+        }
+        if (m.includes('haiku') || m.includes('claude')) {
+          return 'claude-haiku-4-5-20251001';
+        }
+        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
+          return 'openai/gpt-oss-120b';
+        }
+        if (m.includes('o3') || m.includes('gptoss')) {
+          return 'o3-mini';
+        }
+        if (m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
+          return 'gpt-5.4-mini';
+        }
+        if (m.includes('4o-mini')) {
+          return 'gpt-4o-mini';
+        }
+        if (m.includes('4o')) {
+          return 'gpt-4o';
+        }
+        if (m.includes('gpt') || m.includes('mini')) {
+          return 'gpt-5.4-mini';
+        }
+        return modelStr;
+      };
+
       const newTranscript = (full_transcript && typeof last_offset === 'number') ? full_transcript.slice(last_offset).trim() : (full_transcript || '');
       const payload = {
         session_id: token || null,
@@ -1098,7 +1134,7 @@ function createWindow() {
         source_type: manual_question ? 'manual' : 'transcript',
         resume_content: resume || null,
         knowledge_content: jd || null,
-        model: model || null
+        model: normalizeModelIdentifier(model)
       };
 
       const { data, status } = await backendRequest(
@@ -1109,10 +1145,9 @@ function createWindow() {
       if (status >= 400 || !data) return { error: data?.detail || 'Backend error' };
 
       return {
-        answer: data.answer,
-        question_detected: data.question || manual_question || '',
-        new_offset: full_transcript.length,
-        latency_ms: Date.now() - startTime
+        answer: data.answer || '',
+        question: data.question || manual_question || '',
+        new_offset: (full_transcript || '').length
       };
     } catch (e) {
       console.error('[Backend IPC] query-backend failed:', e.message);
@@ -1138,6 +1173,33 @@ function createWindow() {
         } catch (e) { }
       }
 
+      const normalizeModelIdentifier = (modelStr) => {
+        if (!modelStr) return 'gemini-3.6-flash';
+        const m = modelStr.toLowerCase().trim();
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.7') || m.includes('3.1') || m.includes('2')) {
+          return 'gemini-3.6-flash';
+        }
+        if (m.includes('sonnet')) {
+          return 'claude-sonnet-4-5-20250929';
+        }
+        if (m.includes('haiku') || m.includes('claude')) {
+          return 'claude-haiku-4-5-20251001';
+        }
+        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
+          return 'openai/gpt-oss-120b';
+        }
+        if (m.includes('o3') || m.includes('gptoss')) {
+          return 'o3-mini';
+        }
+        if (m.includes('5.6') || m.includes('4o')) {
+          return 'gpt-4o';
+        }
+        if (m.includes('gpt') || m.includes('5.5') || m.includes('mini')) {
+          return 'gpt-4o-mini';
+        }
+        return modelStr;
+      };
+
       // Format knowledge_content parameter to help the backend query the active database document / prompt
       let knowledgeContent = '';
       if (doc_id && doc_id !== '__upload__') {
@@ -1155,7 +1217,7 @@ function createWindow() {
         source_type: manual_question ? 'manual' : 'transcript',
         resume_content: resume_id || resume || null,
         knowledge_content: knowledgeContent || null,
-        model: model || null
+        model: normalizeModelIdentifier(model)
       };
 
       const backendUrl = (env.BACKEND_URL || '').trim();
@@ -1616,7 +1678,7 @@ function triggerLaunchToolbar() {
 // Start a local HTTP server to listen for launch triggers from the web browser
 const http = require('http');
 
-// Allowed origins for the internal controller (localhost and production web app)
+// Allowed origins for the internal controller (localhost, Render backend, and production web app)
 const ALLOWED_ORIGINS = new Set([
   'http://localhost:5173', 'http://127.0.0.1:5173',
   'http://localhost:3000', 'http://127.0.0.1:3000',
@@ -1624,27 +1686,30 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:2999', 'http://127.0.0.1:2999',
   'http://localhost:8080', 'http://127.0.0.1:8080',
   'https://roundmateai.com', 'https://www.roundmateai.com',
-  'http://roundmateai.com', 'http://www.roundmateai.com'
+  'http://roundmateai.com', 'http://www.roundmateai.com',
+  'https://round-mate-ai.onrender.com', 'http://round-mate-ai.onrender.com'
 ]);
 
 const server = http.createServer((req, res) => {
   const origin = req.headers['origin'] || '';
-  // Only allow requests from localhost origins (not from arbitrary web pages)
-  const isLocalhost = !origin ||
+  // Check if origin matches allowed localhost, web domains, or onrender backend
+  const isAllowedOrigin = !origin ||
     origin.startsWith('http://localhost') ||
     origin.startsWith('http://127.0.0.1') ||
+    origin.endsWith('.onrender.com') ||
     ALLOWED_ORIGINS.has(origin);
 
-  if (!isLocalhost) {
+  if (!isAllowedOrigin) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Forbidden: cross-origin request blocked' }));
     return;
   }
 
-  // Set CORS headers restricted to same-origin (localhost)
+  // Set CORS and Chrome Private Network Access (PNA) headers
   if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
   res.setHeader('Vary', 'Origin');
 
   if (req.method === 'OPTIONS') {
@@ -1656,13 +1721,14 @@ const server = http.createServer((req, res) => {
   const parsedUrl = require('url').parse(req.url, true);
 
   if (parsedUrl.pathname === '/auth-callback') {
-    // Accept credentials via POST body (not URL query params)
+    // Accept credentials via POST body or query params
     let body = '';
     req.on('data', chunk => { body += chunk.toString(); });
     req.on('end', () => {
       try {
-        const { email, token, user_id } = JSON.parse(body || '{}');
-        // Fallback to query params for backward compat but warn
+        const payload = JSON.parse(body || '{}');
+        const { email, token, user_id, subscription, tokens, isPro } = payload;
+        // Fallback to query params for backward compat
         const qEmail = parsedUrl.query?.email;
         const qToken = parsedUrl.query?.token;
         const qUserId = parsedUrl.query?.user_id;
@@ -1672,7 +1738,15 @@ const server = http.createServer((req, res) => {
 
         if (finalEmail && finalToken) {
           if (mainWindow) {
-            mainWindow.webContents.send('sync-credentials', { email: finalEmail, token: finalToken, user_id: finalUserId });
+            mainWindow.webContents.send('sync-credentials', {
+              ...payload,
+              email: finalEmail,
+              token: finalToken,
+              user_id: finalUserId,
+              subscription: subscription || payload.subscription,
+              tokens: tokens || payload.tokens,
+              isPro: isPro ?? payload.isPro
+            });
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true }));
@@ -1914,7 +1988,12 @@ if (!gotTheLock) {
     try {
       const iconPath = path.join(__dirname, 'icon.ico');
       if (fs.existsSync(iconPath)) {
-        tray = new Tray(iconPath);
+        let trayIcon = nativeImage.createFromPath(iconPath);
+        if (process.platform === 'darwin') {
+          trayIcon = trayIcon.resize({ width: 18, height: 18 });
+          trayIcon.setTemplateImage(true);
+        }
+        tray = new Tray(trayIcon);
         const contextMenu = Menu.buildFromTemplate([
           {
             label: 'Show RoundMate AI',
@@ -1950,6 +2029,13 @@ if (!gotTheLock) {
             mainWindow.focus();
           }
         });
+        tray.on('click', () => {
+          if (process.platform === 'darwin' || process.platform === 'linux') {
+            if (mainWindow) {
+              mainWindow.isVisible() ? mainWindow.hide() : (mainWindow.show(), mainWindow.focus());
+            }
+          }
+        });
       }
     } catch (err) {
       console.warn('[System Tray] Could not initialize tray:', err.message);
@@ -1983,7 +2069,10 @@ if (!gotTheLock) {
     });
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
+      if (mainWindow) {
+        mainWindow.show();
+        mainWindow.focus();
+      } else if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
     });
@@ -2002,9 +2091,7 @@ app.on('before-quit', () => {
 
 app.on('window-all-closed', () => {
   if (isQuitting) {
-    if (process.platform !== 'darwin') {
-      app.quit();
-    }
+    app.quit();
   }
-  // Keep background daemon running in tray so port 48999 loopback server catches web logins
+  // Keep background daemon running in tray across Windows, macOS, and Linux so loopback port 48999 catches web logins
 });

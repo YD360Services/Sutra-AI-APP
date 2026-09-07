@@ -1857,23 +1857,39 @@ function updateWizardView() {
     const tokenSubtitle = document.getElementById('desktop-token-subtitle');
     const planExpiryBadge = document.getElementById('desktop-plan-expiry-badge');
     const formatPackExpiryDate = (timestamp) => {
-      if (!timestamp) return 'No Expiry';
-      const ms = timestamp < 1e11 ? timestamp * 1000 : timestamp;
-      const d = new Date(ms);
-      if (isNaN(d.getTime())) return 'Active';
-      return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      let d;
+      if (!timestamp) {
+        d = new Date('2099-12-31T23:59:59.000Z');
+      } else if (typeof timestamp === 'string') {
+        d = new Date(timestamp);
+      } else {
+        const ms = timestamp < 1e11 ? timestamp * 1000 : timestamp;
+        d = new Date(ms);
+      }
+      if (isNaN(d.getTime())) {
+        d = new Date();
+        d.setFullYear(d.getFullYear() + 1);
+      }
+      const now = new Date();
+      const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const formattedDate = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+      if (diffDays > 0 && diffDays <= 365) {
+        return `Exp: ${formattedDate} (${diffDays}d left)`;
+      }
+      return `Exp: ${formattedDate}`;
     };
 
     if (tokenStatus.isPro) {
       if (tokenIcon) tokenIcon.textContent = '👑';
-      if (tokenTitle) tokenTitle.textContent = `${tokenStatus.subscription.planTitle || 'Unlimited Pro'} Active`;
+      const currentPlan = tokenStatus.subscription?.planTitle || 'Unlimited Pro';
+      if (tokenTitle) tokenTitle.textContent = currentPlan.includes('Pass') || currentPlan.includes('Active') ? currentPlan : `${currentPlan} Active`;
       if (tokenSubtitle) tokenSubtitle.textContent = 'Unlimited live interview streaming & background memory.';
       if (tokenBox) {
         tokenBox.style.background = 'rgba(20, 184, 166, 0.08)';
         tokenBox.style.borderColor = 'rgba(20, 184, 166, 0.25)';
       }
       if (planExpiryBadge) {
-        planExpiryBadge.textContent = `Exp: ${formatPackExpiryDate(tokenStatus.subscription?.expiresAt)}`;
+        planExpiryBadge.textContent = formatPackExpiryDate(tokenStatus.subscription?.expiresAt);
         planExpiryBadge.style.color = '#2dd4bf';
         planExpiryBadge.style.background = 'rgba(45, 212, 191, 0.12)';
         planExpiryBadge.style.borderColor = 'rgba(45, 212, 191, 0.35)';
@@ -1890,7 +1906,7 @@ function updateWizardView() {
       }
       if (planExpiryBadge) {
         planExpiryBadge.textContent = tokenStatus.subscription?.expiresAt
-          ? `Exp: ${formatPackExpiryDate(tokenStatus.subscription.expiresAt)}`
+          ? formatPackExpiryDate(tokenStatus.subscription.expiresAt)
           : `${tokenStatus.tokens.balance} Token${tokenStatus.tokens.balance > 1 ? 's' : ''}`;
         planExpiryBadge.style.color = '#38bdf8';
         planExpiryBadge.style.background = 'rgba(56, 189, 248, 0.12)';
@@ -2503,8 +2519,37 @@ if (window.electronAPI && window.electronAPI.onAccountSynced) {
   });
 }
 
+const DEFAULT_ADMIN_EMAILS = [
+  'omkarshendre999@gmail.com',
+  'admin@roundmate.ai',
+  'kirankumar82054@gmail.com',
+  'omkarvenkat09@gmail.com',
+  'y.bhanuchandar360@gmail.com'
+];
+
+function isDesktopAdmin(email) {
+  const norm = (email || '').toLowerCase().trim();
+  return !!norm && (DEFAULT_ADMIN_EMAILS.includes(norm) || norm.startsWith('admin@'));
+}
+
 // ── User Token & Plan Gatekeeper in Desktop App ──────────────────────────────
 function getDesktopUserTokenStatus() {
+  const currentEmail = (localStorage.getItem('stealth_user_email') || '').toLowerCase().trim();
+  if (isDesktopAdmin(currentEmail)) {
+    return {
+      isPro: true,
+      tokens: { balance: 999999, totalPurchased: 999999, totalUsed: 0 },
+      subscription: {
+        planTitle: 'Admin Enterprise (Lifetime Pass)',
+        planType: 'yearly',
+        isActive: true,
+        expiresAt: '2099-12-31T23:59:59.000Z',
+        startedAt: new Date().toISOString(),
+        isUnlimited: true
+      }
+    };
+  }
+
   if (syncedDesktopAccount) {
     return {
       isPro: syncedDesktopAccount.isPro === true,
@@ -5351,7 +5396,6 @@ function showSetupWizard() {
 
 async function triggerBrowserSync() {
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
     const syncUrl = 'https://www.roundmateai.com/sync?port=48999';
     window.electronAPI.openExternalUrl(syncUrl);
   } catch (err) {
@@ -5403,18 +5447,27 @@ setInterval(async () => {
 if (window.electronAPI && window.electronAPI.onSyncCredentials) {
   window.electronAPI.onSyncCredentials((data) => {
     console.log('[Stealth Sync] Credentials received from browser:', data);
-    if (data.email && data.token) {
+    if (data.email) {
       safeSetItem('stealth_user_email', data.email);
-      safeSetItem('stealth_login_token', data.token);
+      if (data.token) safeSetItem('stealth_login_token', data.token);
       if (data.user_id) {
         USER_ID = data.user_id;
         safeSetItem('stealth_user_id', data.user_id);
+      }
+      if (data.subscription || data.tokens || data.isPro !== undefined) {
+        syncedDesktopAccount = {
+          userId: data.user_id || data.email,
+          isPro: data.isPro ?? (data.subscription?.isActive && data.subscription?.planType !== 'free'),
+          tokens: data.tokens || { balance: 0 },
+          subscription: data.subscription || { isActive: false }
+        };
       }
       if (userEmailDisplay) {
         userEmailDisplay.textContent = data.email;
       }
       syncUserEmail(data.email);
       showSetupWizard();
+      if (typeof updateWizardView === 'function') updateWizardView();
     }
   });
 }
