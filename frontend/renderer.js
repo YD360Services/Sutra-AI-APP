@@ -1896,10 +1896,10 @@ function updateWizardView() {
       }
       startSessionBtn.style.opacity = '1';
       startSessionBtn.textContent = 'Start Session & Collapse';
-    } else if (tokenStatus.tokens.balance > 0) {
+    } else if (tokenStatus.tokens.balance >= 0.5) {
       if (tokenIcon) tokenIcon.textContent = '⚡';
       if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance} Session Token(s) Available`;
-      if (tokenSubtitle) tokenSubtitle.textContent = '1 token = 1 full hour of live stealth copilot assistance.';
+      if (tokenSubtitle) tokenSubtitle.textContent = '0.5 token = 30 minutes of live stealth copilot assistance.';
       if (tokenBox) {
         tokenBox.style.background = 'rgba(56, 189, 248, 0.08)';
         tokenBox.style.borderColor = 'rgba(56, 189, 248, 0.25)';
@@ -1913,23 +1913,23 @@ function updateWizardView() {
         planExpiryBadge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
       }
       startSessionBtn.style.opacity = '1';
-      startSessionBtn.textContent = 'Start Session (Use 1 Token)';
+      startSessionBtn.textContent = 'Start Session (Use 0.5 Token)';
     } else {
       if (tokenIcon) tokenIcon.textContent = '🔒';
-      if (tokenTitle) tokenTitle.textContent = 'Free Tier (0 Session Tokens)';
-      if (tokenSubtitle) tokenSubtitle.textContent = 'Purchase a token or subscribe to Pro to start live session.';
+      if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance || 0} Session Tokens (Min 0.5 Needed)`;
+      if (tokenSubtitle) tokenSubtitle.textContent = 'At least 0.5 token required for 30 minutes live session.';
       if (tokenBox) {
         tokenBox.style.background = 'rgba(239, 68, 68, 0.08)';
         tokenBox.style.borderColor = 'rgba(239, 68, 68, 0.25)';
       }
       if (planExpiryBadge) {
-        planExpiryBadge.textContent = 'Free Tier';
+        planExpiryBadge.textContent = `${tokenStatus.tokens.balance || 0} Tokens`;
         planExpiryBadge.style.color = '#94a3b8';
         planExpiryBadge.style.background = 'rgba(255, 255, 255, 0.05)';
         planExpiryBadge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
       }
       startSessionBtn.style.opacity = '0.7';
-      startSessionBtn.textContent = '⚡ Token Required to Start';
+      startSessionBtn.textContent = '⚡ Min 0.5 Token Required';
     }
   }
 }
@@ -2580,54 +2580,117 @@ function getDesktopUserTokenStatus() {
   }
 }
 
-function consumeDesktopToken() {
+function consumeDesktopToken(amount = 0.5) {
   const normUserId = normalizeUserId(USER_ID);
   const status = getDesktopUserTokenStatus();
   if (status.isPro) return { allowed: true };
 
-  if (status.tokens.balance > 0) {
+  const currentBal = typeof status.tokens?.balance === 'number' ? status.tokens.balance : 0;
+  if (currentBal >= amount) {
+    const newBal = Math.round(Math.max(0, currentBal - amount) * 10) / 10;
     const updated = {
       ...status.tokens,
-      balance: Math.max(0, status.tokens.balance - 1)
+      balance: newBal,
+      totalUsed: Math.round(((status.tokens?.totalUsed || 0) + amount) * 10) / 10
     };
     try {
       localStorage.setItem(`roundmate-user-tokens-${normUserId}`, JSON.stringify(updated));
       localStorage.setItem('roundmate-user-tokens-guest', JSON.stringify(updated));
     } catch (_) {}
-    return { allowed: true, remaining: updated.balance };
+    if (syncedDesktopAccount && syncedDesktopAccount.tokens) {
+      syncedDesktopAccount.tokens.balance = newBal;
+      syncedDesktopAccount.tokens.totalUsed = updated.totalUsed;
+    }
+    if (window.electronAPI && window.electronAPI.updateUserTokens) {
+      window.electronAPI.updateUserTokens(updated).catch(() => {});
+    }
+    return { allowed: true, remaining: newBal };
   }
-  return { allowed: false, remaining: 0 };
+  return { allowed: false, remaining: currentBal };
 }
 
 let sessionTimerInterval = null;
 let sessionSecondsElapsed = 0;
+let sessionAllottedSeconds = 1800; // 30 minutes (0.5 token)
+let isGracePeriodActive = false;
+let graceSecondsElapsed = 0;
 const sessionTimerElement = document.getElementById('session-timer');
 
 function startSessionTimer() {
   if (sessionTimerInterval) clearInterval(sessionTimerInterval);
   sessionSecondsElapsed = 0;
+  sessionAllottedSeconds = 1800; // 30 minutes initial block (0.5 token)
+  isGracePeriodActive = false;
+  graceSecondsElapsed = 0;
+
   const stopBtnTimer = document.getElementById('stop-btn-timer');
   const stopBtn = document.getElementById('stop-session-btn');
   const status = getDesktopUserTokenStatus();
 
-  const allottedSeconds = 3600; // 1 hour per session token
-
   if (sessionTimerElement) {
     sessionTimerElement.textContent = '00:00';
   }
-  if (stopBtnTimer) stopBtnTimer.textContent = status.isPro ? '00:00' : '60:00';
+  if (stopBtnTimer) stopBtnTimer.textContent = status.isPro ? '00:00' : '30:00';
 
   sessionTimerInterval = setInterval(() => {
     sessionSecondsElapsed++;
 
-    if (status.isPro) {
+    const currentStatus = getDesktopUserTokenStatus();
+
+    // Pro Unlimited users: count up elapsed time
+    if (currentStatus.isPro) {
       const m = Math.floor(sessionSecondsElapsed / 60).toString().padStart(2, '0');
       const s = (sessionSecondsElapsed % 60).toString().padStart(2, '0');
       const timeStr = `${m}:${s}`;
       if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
       if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
+      return;
+    }
+
+    // Token-based live session:
+    // 0-30 min = 0.5 token, 30-60 min = 1 token, 60-90 min = 1.5 token, etc.
+    if (!isGracePeriodActive) {
+      if (sessionSecondsElapsed >= sessionAllottedSeconds) {
+        // 30-min block expired! Check if user has at least 0.5 token to auto-renew for next 30 mins
+        const currentBal = typeof currentStatus.tokens?.balance === 'number' ? currentStatus.tokens.balance : 0;
+        if (currentBal >= 0.5) {
+          // Consume next 0.5 token and extend by 30 mins (1800s)
+          consumeDesktopToken(0.5);
+          sessionAllottedSeconds += 1800;
+        } else {
+          // No more tokens left (started with only 0.5 token or 0 balance).
+          // Enter 2-minute grace timer as requested:
+          // "if incase there are only 0.5 token and sesion is ging on even after 30 mins give 2 mins timer and directly close app without any showing of closing so that there will be no doubt"
+          isGracePeriodActive = true;
+          graceSecondsElapsed = 0;
+        }
+      }
+    }
+
+    if (isGracePeriodActive) {
+      graceSecondsElapsed++;
+      // 2 minutes grace period countdown (120s down to 0)
+      const graceRemaining = Math.max(0, 120 - graceSecondsElapsed);
+      const m = Math.floor(graceRemaining / 60).toString().padStart(2, '0');
+      const s = (graceRemaining % 60).toString().padStart(2, '0');
+      const timeStr = `${m}:${s}`;
+      if (sessionTimerElement) sessionTimerElement.textContent = timeStr;
+      if (stopBtnTimer) stopBtnTimer.textContent = timeStr;
+
+      // When the 2 minutes end, directly close app without any showing of closing so that there will be no doubt
+      if (graceSecondsElapsed >= 120) {
+        clearInterval(sessionTimerInterval);
+        sessionTimerInterval = null;
+        if (window.electronAPI && window.electronAPI.quitApp) {
+          window.electronAPI.quitApp();
+        } else {
+          window.close();
+        }
+        return;
+      }
     } else {
-      const remainingSeconds = Math.max(0, allottedSeconds - sessionSecondsElapsed);
+      // Normal countdown for current 30-min block
+      const remainingSeconds = Math.max(0, sessionAllottedSeconds - sessionSecondsElapsed);
       const m = Math.floor(remainingSeconds / 60).toString().padStart(2, '0');
       const s = (remainingSeconds % 60).toString().padStart(2, '0');
       const timeStr = `${m}:${s}`;
@@ -2643,37 +2706,6 @@ function startSessionTimer() {
           stopBtn.style.background = 'rgba(245,158,11,0.85)';
         }
       }
-
-      // Token depleted in desktop live session
-      if (remainingSeconds <= 0) {
-        clearInterval(sessionTimerInterval);
-        showModalOverlay('Session Token Expired', `
-          <div style="text-align: center; padding: 18px 10px;">
-            <div style="font-size: 32px; margin-bottom: 12px;">⏳</div>
-            <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">1-Hour Token Time Concluded</h3>
-            <p style="font-size: 11px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px;">
-              Your 1-hour session token credit has ended. Top up tokens on the Web App or subscribe to Unlimited PRO to continue AI assistance.
-            </p>
-            <div style="display: flex; gap: 10px; justify-content: center;">
-              <button id="depleted-topup-btn" style="padding: 9px 18px; background: #2dd4bf; color: #0f172a; font-weight: 700; border-radius: 8px; border: none; font-size: 11px; cursor: pointer;">
-                ⚡ Top Up Tokens (Web)
-              </button>
-              <button id="depleted-exit-btn" style="padding: 9px 18px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-weight: 600; border-radius: 8px; font-size: 11px; cursor: pointer;">
-                Exit Session
-              </button>
-            </div>
-          </div>
-        `);
-        setTimeout(() => {
-          document.getElementById('depleted-topup-btn')?.addEventListener('click', () => {
-            window.electronAPI.openExternalUrl('https://www.roundmateai.com/#Billing');
-          });
-          document.getElementById('depleted-exit-btn')?.addEventListener('click', () => {
-            document.getElementById('modal-close-btn')?.click();
-            stopSessionBtn?.click();
-          });
-        }, 50);
-      }
     }
   }, 1000);
 }
@@ -2684,6 +2716,8 @@ function stopSessionTimer() {
     sessionTimerInterval = null;
   }
   sessionSecondsElapsed = 0;
+  isGracePeriodActive = false;
+  graceSecondsElapsed = 0;
   if (sessionTimerElement) sessionTimerElement.style.display = 'none';
   const stopBtnTimer = document.getElementById('stop-btn-timer');
   if (stopBtnTimer) stopBtnTimer.textContent = '00:00';
@@ -2696,15 +2730,15 @@ function stopSessionTimer() {
 
 // Start session button event handler with token gatekeeper
 startSessionBtn.addEventListener('click', async () => {
-  // Token verification gatekeeper
+  // Token verification gatekeeper (0.5 token required for 30-min live session)
   const tokenStatus = getDesktopUserTokenStatus();
-  if (!tokenStatus.isPro && tokenStatus.tokens.balance <= 0) {
+  if (!tokenStatus.isPro && (tokenStatus.tokens.balance < 0.5)) {
     showModalOverlay('Session Token Required', `
       <div style="text-align: center; padding: 18px 10px;">
         <div style="font-size: 32px; margin-bottom: 12px;">⚡</div>
-        <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">0 Session Tokens Remaining</h3>
+        <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">0.5 Session Token Required</h3>
         <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px;">
-          You need at least 1 Session Token or an active Unlimited Pro Subscription to launch live interview stealth assistance.
+          You need at least 0.5 Session Token (30 minutes) or an active Unlimited Pro Subscription to launch live interview stealth assistance.
         </p>
         <div style="display: flex; gap: 10px; justify-content: center;">
           <button id="gate-topup-btn" style="padding: 9px 18px; background: #2dd4bf; color: #0f172a; font-weight: 700; border-radius: 8px; border: none; font-size: 11.5px; cursor: pointer;">
@@ -2727,8 +2761,8 @@ startSessionBtn.addEventListener('click', async () => {
     return;
   }
 
-  // Consume token if token model
-  consumeDesktopToken();
+  // Consume 0.5 token at launch (30 minutes)
+  consumeDesktopToken(0.5);
 
   hasActiveAnswer = false;
   const company = setupCompany.value.trim() || 'Stealth Practice';

@@ -1513,6 +1513,22 @@ function createWindow() {
   });
 
   // User Account & Tokens status handler for Desktop App
+  ipcMain.handle('update-user-tokens', async (_, tokens) => {
+    try {
+      const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');
+      let acc = {};
+      if (fs.existsSync(accountPath)) {
+        acc = JSON.parse(fs.readFileSync(accountPath, 'utf8') || '{}');
+      }
+      acc.tokens = tokens;
+      fs.writeFileSync(accountPath, JSON.stringify(acc, null, 2), 'utf8');
+      return true;
+    } catch (e) {
+      console.error('[Account] Error saving tokens to stealth_account.json:', e.message);
+      return false;
+    }
+  });
+
   ipcMain.handle('get-user-account', async () => {
     try {
       const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');

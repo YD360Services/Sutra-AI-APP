@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternalUrl: (url) => ipcRenderer.send('open-external-url', url),
   onSyncCredentials: (cb) => ipcRenderer.on('sync-credentials', (_, data) => cb(data)),
   getUserAccount: () => ipcRenderer.invoke('get-user-account'),
+  updateUserTokens: (tokens) => ipcRenderer.invoke('update-user-tokens', tokens),
   onAccountSynced: (cb) => ipcRenderer.on('account-synced', (_, data) => cb(data)),
 
   // ── Deep Link Session Handler ─────────────────────────────────────
