@@ -3721,13 +3721,18 @@ function handleTranscriptChunk(text, is_final) {
         if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
         queryAssistant(null, false);
       } else {
-        if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-        autoAnswerTimeoutId = setTimeout(() => {
-          if (!answerBlock.classList.contains('loading')) {
-            queryAssistant(null, false);
-          }
-          autoAnswerTimeoutId = null;
-        }, 1000);
+        // Only consider delayed trigger if recent window contains actual question structure
+        const trailingWindow = accumulatedTranscript.slice(-250).trim();
+        const windowScore = questionScore(trailingWindow);
+        if (windowScore > 0 && cleanTranscript.split(/\s+/).filter(Boolean).length >= 4) {
+          if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
+          autoAnswerTimeoutId = setTimeout(() => {
+            if (!answerBlock.classList.contains('loading')) {
+              queryAssistant(null, false);
+            }
+            autoAnswerTimeoutId = null;
+          }, 800);
+        }
       }
     }
   } else {
@@ -4838,11 +4843,23 @@ function splitIntoSentences(text) {
     .filter((s) => s.length > 5);
 }
 
+const CONVERSATIONAL_FILLERS = new Set([
+  'yeah', 'yes', 'yep', 'ok', 'okay', 'right', 'sure', 'got it', 'i see',
+  'uh-huh', 'makes sense', 'thank you', 'thanks', 'cool', 'sounds good',
+  'alright', 'all right', 'no problem', 'hello', 'hi', 'hey'
+]);
+
 function questionScore(sentence) {
-  const lower = sentence.toLowerCase();
+  if (!sentence) return 0;
+  const clean = sentence.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (CONVERSATIONAL_FILLERS.has(clean) || (words.length <= 2 && CONVERSATIONAL_FILLERS.has(words[0]))) {
+    return 0; // Filter out candidate conversational acknowledgments
+  }
+  const lower = sentence.toLowerCase().trim();
   let score = 0;
   if (sentence.endsWith('?')) score += 2;
-  if (QUESTION_KEYWORDS.some((kw) => lower.startsWith(kw))) score += 1;
+  if (QUESTION_KEYWORDS.some((kw) => lower.startsWith(kw) || lower.includes(` ${kw} `))) score += 1;
   return score;
 }
 

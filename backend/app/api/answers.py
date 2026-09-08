@@ -19,31 +19,33 @@ from app.cache.redis import redis_cache
 router = APIRouter()
 logger = logging.getLogger("copilotx.answers")
 
+ENABLE_PROMPT_LOGGING = os.getenv("ENABLE_PROMPT_LOGGING", "false").lower() in ("true", "1")
+
 def _log_prompt_to_file(question: str, system_prompt: str, user_prompt: str, prompt_type: str, source_type: str):
-    """Write the exact system + user prompt sent to the LLM into logs/prompt_debug/ for debugging."""
-    try:
-        # Save logs absolutely under the backend/logs/prompt_debug directory
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        log_dir = os.path.join(base_dir, "logs", "prompt_debug")
-        os.makedirs(log_dir, exist_ok=True)
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
-        fname = os.path.join(log_dir, f"{ts}_{source_type}_{prompt_type}.txt")
-        with open(fname, "w", encoding="utf-8") as f:
-            f.write(f"=== PROMPT DEBUG LOG ===\n")
-            f.write(f"Timestamp     : {datetime.utcnow().isoformat()}\n")
-            f.write(f"Source Type   : {source_type}\n")
-            f.write(f"Prompt Type   : {prompt_type}\n")
-            f.write(f"Question      : {question}\n")
-            f.write(f"\n{'='*60}\n")
-            f.write(f"SYSTEM PROMPT :\n{'='*60}\n")
-            f.write(system_prompt or "(empty)")
-            f.write(f"\n\n{'='*60}\n")
-            f.write(f"USER / CONTEXT PROMPT :\n{'='*60}\n")
-            f.write(user_prompt or "(empty)")
-            f.write(f"\n{'='*60}\n")
-        logger.info(f"[PromptDebug] Logged prompt to {fname}")
-    except Exception as e:
-        logger.warning(f"[PromptDebug] Failed to write prompt log: {e}")
+    """Write the exact system + user prompt sent to the LLM asynchronously to eliminate disk I/O from the hot path."""
+    if not ENABLE_PROMPT_LOGGING:
+        return
+
+    def _write():
+        try:
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            log_dir = os.path.join(base_dir, "logs", "prompt_debug")
+            os.makedirs(log_dir, exist_ok=True)
+            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            fname = os.path.join(log_dir, f"{ts}_{source_type}_{prompt_type}.txt")
+            with open(fname, "w", encoding="utf-8") as f:
+                f.write(f"=== PROMPT DEBUG LOG ===\n")
+                f.write(f"Timestamp     : {datetime.utcnow().isoformat()}\n")
+                f.write(f"Source Type   : {source_type}\n")
+                f.write(f"Prompt Type   : {prompt_type}\n")
+                f.write(f"Question      : {question}\n")
+                f.write(f"\n{'='*60}\nSYSTEM PROMPT :\n{'='*60}\n{system_prompt or '(empty)'}\n")
+                f.write(f"\n{'='*60}\nUSER / CONTEXT PROMPT :\n{'='*60}\n{user_prompt or '(empty)'}\n")
+        except Exception as e:
+            logger.debug(f"[PromptDebug] Failed to write prompt log: {e}")
+
+    import threading
+    threading.Thread(target=_write, daemon=True).start()
 
 def get_system_prompt() -> str:
     from datetime import datetime
@@ -55,27 +57,35 @@ You are a real human candidate sitting in a live job interview today, {current_d
 You are NOT an AI assistant. You are the candidate.
 
 PRIMARY DIRECTIVE:
-You must answer every interviewer question exactly like a high-scoring MOCK INTERVIEW MODEL RESPONSE. Your answer must sound like a top 1% candidate who practiced this exact question in their Mock Interview sessions.
+You must answer every interviewer question exactly like a top 1% candidate who prepared this role thoroughly.
+Deliver your answer in the FIRST PERSON ("I", "my experience", "in my project", "I've built").
 
-MOCK INTERVIEW STYLE & PRACTICE INTEGRATION:
-- Deliver your answer in the FIRST PERSON ("I", "my experience", "in my project", "I've built").
-- Format the response as a structured, articulate, high-impact Mock Interview answer.
-- Actively incorporate the candidate's actual prepared points, STAR examples (Situation, Task, Action, Result), metrics, and model answers from past Mock Interviews for this role.
+TIME-TO-FIRST-TOKEN & STAR-FIRST FORMAT (CRITICAL):
+- For behavioral, situational, or past project experience questions, START IMMEDIATELY with the core STAR points so the candidate can speak instantly:
+  **Situation:** <1 crisp sentence setting the scene>
+  **Action:** <1-2 engineering or leadership actions YOU personally executed>
+  **Result:** <1 quantified outcome, metric, latency reduction, throughput, or business impact>
+- Follow immediately with 2-3 concise supporting bullet points (**Heading:** explanation).
+- For pure technical questions, start directly with the core solution and trade-offs using bold bullet headings.
+
+STRICT CANDIDATE GROUNDING (ANTI-HALLUCINATION):
+Priority Order:
+1. Exact relevant practiced answer from Candidate Memories
+2. Relevant STAR story from Candidate Memories
+3. Relevant candidate project / experience
+4. Resume evidence
+5. JD / company context
+6. General technical reasoning
+
+ABSOLUTE INTEGRITY RULES:
+- NEVER invent companies, job titles, responsibilities, projects, metrics, or technologies not in context.
+- If no direct experience exists for a specific tool, speak truthfully from adjacent experience ("In my previous projects I focused on X, but the fundamental concepts of Y apply similarly...").
 - Sound like a real, confident human candidate — direct, clear, confident, using natural spoken contractions (I've, I'd, I'm, that's, we've).
-
-HOW TO STRUCTURE THE MOCK INTERVIEW RESPONSE:
-- Give a detailed, structured response using bullet points. Each point MUST start with a bold side heading followed by explanation.
-- Format each bullet as: **Heading:** explanation text. Example: **Architecture & Tradeoffs:** In my recent project, I chose Redis over Memcached because we needed data persistence and pub/sub capabilities.
-- Start directly with the first bullet — no warm-up sentences, no AI preambles, no "Great question!".
-
-SOUND LIKE A REAL CANDIDATE:
-- Do NOT say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "As an AI", "Here is the answer".
-- Do NOT repeat the question or add a conversational conclusion at the end.
-- Speak with natural human confidence: "In my experience...", "What I've done previously is...", "Basically...".
+- Never say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "As an AI", "Here is the answer".
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer formulated as a top-tier Mock Interview candidate response — EACH bullet MUST start with a bold heading like **Heading:** followed by explanation. Use \\n- to separate bullets. No asterisks except for bold headings. No numbered lists."}}
+{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer starting with bold headings like **Heading:** followed by explanation. Use \\n- to separate bullets. No asterisks except for bold headings. No numbered lists."}}
 """.strip()
 
 
@@ -317,24 +327,56 @@ def resolve_system_prompt_type(latest_question: str, session_category: str = "",
     return get_system_prompt(), "interview"
 
 
-@router.post("/answer", response_model=AnswerResponse)
-async def generate_answer(
-    payload: AnswerRequest,
-    db: AsyncSession = Depends(get_db)
-):
+# ─────────────────────────────────────────────────────────────────────────────
+# FIX #6: Shared context-preparation helper
+# Both /answer and /answer/stream duplicated ~150 lines of identical logic.
+# This single function replaces both copies, eliminating future drift risk.
+# ─────────────────────────────────────────────────────────────────────────────
+class _AnswerContext:
+    """Prepared context bundle returned by _prepare_answer_context()."""
+    __slots__ = (
+        "session", "session_uuid", "latest_question",
+        "sys_prompt", "prompt_type", "context_prompt",
+        "stored_introduction",
+    )
+    def __init__(self, session, session_uuid, latest_question,
+                 sys_prompt, prompt_type, context_prompt, stored_introduction):
+        self.session = session
+        self.session_uuid = session_uuid
+        self.latest_question = latest_question
+        self.sys_prompt = sys_prompt
+        self.prompt_type = prompt_type
+        self.context_prompt = context_prompt
+        self.stored_introduction = stored_introduction
+
+
+async def _prepare_answer_context(
+    payload: "AnswerRequest",
+    db: AsyncSession,
+) -> _AnswerContext:
+    """
+    Shared helper: resolves session, extracts the question, picks the right
+    system prompt, loads (or builds) the context prompt, and detects stored
+    introductions. Called by both /answer and /answer/stream.
+    """
+    # 1. Resolve session
     session = None
     session_uuid = None
     if payload.session_id:
         try:
-            session_uuid = uuid.UUID(payload.session_id) if isinstance(payload.session_id, str) and len(payload.session_id) == 36 else (payload.session_id if isinstance(payload.session_id, uuid.UUID) else None)
+            session_uuid = (
+                uuid.UUID(payload.session_id)
+                if isinstance(payload.session_id, str) and len(payload.session_id) == 36
+                else (payload.session_id if isinstance(payload.session_id, uuid.UUID) else None)
+            )
             if session_uuid:
                 session_repo = SessionRepository(db)
                 session = await session_repo.get_by_id(session_uuid)
         except Exception:
             pass
 
+    # 2. Extract question
     raw_transcript = payload.transcript or ""
-    # For transcript mode, extract just the actual question from the full noisy transcript
     if payload.question:
         latest_question = payload.question
     elif raw_transcript:
@@ -342,8 +384,7 @@ async def generate_answer(
     else:
         latest_question = ""
 
-
-    # Detect if this is an HR, Coding, or Interview session category or question
+    # 3. Detect session category / name for prompt-type routing
     session_category = ""
     session_name = ""
     if payload.session_id:
@@ -356,46 +397,82 @@ async def generate_answer(
         if session:
             session_name = session.session_name
 
+    # 4. Choose the right system prompt
     if payload.source_type == "screenshot":
         sys_prompt = get_screenshot_coding_system_prompt()
         prompt_type = "coding"
     else:
         sys_prompt, prompt_type = resolve_system_prompt_type(
-            latest_question,
-            session_category,
-            session_name
+            latest_question, session_category, session_name
         )
+
+    # 5. Check prewarmed context packet from speculative retrieval (Fastest path - 0ms DB latency)
     context_prompt = None
-    
-    if payload.session_id and payload.source_type != "transcript":
+    if payload.session_id:
         try:
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
-            if cached_session and "prepared_prompt" in cached_session:
+            if cached_session and "prewarmed_context" in cached_session:
+                pw = cached_session["prewarmed_context"]
+                if isinstance(pw, dict):
+                    role_info = pw.get("role_info", f"Role: {session_name or 'Software Engineer'} at Target Company")
+                    context_prompt = f"""ROLE & COMPANY:
+{role_info}
+
+CANDIDATE MEMORIES (PRACTICED STAR STORIES & EXPERIENCES):
+{pw.get("candidate_memories", "None loaded.")}
+
+USER RESUME EVIDENCE:
+{pw.get("resume_context", "None loaded.")}
+
+JOB DESCRIPTION & FOCUS:
+{pw.get("jd_context", "None loaded.")}
+
+RECENT INTERVIEW Q&A:
+{pw.get("previous_context", "None.")}
+
+QUESTION TO ANSWER:
+{latest_question}
+
+SYSTEM MANDATE & INSTRUCTIONS:
+- You ARE the candidate sitting in the interview right now. Speak in the FIRST PERSON ("I", "my experience", "I've built", "in my project").
+- MANDATE: START IMMEDIATELY with the core STAR answer or technical points so the candidate can speak instantly.
+- REUSE THE CANDIDATE'S PREPARED STAR STORIES, METRICS, AND PRACTICED ANSWERS SHOWN ABOVE.
+- PRIORITY ORDER: 1. Practiced Answer -> 2. Relevant STAR Story -> 3. Candidate Experience -> 4. Resume -> 5. JD -> 6. General Reasoning.
+- NEVER fabricate projects, companies, metrics, or experiences not in context.
+- Talk like a confident candidate: direct, articulate, using spoken contractions: I've, I'd, I'm, that's.""".strip()
+                    logger.info(f"[FastPath] Used speculative prewarmed context packet for session {payload.session_id} (0ms DB latency)")
+            elif cached_session and "prepared_prompt" in cached_session and payload.source_type != "transcript":
                 prompt_data = json.loads(cached_session["prepared_prompt"])
                 user_p = prompt_data.get("user_prompt", "")
-                # Only use cached prompt if the current question is actually inside it
-                question_in_cache = latest_question and len(latest_question) > 5 and latest_question.lower()[:40] in user_p.lower()
+                question_in_cache = (
+                    latest_question
+                    and len(latest_question) > 5
+                    and latest_question.lower()[:40] in user_p.lower()
+                )
                 if user_p and question_in_cache:
                     context_prompt_data = prompt_data.get("system_prompt", "")
-                    base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
+                    base_prompt, _ = resolve_system_prompt_type(
+                        latest_question, session_category, session_name
+                    )
                     sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
                     context_prompt = user_p
-                    logger.info(f"Loaded matching prepared prompt from cache for session {payload.session_id}")
-                else:
-                    logger.info(f"Prepared prompt is stale/mismatched — rebuilding from DB for: {latest_question[:60]}")
+                    logger.info(
+                        f"Loaded matching prepared prompt from cache for session {payload.session_id}"
+                    )
         except Exception as e:
-            logger.warning(f"Error loading prepared prompt from Redis: {e}")
+            logger.warning(f"Error checking prewarmed context in Redis: {e}")
 
+    # 6. Fallback: build context from DB / orchestrator
     if not context_prompt:
         context_prompt = await build_session_context(
             session_id=session_uuid,
             latest_question=latest_question,
             db=db,
             resume_content=payload.resume_content,
-            knowledge_content=payload.knowledge_content
+            knowledge_content=payload.knowledge_content,
         )
 
-    # CHECK FOR STORED INTRODUCTION
+    # 7. Check for a stored self-introduction & self-heal missing summaries (non-blocking)
     stored_introduction = None
     resume_obj = None
     if payload.resume_content and len(payload.resume_content) < 100:
@@ -413,79 +490,111 @@ async def generate_answer(
         except Exception:
             pass
 
-    # Self-healing logic for old resumes that don't have summaries generated yet
+    # Self-healing: generate summaries asynchronously in background without blocking live answer!
     if resume_obj and not resume_obj.introduction:
-        try:
-            logger.info(f"[Self-Healing] Generating missing summaries for resume: {resume_obj.file_name}")
-            from app.services.ai_service import generate_resume_summaries
-            summaries = await generate_resume_summaries(resume_obj.parsed_content)
-            resume_obj.introduction = summaries.get("introduction")
-            resume_obj.professional_summary = summaries.get("professional_summary")
-            resume_obj.career_journey = summaries.get("career_journey")
-            resume_obj.strengths = summaries.get("strengths")
-            resume_obj.project_summary = summaries.get("project_summary")
-            db.add(resume_obj)
-            await db.commit()
-            logger.info("[Self-Healing] Summaries successfully generated and saved to DB.")
-        except Exception as she:
-            logger.warning(f"[Self-Healing] Failed to generate resume summaries: {she}")
+        async def _async_heal_resume(r_id, r_content):
+            try:
+                from app.services.ai_service import generate_resume_summaries
+                from app.db.database import SessionLocal
+                from app.db.models import Resume
+                summaries = await generate_resume_summaries(r_content)
+                async with SessionLocal() as db_heal:
+                    r = await db_heal.get(Resume, r_id)
+                    if r:
+                        r.introduction = summaries.get("introduction")
+                        r.professional_summary = summaries.get("professional_summary")
+                        r.career_journey = summaries.get("career_journey")
+                        r.strengths = summaries.get("strengths")
+                        r.project_summary = summaries.get("project_summary")
+                        await db_heal.commit()
+                        logger.info(f"[Self-Healing] Async summaries generated and saved for resume: {r_id}")
+            except Exception as she:
+                logger.warning(f"[Self-Healing] Failed to generate resume summaries: {she}")
 
+        import asyncio
+        asyncio.create_task(_async_heal_resume(resume_obj.id, resume_obj.parsed_content))
+
+    # Detect introduction trigger
     if resume_obj and resume_obj.introduction:
-        q_clean = latest_question.lower().strip().replace("?", "").replace(".", "").replace(",", "")
-        triggers = [
-            "tell me about yourself",
-            "introduce yourself",
-            "walk me through your resume",
-            "walk me through your background",
-            "explain your experience",
-            "tell me about your experience",
-            "talk about yourself",
-            "who are you",
-            "intro",
-            "introduction"
+        q_clean = (
+            latest_question.lower().strip()
+            .replace("?", "").replace(".", "").replace(",", "")
+        )
+        intro_triggers = [
+            "tell me about yourself", "introduce yourself",
+            "walk me through your resume", "walk me through your background",
+            "explain your experience", "tell me about your experience",
+            "talk about yourself", "who are you", "intro", "introduction",
         ]
-        if any(t in q_clean for t in triggers):
+        if any(t in q_clean for t in intro_triggers):
             stored_introduction = resume_obj.introduction
             logger.info("Found stored introduction for question: " + latest_question)
 
-    if stored_introduction:
-        base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
-        sys_prompt = (
+    return _AnswerContext(
+        session=session,
+        session_uuid=session_uuid,
+        latest_question=latest_question,
+        sys_prompt=sys_prompt,
+        prompt_type=prompt_type,
+        context_prompt=context_prompt,
+        stored_introduction=stored_introduction,
+    )
+
+
+
+@router.post("/answer", response_model=AnswerResponse)
+async def generate_answer(
+    payload: AnswerRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    ctx = await _prepare_answer_context(payload, db)
+
+    # Override sys_prompt / context_prompt for stored introductions
+    if ctx.stored_introduction:
+        base_prompt, _ = resolve_system_prompt_type(
+            ctx.latest_question, "", getattr(ctx.session, "session_name", "")
+        )
+        ctx.sys_prompt = (
             f"{base_prompt}\n\n"
             "SPECIAL TASK: You are a spoken introduction polisher.\n"
             "You will receive a pre-written candidate introduction below.\n"
-            "Your ONLY job is to polish the grammar, readability, and natural spoken flow so it sounds perfect for a 3-minute verbal interview delivery.\n"
+            "Your ONLY job is to polish the grammar, readability, and natural spoken flow "
+            "so it sounds perfect for a 3-minute verbal interview delivery.\n"
             "Rules:\n"
             "- Keep ALL original facts, dates, technologies, company names, and achievements exactly as they are.\n"
             "- Do NOT add, invent, or remove any facts.\n"
             "- Do NOT adapt content to match the job role or company from context.\n"
             "- Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or any AI preamble.\n"
             "- Start directly with 'I am...' or similar — no greeting.\n"
-            "- Return ONLY valid JSON: {\"question\": \"<cleaned question>\", \"answer\": \"<polished introduction>\"}"
+            '- Return ONLY valid JSON: {"question": "<cleaned question>", "answer": "<polished introduction>"}'
         )
-        context_prompt = f"Pre-written Introduction:\n{stored_introduction}"
+        ctx.context_prompt = f"Pre-written Introduction:\n{ctx.stored_introduction}"
 
-    # 2. Call LLM
-    # --- DEBUG: log what we actually send to the model ---
-    _source = payload.source_type if payload.source_type in ("manual", "transcript", "screenshot") else ("manual" if payload.question else "transcript")
+    # Log prompt
+    _source = (
+        payload.source_type
+        if payload.source_type in ("manual", "transcript", "screenshot")
+        else ("manual" if payload.question else "transcript")
+    )
     _log_prompt_to_file(
-        question=latest_question,
-        system_prompt=sys_prompt,
-        user_prompt=context_prompt or "",
-        prompt_type=prompt_type,
-        source_type=_source
+        question=ctx.latest_question,
+        system_prompt=ctx.sys_prompt,
+        user_prompt=ctx.context_prompt or "",
+        prompt_type=ctx.prompt_type,
+        source_type=_source,
     )
+
+    # Call LLM
     raw_response = await call_gemini(
-        prompt=context_prompt,
-        system_prompt=sys_prompt,
+        prompt=ctx.context_prompt,
+        system_prompt=ctx.sys_prompt,
         response_json=True,
-        model=payload.model
+        model=payload.model,
     )
 
-    # 3. Parse Gemini Response
-    question = latest_question
+    # Parse response
+    question = ctx.latest_question
     answer = raw_response
-
     try:
         cleaned = raw_response.strip()
         if cleaned.startswith("```json"):
@@ -495,40 +604,37 @@ async def generate_answer(
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
-        
-        # Isolate JSON object bracket block to strip any conversational prefixes/suffixes
         start_idx = cleaned.find('{')
-        end_idx = cleaned.rfind('}')
+        end_idx   = cleaned.rfind('}')
         if start_idx != -1 and end_idx != -1:
-            cleaned = cleaned[start_idx:end_idx+1]
-
-        # Use strict=False to allow literal newlines and control characters inside JSON strings
+            cleaned = cleaned[start_idx:end_idx + 1]
         data = json.loads(cleaned, strict=False)
-        question = data.get("question", latest_question).strip() or latest_question
-        answer = data.get("answer", raw_response).strip()
+        question = data.get("question", ctx.latest_question).strip() or ctx.latest_question
+        answer   = data.get("answer",   raw_response).strip()
     except Exception as e:
-        logger.warning(f"Failed to parse Gemini response as JSON: {e}. Raw response: {raw_response}")
+        logger.warning(f"Failed to parse Gemini response as JSON: {e}. Raw: {raw_response}")
 
-    # 4. Save to Database (only if session exists)
-    if session and session_uuid:
+    # Save to DB and update Redis previous_context
+    if ctx.session and ctx.session_uuid:
         qa_repo = QARepository(db)
         qa = await qa_repo.create(
-            session_id=session_uuid,
+            session_id=ctx.session_uuid,
             question=question,
             answer=answer,
-            source_type=payload.source_type
+            source_type=payload.source_type,
         )
         try:
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
             if cached_session:
                 prev_ctx = cached_session.get("previous_context", "")
-                # Truncate answer to 150 chars so stale long answers don't pollute future context
                 answer_snippet = answer[:150] + "..." if len(answer) > 150 else answer
                 new_entry = f"Q: {question}\nA: {answer_snippet}"
                 if prev_ctx and prev_ctx != "None.":
                     parts = [p.strip() for p in prev_ctx.split("Q: ") if p.strip()]
                     parts.append(f"{question}\nA: {answer_snippet}")
-                    cached_session["previous_context"] = "\n".join([f"Q: {p}" for p in parts[-2:]])
+                    cached_session["previous_context"] = "\n".join(
+                        [f"Q: {p}" for p in parts[-2:]]
+                    )
                 else:
                     cached_session["previous_context"] = new_entry
                 await redis_cache.set_session_state(str(payload.session_id), cached_session)
@@ -536,158 +642,31 @@ async def generate_answer(
             logger.warning(f"Failed to update previous_context in Redis cache: {e}")
         return qa
     else:
-        import datetime
+        import datetime as _dt
         return {
-            "id": uuid.uuid4(),
-            "session_id": None,
-            "question": question,
-            "answer": answer,
-            "source_type": payload.source_type,
-            "created_at": datetime.datetime.utcnow()
+            "id":           uuid.uuid4(),
+            "session_id":   None,
+            "question":     question,
+            "answer":       answer,
+            "source_type":  payload.source_type,
+            "created_at":   _dt.datetime.utcnow(),
         }
+
 
 @router.post("/answer/stream")
 async def generate_answer_stream(
     payload: AnswerRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    session = None
-    session_uuid = None
-    if payload.session_id:
-        try:
-            session_uuid = uuid.UUID(payload.session_id) if isinstance(payload.session_id, str) and len(payload.session_id) == 36 else (payload.session_id if isinstance(payload.session_id, uuid.UUID) else None)
-            if session_uuid:
-                session_repo = SessionRepository(db)
-                session = await session_repo.get_by_id(session_uuid)
-        except Exception:
-            pass
+    ctx = await _prepare_answer_context(payload, db)
 
-    raw_transcript = payload.transcript or ""
-    # For transcript mode, extract just the actual question from the full noisy transcript
-    if payload.question:
-        latest_question = payload.question
-    elif raw_transcript:
-        latest_question = extract_question_from_transcript(raw_transcript)
-    else:
-        latest_question = ""
-
-
-    # Detect if this is an HR, Coding, or Interview session category or question
-    session_category = ""
-    session_name = ""
-    if payload.session_id:
-        try:
-            cached_session = await redis_cache.get_session_state(str(payload.session_id))
-            if cached_session:
-                session_category = cached_session.get("category", "")
-        except Exception:
-            pass
-        if session:
-            session_name = session.session_name
-
-    if payload.source_type == "screenshot":
-        sys_prompt = get_screenshot_coding_system_prompt()
-        prompt_type = "coding"
-    else:
-        sys_prompt, prompt_type = resolve_system_prompt_type(
-            latest_question,
-            session_category,
-            session_name
-        )
-    context_prompt = None
-    
-    if payload.session_id and payload.source_type != "transcript":
-        try:
-            cached_session = await redis_cache.get_session_state(str(payload.session_id))
-            if cached_session and "prepared_prompt" in cached_session:
-                prompt_data = json.loads(cached_session["prepared_prompt"])
-                user_p = prompt_data.get("user_prompt", "")
-                # Only use cached prompt if the current question is actually inside it
-                question_in_cache = latest_question and len(latest_question) > 5 and latest_question.lower()[:40] in user_p.lower()
-                if user_p and question_in_cache:
-                    context_prompt_data = prompt_data.get("system_prompt", "")
-                    base_prompt, _ = resolve_system_prompt_type(latest_question, session_category, session_name)
-                    sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
-                    if prompt_type == "coding":
-                        user_p = user_p.replace(
-                            "Provide your verbal guidance or response based on the candidate's context.",
-                            "Provide the fully implemented optimized code block inside the response as specified in the coding round prompt."
-                        )
-                    context_prompt = user_p
-                    logger.info(f"Loaded matching prepared prompt from cache for session {payload.session_id}")
-                else:
-                    logger.info(f"Prepared prompt is stale/mismatched — rebuilding from DB for: {latest_question[:60]}")
-        except Exception as e:
-            logger.warning(f"Error loading prepared prompt from Redis: {e}")
-
-    if not context_prompt:
-        context_prompt = await build_session_context(
-            session_id=session_uuid,
-            latest_question=latest_question,
-            db=db,
-            resume_content=payload.resume_content,
-            knowledge_content=payload.knowledge_content
-        )
-
-    # CHECK FOR STORED INTRODUCTION
-    stored_introduction = None
-    resume_obj = None
-    if payload.resume_content and len(payload.resume_content) < 100:
-        try:
-            res_uuid = uuid.UUID(payload.resume_content)
-            from app.db.models import Resume
-            resume_obj = await db.get(Resume, res_uuid)
-        except Exception:
-            pass
-    if not resume_obj and session and session.user_id:
-        try:
-            from app.db.repositories import ResumeRepository
-            resume_repo = ResumeRepository(db)
-            resume_obj = await resume_repo.get_active(session.user_id)
-        except Exception:
-            pass
-
-    # Self-healing logic for old resumes that don't have summaries generated yet
-    if resume_obj and not resume_obj.introduction:
-        try:
-            logger.info(f"[Self-Healing] Generating missing summaries for resume in stream: {resume_obj.file_name}")
-            from app.services.ai_service import generate_resume_summaries
-            summaries = await generate_resume_summaries(resume_obj.parsed_content)
-            resume_obj.introduction = summaries.get("introduction")
-            resume_obj.professional_summary = summaries.get("professional_summary")
-            resume_obj.career_journey = summaries.get("career_journey")
-            resume_obj.strengths = summaries.get("strengths")
-            resume_obj.project_summary = summaries.get("project_summary")
-            db.add(resume_obj)
-            await db.commit()
-            logger.info("[Self-Healing] Summaries successfully generated and saved to DB in stream.")
-        except Exception as she:
-            logger.warning(f"[Self-Healing] Failed to generate resume summaries in stream: {she}")
-
-    if resume_obj and resume_obj.introduction:
-        q_clean = latest_question.lower().strip().replace("?", "").replace(".", "").replace(",", "")
-        triggers = [
-            "tell me about yourself",
-            "introduce yourself",
-            "walk me through your resume",
-            "walk me through your background",
-            "explain your experience",
-            "tell me about your experience",
-            "talk about yourself",
-            "who are you",
-            "intro",
-            "introduction"
-        ]
-        if any(t in q_clean for t in triggers):
-            stored_introduction = resume_obj.introduction
-            logger.info("Found stored introduction for question: " + latest_question)
-
-    if stored_introduction:
-        # Stream endpoint: use plain text output (no JSON) to avoid contradictory instructions
-        sys_prompt = (
+    # Override for stored introductions (plain-text output, no JSON)
+    if ctx.stored_introduction:
+        ctx.sys_prompt = (
             "SPECIAL TASK — Introduction Polisher.\n"
             "You will receive a pre-written candidate introduction.\n"
-            "Your ONLY job: polish the grammar, readability, and natural spoken flow so it sounds perfect and highly professional for a 3-minute verbal interview delivery.\n\n"
+            "Your ONLY job: polish the grammar, readability, and natural spoken flow so it "
+            "sounds perfect and highly professional for a 3-minute verbal interview delivery.\n\n"
             "STRICT RULES:\n"
             "- Keep ALL original facts, dates, technologies, company names, and achievements exactly as-is.\n"
             "- Do NOT add, invent, or remove any facts.\n"
@@ -697,45 +676,49 @@ async def generate_answer_stream(
             "- Write in a warm, confident, natural speaking voice — like a real person, not a report.\n\n"
             "OUTPUT: Return ONLY the polished spoken introduction as plain text. No JSON. No markdown. No labels."
         )
-        context_prompt = f"Pre-written Introduction to polish:\n\n{stored_introduction}"
+        ctx.context_prompt = f"Pre-written Introduction to polish:\n\n{ctx.stored_introduction}"
 
-    # 2. Return StreamingResponse
-    # --- DEBUG: log what we actually send to the model ---
-    if payload.source_type != "screenshot" and not stored_introduction:
+    # Strip JSON output format instruction for plain-text streaming
+    if payload.source_type != "screenshot" and not ctx.stored_introduction:
         import re as _re
-        # Strip any remaining JSON output instruction (fragile string matching replaced by regex)
-        sys_prompt = _re.sub(
+        ctx.sys_prompt = _re.sub(
             r'OUTPUT FORMAT:.*',
-            'OUTPUT FORMAT:\nOutput ONLY the candidate\'s spoken response directly as plain text. Do NOT wrap it in JSON, markdown, or any other formatting. Just speak.',
-            sys_prompt,
-            flags=_re.DOTALL
+            'OUTPUT FORMAT:\nOutput ONLY the candidate\'s spoken response directly as plain text. '
+            'Do NOT wrap it in JSON, markdown, or any other formatting. Just speak.',
+            ctx.sys_prompt,
+            flags=_re.DOTALL,
         )
 
-    _source_stream = payload.source_type if payload.source_type in ("manual", "transcript", "screenshot") else ("manual" if payload.question else "transcript")
-    _log_prompt_to_file(
-        question=latest_question,
-        system_prompt=sys_prompt,
-        user_prompt=context_prompt or "",
-        prompt_type=prompt_type,
-        source_type=_source_stream
+    _source_stream = (
+        payload.source_type
+        if payload.source_type in ("manual", "transcript", "screenshot")
+        else ("manual" if payload.question else "transcript")
     )
+    _log_prompt_to_file(
+        question=ctx.latest_question,
+        system_prompt=ctx.sys_prompt,
+        user_prompt=ctx.context_prompt or "",
+        prompt_type=ctx.prompt_type,
+        source_type=_source_stream,
+    )
+
     async def stream_generator():
         accumulated_chunks = []
         async for chunk in stream_llm(
-            prompt=context_prompt,
-            system_prompt=sys_prompt,
+            prompt=ctx.context_prompt,
+            system_prompt=ctx.sys_prompt,
             model=payload.model,
-            response_json=False # Set to False for direct plain-text stream (under 1s TTFT)
+            response_json=False,  # plain-text stream (sub-1s TTFT)
         ):
             accumulated_chunks.append(chunk)
             yield chunk
 
         # Once stream finishes, parse and save to DB
         full_response = "".join(accumulated_chunks)
-        question = latest_question
+        question = ctx.latest_question
         answer = full_response
 
-        # Check if model returned a JSON structure (fallback / backwards compatibility)
+        # Handle JSON fallback (backwards compatibility)
         if full_response.strip().startswith("{"):
             try:
                 cleaned = full_response.strip()
@@ -746,48 +729,54 @@ async def generate_answer_stream(
                 if cleaned.endswith("```"):
                     cleaned = cleaned[:-3]
                 cleaned = cleaned.strip()
-
-                # Isolate JSON object bracket block to strip any conversational prefixes/suffixes
                 start_idx = cleaned.find('{')
-                end_idx = cleaned.rfind('}')
+                end_idx   = cleaned.rfind('}')
                 if start_idx != -1 and end_idx != -1:
-                    cleaned = cleaned[start_idx:end_idx+1]
-
-                # Use strict=False to allow literal newlines and control characters inside JSON strings
+                    cleaned = cleaned[start_idx:end_idx + 1]
                 data = json.loads(cleaned, strict=False)
-                question = data.get("question", latest_question).strip() or latest_question
-                answer = data.get("answer", full_response).strip()
+                question = data.get("question", ctx.latest_question).strip() or ctx.latest_question
+                answer   = data.get("answer", full_response).strip()
             except Exception as e:
-                logger.warning(f"Failed to parse stream response as JSON: {e}. Raw response: {full_response}")
+                logger.warning(f"Failed to parse stream response as JSON: {e}. Raw: {full_response}")
 
-        if session and session_uuid:
+        if ctx.session and ctx.session_uuid:
             try:
                 from app.db.database import SessionLocal
                 async with SessionLocal() as db_session:
                     qa_repo = QARepository(db_session)
                     await qa_repo.create(
-                        session_id=session_uuid,
+                        session_id=ctx.session_uuid,
                         question=question,
                         answer=answer,
-                        source_type=payload.source_type
+                        source_type=payload.source_type,
                     )
                     await db_session.commit()
                     try:
-                        cached_session = await redis_cache.get_session_state(str(payload.session_id))
+                        cached_session = await redis_cache.get_session_state(
+                            str(payload.session_id)
+                        )
                         if cached_session:
                             prev_ctx = cached_session.get("previous_context", "")
-                            # Truncate answer to 150 chars so stale long answers don't pollute future context
                             answer_snippet = answer[:150] + "..." if len(answer) > 150 else answer
                             new_entry = f"Q: {question}\nA: {answer_snippet}"
                             if prev_ctx and prev_ctx != "None.":
-                                parts = [p.strip() for p in prev_ctx.split("Q: ") if p.strip()]
+                                parts = [
+                                    p.strip() for p in prev_ctx.split("Q: ") if p.strip()
+                                ]
                                 parts.append(f"{question}\nA: {answer_snippet}")
-                                cached_session["previous_context"] = "\n".join([f"Q: {p}" for p in parts[-2:]])
+                                cached_session["previous_context"] = "\n".join(
+                                    [f"Q: {p}" for p in parts[-2:]]
+                                )
                             else:
                                 cached_session["previous_context"] = new_entry
-                            await redis_cache.set_session_state(str(payload.session_id), cached_session)
+                            await redis_cache.set_session_state(
+                                str(payload.session_id), cached_session
+                            )
                     except Exception as e:
-                        logger.warning(f"Failed to update previous_context in Redis cache inside stream generator: {e}")
+                        logger.warning(
+                            f"Failed to update previous_context in Redis cache inside "
+                            f"stream generator: {e}"
+                        )
             except Exception as db_err:
                 logger.error(f"Failed to save QA record in streaming endpoint: {db_err}")
 
@@ -946,19 +935,20 @@ async def prewarm_question_context(
                 async with SessionLocal() as db:
                     user_id = None
                     session_jd_id = None
+                    db_session = None
                     resume_content = payload.resume_content
                     knowledge_content = payload.knowledge_content
 
                     if session_id_parsed:
-                        from app.db.models import Session
-                        db_session = await db.get(Session, session_id_parsed)
-                        if db_session:
-                            user_id = db_session.user_id
-                            session_jd_id = db_session.jd_id
-                            if not resume_content:
-                                resume_content = db_session.resume_content
-                            if not knowledge_content:
-                                knowledge_content = db_session.knowledge_content
+                        try:
+                            from app.db.models import Session
+                            db_session = await db.get(Session, session_id_parsed)
+                            if db_session:
+                                user_id = db_session.user_id
+                                session_jd_id = db_session.job_description_id
+                        except Exception as dbe:
+                            logger.debug(f"Pre-warm session lookup fallback: {dbe}")
+                            db_session = None
 
                     context = await context_orchestrator.prepare_context(
                         session_id=session_id_parsed,
@@ -979,16 +969,27 @@ async def prewarm_question_context(
                         payload.partial_question
                     )
 
-                    # Update cached session state with metadata so background transcript pipeline skips DB
+                    # Update cached session state with metadata and prewarmed_context packet
                     cached_session = await redis_cache.get_session_state(payload.session_id)
                     if not cached_session:
                         cached_session = {}
+                    
+                    role_info = f"Role: {db_session.role_name if db_session else 'Software Engineer'} at {db_session.company_name if db_session else 'Target Company'}"
                     cached_session.update({
                         "metadata_loaded": True,
                         "resume_context": context["resume_context"],
                         "knowledge_context": context["knowledge_context"],
+                        "jd_context": context.get("jd_context", "None loaded."),
                         "previous_context": context["previous_context"],
-                        "reasoning_focus": context["reasoning_focus"]
+                        "reasoning_focus": context["reasoning_focus"],
+                        "prewarmed_context": {
+                            "role_info": role_info,
+                            "jd_context": context.get("jd_context", "None loaded."),
+                            "resume_context": context.get("resume_context", "None loaded."),
+                            "candidate_memories": context.get("knowledge_context", "None loaded."),
+                            "previous_context": context.get("previous_context", "None."),
+                            "keywords": keywords
+                        }
                     })
                     await redis_cache.set_session_state(payload.session_id, cached_session)
 

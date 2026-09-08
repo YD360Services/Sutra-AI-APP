@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.db.models import JobDescription, Resume, KnowledgeDocument, QuestionAnswer
 from app.db.repositories import ResumeRepository, JDRepository, KnowledgeRepository, QARepository
 from app.cache.redis import redis_cache
+from app.services.candidate_memory import CandidateMemoryStore, CandidateMemoryItem, candidate_memory_store
 
 logger = logging.getLogger("copilotx.context_orchestrator")
 
@@ -263,55 +264,104 @@ class ContextOrchestrator:
                 raw_resume = resume_content
 
             if raw_resume:
-                ranked = rank_and_truncate_text(raw_resume, search_terms, max_items=20)
+                # Compact token limit: top 8 most relevant resume lines
+                ranked = rank_and_truncate_text(raw_resume, search_terms, max_items=8)
                 if ranked:
                     optimized_resume = "\n".join(ranked)
                 else:
-                    optimized_resume = raw_resume[:2500]
+                    optimized_resume = raw_resume[:1200]
 
-        # 2. Optimize Job Description Context
+        # 2. Optimize Job Description Context (compact limit: top 6 requirements)
         optimized_jd = "None loaded."
         if jd_text and jd_text != "None loaded.":
-            ranked_jd = rank_and_truncate_text(jd_text, search_terms, max_items=15)
+            ranked_jd = rank_and_truncate_text(jd_text, search_terms, max_items=6)
             if ranked_jd:
                 optimized_jd = "\n".join(ranked_jd)
             else:
-                optimized_jd = jd_text[:1500]
+                optimized_jd = jd_text[:800]
 
-        # 3. Optimize Knowledge Reference Documents & Prompts
+        # 3. Optimize Candidate Memories & Reference Documents
         prompts = [d for d in knowledge_docs if d["type"] == "prompt"]
         documents = [d for d in knowledge_docs if d["type"] != "prompt"]
 
-        # Only chunk and rank reference documents
-        doc_chunks = []
+        knowledge_list = []
+        candidate_memories_found: List[CandidateMemoryItem] = []
+
+        # Check if knowledge_docs contain structured candidate mock practice answers
         for doc in documents:
+            content = doc.get("content", "")
+            if "[CANDIDATE MOCK PRACTICE ANSWERS]:" in content or "Prepared Answer:" in content:
+                segments = re.findall(r'Practice Q(?:\s*\(([^)]+)\))?:\s*(.*?)\s*->\s*Prepared Answer:\s*(.*?)(?=(?:Practice Q|\Z))', content, re.DOTALL)
+                for role_co, q, raw_a in segments:
+                    a = re.sub(r'[\|\s]+$', '', raw_a).strip()
+                    star = CandidateMemoryStore.parse_star_from_answer(a)
+                    metrics = CandidateMemoryStore.extract_metrics(a)
+                    candidate_memories_found.append(CandidateMemoryItem(
+                        topic=q.strip()[:80],
+                        company=role_co.split('@')[-1].strip() if role_co and '@' in role_co else "",
+                        role=role_co.split('@')[0].strip() if role_co and '@' in role_co else (role_co or ""),
+                        star=star,
+                        metrics=metrics,
+                        raw_text=f"Q: {q.strip()}\nA: {a.strip()}"
+                    ))
+
+        # Retrieve top 2-3 most relevant candidate memories for current question
+        if candidate_memories_found:
+            store = CandidateMemoryStore()
+            store.add_memories(candidate_memories_found)
+            top_memories = store.retrieve_top_memories(
+                query=" ".join(search_terms),
+                search_terms=search_terms,
+                max_items=3
+            )
+            if top_memories:
+                knowledge_list.append(store.format_compact_context(top_memories))
+
+        # Only chunk and rank other reference documents if present
+        ref_docs = [d for d in documents if "[CANDIDATE MOCK PRACTICE ANSWERS]:" not in d.get("content", "")]
+        doc_chunks = []
+        for doc in ref_docs:
             chunks = re.split(r'[\n\r\t]+', doc["content"])
             for ch in chunks:
                 ch_stripped = ch.strip()
                 if len(ch_stripped) > 20:
                     doc_chunks.append((doc["name"], doc["type"], ch_stripped))
 
-        scored_chunks = []
-        for doc_name, doc_type, ch in doc_chunks:
-            score = 0
-            ch_lower = ch.lower()
-            for term in search_terms:
-                if term.lower() in ch_lower:
-                    score += 2
-            scored_chunks.append((score, doc_name, doc_type, ch))
+        if doc_chunks:
+            scored_chunks = []
+            for doc_name, doc_type, ch in doc_chunks:
+                score = 0
+                ch_lower = ch.lower()
+                for term in search_terms:
+                    if term.lower() in ch_lower:
+                        score += 2
+                scored_chunks.append((score, doc_name, doc_type, ch))
 
-        scored_chunks.sort(key=lambda x: x[0], reverse=True)
-        top_chunks = scored_chunks[:3]
+            scored_chunks.sort(key=lambda x: x[0], reverse=True)
+            top_chunks = scored_chunks[:2]
+            for score, name, doc_type, chunk in top_chunks:
+                knowledge_list.append(f"Reference Document [{name}]: {chunk}")
 
-        knowledge_list = []
-        # Keep instruction prompt template exactly as uploaded
+        # Keep instruction prompt template if uploaded
         for p in prompts:
             knowledge_list.append(f"AI Instruction Prompt [{p['name']}]: {p['content']}")
-        # Rank reference doc chunks
-        for score, name, doc_type, chunk in top_chunks:
-            knowledge_list.append(f"Reference Document [{name}]: {chunk}")
 
-        # Reasoning Focus logic
+        # 4. Session Follow-Up Context Awareness
+        previous_str = "None."
+        if previous_qas:
+            followup_triggers = ["why", "how", "what was", "biggest challenge", "tradeoff", "elaborate", "scale", "edge case", "disagree"]
+            is_followup = any(t in " ".join(search_terms).lower() for t in followup_triggers)
+            last_qa = previous_qas[-1]
+            if is_followup and last_qa:
+                previous_str = (
+                    f"[Follow-Up Note: Interviewer is following up on previous topic]\n"
+                    f"Previous Question: {last_qa['question']}\n"
+                    f"Candidate's Previous Point: {last_qa['answer'][:250]}..."
+                )
+            else:
+                previous_str = "\n".join([f"Q: {qa['question']}\nA: {qa['answer'][:200]}" for qa in previous_qas[-2:]])
+
+        # 5. Reasoning Focus logic
         reasoning_focus = "General technical review and validation."
         if any(t in ["Redis", "Kafka", "PostgreSQL"] for t in technologies):
             reasoning_focus = "Focus on cache strategy, data consistency, message durability, and system scaling."
@@ -320,9 +370,9 @@ class ContextOrchestrator:
 
         return {
             "resume_context": optimized_resume if optimized_resume else "None loaded.",
-            "knowledge_context": "\n".join(knowledge_list) if knowledge_list else "None loaded.",
+            "knowledge_context": "\n\n".join(knowledge_list) if knowledge_list else "None loaded.",
             "jd_context": optimized_jd if optimized_jd else "None loaded.",
-            "previous_context": "\n".join([f"Q: {qa['question']}\nA: {qa['answer']}" for qa in previous_qas]) if previous_qas else "None.",
+            "previous_context": previous_str,
             "reasoning_focus": reasoning_focus
         }
 

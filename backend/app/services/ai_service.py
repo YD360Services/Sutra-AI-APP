@@ -3,7 +3,10 @@ from google.genai import types
 from app.core.config import settings
 import logging
 import openai
-import anthropic as anthropic_sdk
+try:
+    import anthropic as anthropic_sdk
+except ImportError:
+    anthropic_sdk = None
 import json
 from datetime import datetime
 import os
@@ -21,15 +24,22 @@ if PROJECT_ROOT == Path("/"):
     PROJECT_ROOT = Path("/app")
 PROMPT_LOG_DIR = PROJECT_ROOT / "logs" / "prompt_debug"
 PROMPT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-ENABLE_PROMPT_LOGGING = True
+ENABLE_PROMPT_LOGGING = os.getenv("ENABLE_PROMPT_LOGGING", "false").lower() in ("true", "1")
+
+def _async_write_log(filename: Path, payload: dict):
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.debug(f"Async log write failed: {e}")
 
 def log_prompt(provider: str,
                model: str,
                system_prompt: str,
                user_prompt: str,
                response_json: bool = False,
-                temperature: float = 0.3,
-                stream: bool = False) -> Path:
+               temperature: float = 0.3,
+               stream: bool = False) -> Path:
     if not ENABLE_PROMPT_LOGGING:
         return None
 
@@ -45,8 +55,6 @@ def log_prompt(provider: str,
         "response_json": response_json,
         "temperature": temperature,
         "stream": stream,
-        "project_root": str(PROJECT_ROOT),
-        "prompt_log_dir": str(PROMPT_LOG_DIR),
         "system_prompt_chars": len(system_prompt or ""),
         "user_prompt_chars": len(user_prompt or ""),
         "total_chars": len(system_prompt or "") + len(user_prompt or ""),
@@ -58,22 +66,15 @@ def log_prompt(provider: str,
         ]
     }
 
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
-
-    print("=" * 90)
-    print("PROMPT LOG WRITTEN")
-    print("Provider:", provider)
-    print("Model:", model)
-    print("Path:", filename)
-    print("=" * 90)
-    logger.info(f"Prompt saved -> {filename}")
+    # Offload disk write to non-blocking daemon thread so hot path TTFT is not stalled by disk I/O
+    import threading
+    threading.Thread(target=_async_write_log, args=(filename, payload), daemon=True).start()
     return filename
 
-def log_response(filename: Path, response_text: str = None, error: str = None):
-    if not ENABLE_PROMPT_LOGGING or not filename or not filename.exists():
-        return
+def _async_write_response(filename: Path, response_text: str = None, error: str = None):
     try:
+        if not filename.exists():
+            return
         with open(filename, "r", encoding="utf-8") as f:
             payload = json.load(f)
         if response_text is not None:
@@ -82,18 +83,34 @@ def log_response(filename: Path, response_text: str = None, error: str = None):
             payload["error"] = error
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2, ensure_ascii=False)
-        logger.info(f"Response logged to {filename}")
     except Exception as e:
-        logger.error(f"Failed to log response to {filename}: {e}")
+        logger.debug(f"Failed to log response to {filename}: {e}")
+
+def log_response(filename: Path, response_text: str = None, error: str = None):
+    if not ENABLE_PROMPT_LOGGING or not filename:
+        return
+    import threading
+    threading.Thread(target=_async_write_response, args=(filename, response_text, error), daemon=True).start()
 
 # Dynamic Client Initialization Helpers
 genai_client = None
 groq_client = None
 openai_client = None
 anthropic_client = None
+_gemini_disabled = False
+
+def is_gemini_disabled() -> bool:
+    global _gemini_disabled
+    return _gemini_disabled
+
+def disable_gemini():
+    global _gemini_disabled
+    _gemini_disabled = True
 
 def get_gemini_client():
     global genai_client
+    if is_gemini_disabled():
+        return None
     if genai_client is None and settings.GEMINI_API_KEY:
         try:
             genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
@@ -193,6 +210,8 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if "mini" in ml or "gpt" in ml:
             return "gpt-5.4-mini"
 
+        # ── 6. Pass through all other model strings unchanged ──
+        # This preserves exact model names like gpt-4.1-mini, gpt-4o, gpt-4-turbo, etc.
         return m
 
     # 1. Respect model_lower if explicitly requested
@@ -203,28 +222,28 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
 
     # 2. Fallbacks based on task types if model is not set
     if is_live_answer:
-        if settings.GEMINI_API_KEY:
+        if settings.GEMINI_API_KEY and not is_gemini_disabled():
             return "gemini-3.6-flash"
+        elif settings.GROQ_API_KEY:
+            return settings.GROQ_MODEL or "openai/gpt-oss-120b"
         elif settings.OPENAI_API_KEY:
-            return "gpt-5.4-mini"
+            return "gpt-4o-mini"
         elif settings.ANTHROPIC_API_KEY:
             return "claude-haiku-4-5-20251001"
-        elif settings.GROQ_API_KEY:
-            return "openai/gpt-oss-120b"
         return ""
     elif is_screenshot:
-        if settings.GEMINI_API_KEY:
+        if settings.GEMINI_API_KEY and not is_gemini_disabled():
             return "gemini-3.6-flash"
         elif settings.OPENAI_API_KEY:
-            return "gpt-5.4-mini"
+            return "gpt-4o-mini"
         return "gemini-3.6-flash"
     else:
-        if settings.GEMINI_API_KEY:
+        if settings.GEMINI_API_KEY and not is_gemini_disabled():
             return "gemini-3.6-flash"
-        elif settings.OPENAI_API_KEY:
-            return "gpt-5.4-mini"
         elif settings.GROQ_API_KEY:
-            return "openai/gpt-oss-120b"
+            return settings.GROQ_MODEL or "openai/gpt-oss-120b"
+        elif settings.OPENAI_API_KEY:
+            return "gpt-4o-mini"
         return ""
 
 async def call_llm(prompt: str, system_prompt: str, model: str = None, response_json: bool = False, throw_on_error: bool = False, temperature: float = 0.3) -> str:
@@ -371,7 +390,33 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
                 log_response(log_file, response_text=content)
             return content
         except Exception as e:
-            logger.error(f"Gemini API generation error: {e}. Attempting OpenAI failover...")
+            err_msg = str(e)
+            if any(k in err_msg for k in ["403", "PERMISSION_DENIED", "leaked", "API_KEY_INVALID"]):
+                disable_gemini()
+            logger.error(f"Gemini API generation error: {e}. Attempting failover...")
+            
+            # 1. Fast Groq failover
+            groq_fallback_client = get_groq_client()
+            if groq_fallback_client:
+                try:
+                    response_format = {"type": "json_object"} if response_json else None
+                    groq_resp = await groq_fallback_client.chat.completions.create(
+                        model=settings.GROQ_MODEL or "openai/gpt-oss-120b",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=temperature,
+                        response_format=response_format
+                    )
+                    content = groq_resp.choices[0].message.content or ""
+                    if log_file:
+                        log_response(log_file, response_text=content)
+                    return content
+                except Exception as ge:
+                    logger.error(f"Groq failover error: {ge}")
+
+            # 2. OpenAI failover
             openai_fallback_client = get_openai_client()
             if openai_fallback_client:
                 try:
@@ -491,12 +536,54 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
             logger.error(f"OpenAI streaming error: {e}")
             yield fallback_answer(prompt)
     else:
-        # Gemini Flow
+        # Gemini Flow with seamless Groq/OpenAI streaming failover
         gemini_model = model if model else settings.GEMINI_MODEL
         client = get_gemini_client()
-        if not client:
+        if not client or is_gemini_disabled():
+            # Direct low-latency streaming failover when Gemini is unavailable or disabled
+            groq_fallback = get_groq_client()
+            if groq_fallback:
+                try:
+                    logger.info("Streaming via Groq (Gemini unavailable/disabled)...")
+                    response = await groq_fallback.chat.completions.create(
+                        model=settings.GROQ_MODEL or "openai/gpt-oss-120b",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3,
+                        stream=True
+                    )
+                    async for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                    return
+                except Exception as ge:
+                    logger.error(f"Groq direct streaming failover error: {ge}")
+
+            openai_fallback = get_openai_client()
+            if openai_fallback:
+                try:
+                    logger.info("Streaming via OpenAI (Gemini unavailable/disabled)...")
+                    response = await openai_fallback.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3,
+                        stream=True
+                    )
+                    async for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                    return
+                except Exception as oe:
+                    logger.error(f"OpenAI direct streaming failover error: {oe}")
+
             yield fallback_answer(prompt)
             return
+
         try:
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
@@ -515,7 +602,53 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
                 if chunk.text:
                     yield chunk.text
         except Exception as e:
-            logger.error(f"Gemini streaming error: {e}")
+            err_msg = str(e)
+            if any(k in err_msg for k in ["403", "PERMISSION_DENIED", "leaked", "API_KEY_INVALID"]):
+                disable_gemini()
+            logger.error(f"Gemini streaming error: {e}. Attempting failover to Groq/OpenAI...")
+
+            # 1. Fast Groq streaming failover
+            groq_fallback = get_groq_client()
+            if groq_fallback:
+                try:
+                    logger.info("Failing over to Groq for streaming...")
+                    response = await groq_fallback.chat.completions.create(
+                        model=settings.GROQ_MODEL or "openai/gpt-oss-120b",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3,
+                        stream=True
+                    )
+                    async for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                    return
+                except Exception as ge:
+                    logger.error(f"Groq streaming failover error: {ge}")
+
+            # 2. OpenAI streaming failover
+            openai_fallback = get_openai_client()
+            if openai_fallback:
+                try:
+                    logger.info("Failing over to OpenAI for streaming...")
+                    response = await openai_fallback.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3,
+                        stream=True
+                    )
+                    async for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                    return
+                except Exception as oe:
+                    logger.error(f"OpenAI streaming failover error: {oe}")
+
             yield fallback_answer(prompt)
 
 async def generate_resume_summaries(parsed_content: str) -> dict:
