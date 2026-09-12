@@ -13,13 +13,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    container_name: copilotx-redis
-    restart: always
-    ports:
-      - "6379:6379"
-
   backend:
     build:
       context: ./backend
@@ -30,12 +23,10 @@ services:
       - "8000:8000"
     depends_on:
       - postgres
-      - redis
     env_file:
       - ./backend/.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@copilotx-db:5432/copilotx
-      - REDIS_URL=redis://copilotx-redis:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
 volumes:

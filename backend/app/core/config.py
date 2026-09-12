@@ -34,9 +34,8 @@ class Settings(BaseSettings):
     # Admin & Security
     INITIAL_ADMIN_EMAILS: str = "kirankumar82054@gmail.com,omkarvenkat09@gmail.com,y.bhanuchandar360@gmail.com,omkarshendre999@gmail.com,admin@roundmate.ai"
 
-    # Databases
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgrespassword@localhost:5432/copilotx"
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # Database
+    DATABASE_URL: str = ""
 
     class Config:
         env_file = ".env"
@@ -100,10 +99,8 @@ class Settings(BaseSettings):
                                         self.ANTHROPIC_API_KEY = v
                                     elif k in ("SPEECHMATICS_API_KEY", "speechmatics_key") and (not self.SPEECHMATICS_API_KEY or self.SPEECHMATICS_API_KEY == "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"):
                                         self.SPEECHMATICS_API_KEY = v
-                                    elif k == "DATABASE_URL" and ("localhost" in self.DATABASE_URL or not self.DATABASE_URL):
+                                    elif k == "DATABASE_URL" and not self.DATABASE_URL:
                                         self.DATABASE_URL = v
-                                    elif k == "REDIS_URL" and ("localhost" in self.REDIS_URL or not self.REDIS_URL):
-                                        self.REDIS_URL = v
                     except Exception:
                         continue
 

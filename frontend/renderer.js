@@ -134,7 +134,7 @@ function normalizeUserId(value) {
 async function syncUserEmail(email) {
   if (!email) return;
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const res = await fetch(`${base}/api/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -211,7 +211,7 @@ async function loadDropdowns() {
   setDropdownStatus('loading', '⏳ Loading resumes and documents...');
 
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
 
     let resumeError = false;
     let docError = false;
@@ -459,7 +459,7 @@ async function loadRecentSessions() {
   </div>`;
 
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     let res = await fetch(`${base}/api/sessions?user_id=${encodeURIComponent(normalizeUserId(USER_ID))}`).catch(() => null);
     if (!res || !res.ok) {
       res = await fetch(`${base}/api/sessions`).catch(() => null);
@@ -553,7 +553,7 @@ async function loadRecentSessions() {
         // If session has job_description_id, fetch JD content
         if (s.job_description_id) {
           try {
-            const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+            const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
             const jdRes = await fetch(`${base}/api/job-descriptions/${s.job_description_id}`);
             if (jdRes.ok) {
               const jdData = await jdRes.json();
@@ -582,7 +582,7 @@ async function loadRecentSessions() {
       row.querySelector('.session-transcript-btn').addEventListener('click', async (e) => {
         e.stopPropagation();
         try {
-          const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+          const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
           const [tRes, aRes] = await Promise.all([
             fetch(`${base}/api/sessions/${s.id}/transcripts`),
             fetch(`${base}/api/sessions/${s.id}/answers`)
@@ -746,7 +746,7 @@ async function loadRecentSessions() {
             </div>
           `);
 
-          const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+          const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
           const res = await fetch(`${base}/api/sessions/${s.id}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const sessionDetail = await res.json();
@@ -832,7 +832,7 @@ async function loadRecentSessions() {
           if (yesBtn) yesBtn.addEventListener('click', async () => {
             if (overlay) overlay.remove();
             try {
-              const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+              const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
               const deleteRes = await fetch(`${base}/api/sessions/${s.id}`, { method: 'DELETE' });
               if (deleteRes.ok) {
                 await loadRecentSessions();
@@ -971,7 +971,7 @@ if (recentSessionsBackBtn) {
 // Global Context Cache population
 async function loadDropdowns() {
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const normUserId = normalizeUserId(USER_ID);
 
     // Fetch Resumes
@@ -1032,7 +1032,7 @@ const setupRecentContextSelect = document.getElementById('setup-recent-context-s
 async function loadRecentSessionsForStep2() {
   if (!setupRecentContextSelect) return;
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const normUserId = normalizeUserId(USER_ID);
     let res = await fetch(`${base}/api/sessions?user_id=${encodeURIComponent(normUserId)}`).catch(() => null);
     if (!res || !res.ok) {
@@ -1500,7 +1500,7 @@ if (modalPromptSave && promptModal) {
     }
 
     try {
-      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
       const res = await fetch(`${base}/api/knowledge`, {
         method: 'POST',
         headers: {
@@ -1572,7 +1572,7 @@ async function updateResumeJdScore() {
   scoreSpan.style.background = 'rgba(56,189,248,0.1)';
 
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const res = await fetch(`${base}/api/answers/transcript`, {
       method: 'POST',
       headers: {
@@ -1629,7 +1629,7 @@ setupResumeFile.addEventListener('change', async () => {
   setStep2UploadStatus(`⏳ Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
 
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const res = await fetch(`${base}/api/resumes/upload`, {
       method: 'POST',
       body: formData
@@ -1703,7 +1703,7 @@ setupDocFile.addEventListener('change', async () => {
   setStep2UploadStatus(`⏳ Uploading reference document: "${file.name}"...`, 'uploading');
 
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const res = await fetch(`${base}/api/knowledge/upload`, {
       method: 'POST',
       body: formData
@@ -2315,7 +2315,7 @@ if (editUploadResumeBtn && editResumeFile) {
     setEditSessionStatus(`⏳ Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
 
     try {
-      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
       const res = await fetch(`${base}/api/resumes/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -2376,7 +2376,7 @@ if (editUploadDocBtn && editDocFile) {
     setEditSessionStatus(`⏳ Uploading reference document: "${file.name}"...`, 'uploading');
 
     try {
-      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
       const res = await fetch(`${base}/api/knowledge/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -5409,7 +5409,7 @@ async function verifySessionOnStartup() {
   }
 
   try {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
     const res = await fetch(`${base}/api/auth/check-session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -5448,9 +5448,16 @@ function showSetupWizard() {
 async function triggerBrowserSync() {
   try {
     const syncUrl = 'https://www.roundmateai.com/sync?port=48999';
-    window.electronAPI.openExternalUrl(syncUrl);
+    if (window.electronAPI && window.electronAPI.openExternalUrl) {
+      window.electronAPI.openExternalUrl(syncUrl);
+    } else {
+      window.open(syncUrl, '_blank');
+    }
   } catch (err) {
     console.error('[Stealth Sync] Failed to launch external browser sync page:', err);
+    try {
+      window.open('https://www.roundmateai.com/sync?port=48999', '_blank');
+    } catch (_) {}
   }
 }
 
@@ -5475,7 +5482,7 @@ setInterval(async () => {
 
   if (email && token) {
     try {
-      const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+      const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
       const res = await fetch(`${base}/api/auth/check-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -5598,11 +5605,11 @@ if (settingsLogoutBtn) {
 
 if (settingsDashboardBtn) {
   settingsDashboardBtn.addEventListener('click', async () => {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const webUrl = 'https://www.roundmateai.com/';
     if (window.electronAPI && window.electronAPI.openExternalUrl) {
-      window.electronAPI.openExternalUrl(base);
+      window.electronAPI.openExternalUrl(webUrl);
     } else {
-      window.open(base, '_blank');
+      window.open(webUrl, '_blank');
     }
   });
 }
@@ -6268,11 +6275,11 @@ if (settingsCloseBtn) {
 // Dashboard Button
 if (settingsDashboardBtn) {
   settingsDashboardBtn.addEventListener('click', async () => {
-    const base = (await window.electronAPI.getBackendUrl()) || 'http://localhost:8000';
+    const webUrl = 'https://www.roundmateai.com/';
     if (window.electronAPI && window.electronAPI.openExternalUrl) {
-      window.electronAPI.openExternalUrl(base);
+      window.electronAPI.openExternalUrl(webUrl);
     } else {
-      window.open(base, '_blank');
+      window.open(webUrl, '_blank');
     }
   });
 }

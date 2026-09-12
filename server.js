@@ -181,7 +181,7 @@ server.listen(PORT, HOST, () => {
   console.log('\x1b[36m%s\x1b[0m', '  ╚══════════════════════════════════════════╝');
   console.log('');
   console.log('\x1b[32m%s\x1b[0m', `  ✅ Server running at http://${HOST}:${PORT}`);
-  console.log('\x1b[33m%s\x1b[0m', `  🌐 Open in browser → http://localhost:${PORT}`);
+  console.log('\x1b[33m%s\x1b[0m', `  🌐 Open in browser → http://${HOST}:${PORT}`);
   console.log('\x1b[90m%s\x1b[0m', '  Click "Launch Stealth Toolbar" in the page to activate.');
   console.log('');
 });

@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard, Tray, Menu, nativeImage } = require('electron');
-app.setName('RM');
-app.name = 'RM';
+app.setName('RoundMate');
+app.name = 'RoundMate';
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -435,7 +435,7 @@ function createWindow() {
   const winHeight = 580;
 
   mainWindow = new BrowserWindow({
-    title: "RM",
+    title: "RoundMate",
     width: winWidth,
     height: winHeight,
     frame: false,
@@ -637,18 +637,36 @@ function createWindow() {
     }
   });
 
-  // Handle open external URL — only allow https:// and http:// schemes
-  ipcMain.on('open-external-url', (event, url) => {
+  // Helper to safely launch external URLs in default system browser
+  function launchExternalBrowser(targetUrl) {
     try {
-      const parsed = new URL(url);
+      const parsed = new URL(targetUrl);
       if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-        shell.openExternal(url);
+        shell.openExternal(targetUrl).catch(err => {
+          console.warn('[Security] shell.openExternal failed, using system shell fallback:', err.message);
+          const cmd = process.platform === 'win32'
+            ? `start "" "${targetUrl}"`
+            : (process.platform === 'darwin' ? `open "${targetUrl}"` : `xdg-open "${targetUrl}"`);
+          exec(cmd, (execErr) => {
+            if (execErr) console.error('[Security] System shell open failed:', execErr.message);
+          });
+        });
       } else {
         console.warn('[Security] Blocked external URL with disallowed protocol:', parsed.protocol);
       }
     } catch (e) {
-      console.warn('[Security] Invalid URL passed to open-external-url:', url);
+      console.warn('[Security] Invalid URL passed to launchExternalBrowser:', targetUrl);
     }
+  }
+
+  // Handle open external URL — active via both event and invoke
+  ipcMain.on('open-external-url', (event, url) => {
+    launchExternalBrowser(url);
+  });
+
+  ipcMain.handle('open-external-url', async (event, url) => {
+    launchExternalBrowser(url);
+    return { success: true };
   });
 
   // Handle desktop sources request for loopback system audio capture
@@ -860,12 +878,12 @@ function createWindow() {
 
   // Return the backend URL so renderer can decide online vs offline mode
   ipcMain.handle('get-backend-url', () => {
-    return (env.BACKEND_URL || '').trim();
+    return (env.BACKEND_URL || 'https://round-mate-ai.onrender.com').trim();
   });
 
   // Helper: make an authenticated request to the backend
   function backendRequest(method, path, body, token) {
-    const backendUrl = (env.BACKEND_URL || '').trim();
+    const backendUrl = (env.BACKEND_URL || 'https://round-mate-ai.onrender.com').trim();
     if (!backendUrl) return Promise.reject(new Error('BACKEND_URL not configured.'));
 
     const url = new URL(path, backendUrl);
@@ -1960,6 +1978,18 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('roundmate');
   app.setAsDefaultProtocolClient('sutra');
 }
+
+// Ensure Windows displays "RoundMate" instead of "Electron" in browser protocol prompts
+if (process.platform === 'win32') {
+  try {
+    const { exec } = require('child_process');
+    const regCmd = 'reg add "HKCU\\Software\\Classes\\Applications\\electron.exe" /v "FriendlyAppName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\roundmate" /v "FriendlyTypeName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\roundmate" /ve /t REG_SZ /d "URL:RoundMate" /f & reg add "HKCU\\Software\\Classes\\roundmate\\Application" /v "ApplicationName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\sutra" /v "FriendlyTypeName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\sutra" /ve /t REG_SZ /d "URL:RoundMate" /f';
+    exec(regCmd, (err) => {
+      if (!err) console.log('[Protocol] Registry FriendlyAppName configured as RoundMate');
+    });
+  } catch (_) {}
+}
+
 
 // ── Dev/Production userData Parity Fix ───────────────────────────────────────
 // In dev mode (npm start), Electron uses "Roaming\Electron" as userData, but

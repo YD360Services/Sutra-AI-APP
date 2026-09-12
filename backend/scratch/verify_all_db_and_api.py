@@ -86,7 +86,7 @@ async def check_database():
 
 async def check_api_endpoints():
     print("\n================ API ENDPOINTS DIAGNOSTICS ================")
-    base_url = "http://localhost:8000"
+    base_url = os.getenv("BACKEND_URL", "https://round-mate-ai.onrender.com").rstrip("/")
     endpoints = [
         ("/", "GET"),
         ("/health", "GET"),
