@@ -115,6 +115,22 @@
           </svg>
           Sign In with Browser
         </button>
+
+        <div style="display: flex; align-items: center; gap: 8px; width: 100%; margin: 2px 0;">
+          <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+          <span style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">OR</span>
+          <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; width: 100%; gap: 6px;">
+          <input type="email" id="direct-email-input" placeholder="Enter account email..." class="interactive"
+            style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 10px; font-size: 11px; color: #fff; outline: none;" />
+          <button id="direct-email-btn" class="interactive"
+            style="width: 100%; padding: 7px 14px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; font-size: 10.5px; font-weight: 600; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            Link With Email
+          </button>
+          <div id="sync-status-msg" style="font-size: 9.5px; color: var(--text-muted); min-height: 14px; text-align: center;"></div>
+        </div>
       </div>
 
 

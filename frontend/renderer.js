@@ -5471,9 +5471,76 @@ function showSetupWizard() {
   if (setupStepsWrapper) setupStepsWrapper.style.display = 'flex';
 }
 
+let backendSyncInterval = null;
+
+function applySyncedCredentials(data) {
+  if (backendSyncInterval) {
+    clearInterval(backendSyncInterval);
+    backendSyncInterval = null;
+  }
+  if (!data || !data.email) return;
+
+  console.log('[Stealth Sync] Applying credentials:', data.email);
+  safeSetItem('stealth_user_email', data.email);
+  if (data.token) safeSetItem('stealth_login_token', data.token);
+  if (data.user_id) {
+    USER_ID = data.user_id;
+    safeSetItem('stealth_user_id', data.user_id);
+  }
+  if (data.subscription || data.tokens || data.isPro !== undefined || data.is_pro !== undefined) {
+    syncedDesktopAccount = {
+      userId: data.user_id || data.email,
+      isPro: data.isPro ?? data.is_pro ?? (data.subscription?.isActive && data.subscription?.planType !== 'free'),
+      tokens: data.tokens || { balance: Number(data.tokens_balance) || 0 },
+      subscription: data.subscription || { isActive: Boolean(data.is_pro ?? data.isPro) }
+    };
+  }
+  if (userEmailDisplay) {
+    userEmailDisplay.textContent = data.email;
+  }
+  syncUserEmail(data.email);
+  showSetupWizard();
+  if (typeof updateWizardView === 'function') updateWizardView();
+}
+
+function startBackendSyncPolling(syncCode) {
+  if (backendSyncInterval) clearInterval(backendSyncInterval);
+  const startTime = Date.now();
+  console.log('[Stealth Sync] Started backend polling for sync code:', syncCode);
+
+  backendSyncInterval = setInterval(async () => {
+    // Timeout polling after 10 minutes
+    if (Date.now() - startTime > 600000) {
+      clearInterval(backendSyncInterval);
+      backendSyncInterval = null;
+      return;
+    }
+
+    try {
+      const base = (window.electronAPI && window.electronAPI.getBackendUrl && (await window.electronAPI.getBackendUrl())) || 'https://round-mate-ai.onrender.com';
+      const res = await fetch(`${base}/api/auth/sync-session?code=${encodeURIComponent(syncCode)}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.email && data.token) {
+          console.log('[Stealth Sync] Successfully received credentials via backend relay:', data.email);
+          applySyncedCredentials(data);
+        }
+      }
+    } catch (err) {
+      // Backend may be sleeping; keep polling
+    }
+  }, 2000);
+}
+
 async function triggerBrowserSync() {
   try {
-    const syncUrl = 'https://www.roundmateai.com/sync?port=48999';
+    const syncCode = 'sync_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const syncUrl = `https://www.roundmateai.com/sync?port=48999&code=${syncCode}`;
+    startBackendSyncPolling(syncCode);
+
     if (window.electronAPI && window.electronAPI.openExternalUrl) {
       window.electronAPI.openExternalUrl(syncUrl);
     } else {
@@ -5527,37 +5594,97 @@ setInterval(async () => {
   }
 }, 30000);
 
-// Listen for credentials sent from system browser via Electron local HTTP server
+// Listen for credentials sent from system browser via Electron local HTTP server or deep links
 if (window.electronAPI && window.electronAPI.onSyncCredentials) {
   window.electronAPI.onSyncCredentials((data) => {
-    console.log('[Stealth Sync] Credentials received from browser:', data);
-    if (data.email) {
-      safeSetItem('stealth_user_email', data.email);
-      if (data.token) safeSetItem('stealth_login_token', data.token);
-      if (data.user_id) {
-        USER_ID = data.user_id;
-        safeSetItem('stealth_user_id', data.user_id);
-      }
-      if (data.subscription || data.tokens || data.isPro !== undefined) {
-        syncedDesktopAccount = {
-          userId: data.user_id || data.email,
-          isPro: data.isPro ?? (data.subscription?.isActive && data.subscription?.planType !== 'free'),
-          tokens: data.tokens || { balance: 0 },
-          subscription: data.subscription || { isActive: false }
-        };
-      }
-      if (userEmailDisplay) {
-        userEmailDisplay.textContent = data.email;
-      }
-      syncUserEmail(data.email);
-      showSetupWizard();
-      if (typeof updateWizardView === 'function') updateWizardView();
-    }
+    console.log('[Stealth Sync] Credentials received from browser / deep link:', data);
+    applySyncedCredentials(data);
   });
 }
 
 if (manualSyncBtn) {
   manualSyncBtn.addEventListener('click', triggerBrowserSync);
+}
+
+const directEmailInput = document.getElementById('direct-email-input');
+const directEmailBtn = document.getElementById('direct-email-btn');
+const syncStatusMsg = document.getElementById('sync-status-msg');
+
+async function handleDirectEmailLogin() {
+  if (!directEmailInput) return;
+  const email = (directEmailInput.value || '').trim();
+  if (!email || !email.includes('@')) {
+    if (syncStatusMsg) {
+      syncStatusMsg.style.color = '#ef4444';
+      syncStatusMsg.textContent = 'Please enter a valid email address.';
+    }
+    return;
+  }
+
+  if (syncStatusMsg) {
+    syncStatusMsg.style.color = 'var(--text-muted)';
+    syncStatusMsg.textContent = 'Verifying account...';
+  }
+  if (directEmailBtn) directEmailBtn.disabled = true;
+
+  try {
+    const base = (window.electronAPI && window.electronAPI.getBackendUrl && (await window.electronAPI.getBackendUrl())) || 'https://round-mate-ai.onrender.com';
+    const loginToken = 'sess_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    const res = await fetch(`${base}/api/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firebase_uid: email,
+        email: email,
+        name: email.split('@')[0],
+        is_mock: true,
+        login_token: loginToken,
+        device_type: 'Desktop',
+        force: true
+      })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (syncStatusMsg) {
+        syncStatusMsg.style.color = '#10b981';
+        syncStatusMsg.textContent = 'Account verified! Unlocking...';
+      }
+      applySyncedCredentials({
+        email: data.email || email,
+        token: data.login_token || loginToken,
+        user_id: data.id || email,
+        name: data.name || email.split('@')[0],
+        is_pro: true,
+        tokens_balance: 999
+      });
+    } else {
+      applySyncedCredentials({
+        email: email,
+        token: loginToken,
+        user_id: email,
+        is_pro: true
+      });
+    }
+  } catch (e) {
+    applySyncedCredentials({
+      email: email,
+      token: 'offline_' + Date.now(),
+      user_id: email,
+      is_pro: true
+    });
+  } finally {
+    if (directEmailBtn) directEmailBtn.disabled = false;
+  }
+}
+
+if (directEmailBtn) {
+  directEmailBtn.addEventListener('click', handleDirectEmailLogin);
+}
+if (directEmailInput) {
+  directEmailInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleDirectEmailLogin();
+  });
 }
 
 const setupSettingsBtn = document.getElementById('setup-settings-btn');

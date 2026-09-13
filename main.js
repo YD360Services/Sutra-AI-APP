@@ -1958,6 +1958,15 @@ function parseDeepLinkUrl(urlStr) {
     const url = new URL(clean);
     const params = url.searchParams;
     const config = {};
+
+    // Auth & Account credentials (e.g. roundmate://auth?email=...&token=...)
+    if (params.get('email')) config.email = params.get('email');
+    if (params.get('token')) config.token = params.get('token');
+    if (params.get('user_id')) config.user_id = params.get('user_id');
+    if (params.get('name')) config.name = params.get('name');
+    if (params.get('code')) config.code = params.get('code');
+
+    // Live session configuration
     if (params.get('session_name')) config.session_name = params.get('session_name');
     if (params.get('company')) config.company = params.get('company');
     if (params.get('role')) config.role = params.get('role');
@@ -1975,7 +1984,6 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('is_pro') !== null) config.is_pro = params.get('is_pro');
     if (params.get('plan_title') !== null) config.plan_title = params.get('plan_title');
     if (params.get('expires_at') !== null) config.expires_at = params.get('expires_at');
-    if (params.get('user_id') !== null) config.user_id = params.get('user_id');
 
     if (config.tokens_balance !== undefined || config.is_pro !== undefined) {
       try {
@@ -2010,6 +2018,36 @@ function applyDeepLinkConfig(deepLinkUrl) {
   const config = parseDeepLinkUrl(deepLinkUrl);
   if (!config) return null;
   pendingSessionConfig = config;
+
+  // Handle direct auth credentials via deep link (roundmate://auth?email=...&token=...)
+  if (config.email && config.token) {
+    const creds = {
+      email: config.email,
+      token: config.token,
+      user_id: config.user_id || config.email,
+      name: config.name || config.email.split('@')[0],
+      isPro: config.is_pro === true || config.is_pro === 'true',
+      tokens: { balance: Number(config.tokens_balance) || 0 },
+      subscription: {
+        isActive: config.is_pro === true || config.is_pro === 'true',
+        planTitle: config.plan_title || 'Pro Pass',
+        expiresAt: config.expires_at || null
+      }
+    };
+    try {
+      const userPath = path.join(app.getPath('userData'), 'stealth_user.json');
+      fs.writeFileSync(userPath, JSON.stringify(creds, null, 2), 'utf8');
+      console.log('[DeepLink] Saved stealth_user.json from deep link:', creds.email);
+    } catch (_) {}
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('sync-credentials', creds);
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }
+
   try {
     const configPath = path.join(app.getPath('userData'), 'stealth_session_config.json');
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
@@ -2082,6 +2120,21 @@ const gotTheLock = app.requestSingleInstanceLock(additionalData);
 if (!gotTheLock) {
   app.quit();
 } else {
+  // Register roundmate:// and sutra:// OS protocol handlers
+  try {
+    if (process.defaultApp) {
+      if (process.argv.length >= 2) {
+        app.setAsDefaultProtocolClient('roundmate', process.execPath, [path.resolve(process.argv[1])]);
+        app.setAsDefaultProtocolClient('sutra', process.execPath, [path.resolve(process.argv[1])]);
+      }
+    } else {
+      app.setAsDefaultProtocolClient('roundmate');
+      app.setAsDefaultProtocolClient('sutra');
+    }
+  } catch (e) {
+    console.warn('[Protocol] Could not register protocol client:', e.message);
+  }
+
   // Windows / Linux: second-instance fires when a roundmate:// or sutra:// URL is clicked while app is already running
   app.on('second-instance', (_event, argv) => {
     // argv includes the deep link URL on Windows

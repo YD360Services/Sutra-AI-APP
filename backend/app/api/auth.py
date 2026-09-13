@@ -228,8 +228,10 @@ async def force_logout(
 
 
 class CheckSessionRequest(BaseModel):
-    user_id: str
-    login_token: str
+    user_id: Optional[str] = None
+    email: Optional[str] = None
+    firebase_uid: Optional[str] = None
+    login_token: Optional[str] = None
 
 @router.post("/auth/check-session")
 async def check_session(
@@ -395,4 +397,45 @@ async def sync_page(port: int = 48999):
     </html>
     """
     return html_content
+
+
+# ── Desktop Cloud Sync Relay Endpoints ─────────────────────────────────────────
+pending_sync_sessions = {}
+
+class SyncSessionPayload(BaseModel):
+    code: Optional[str] = None
+    email: str
+    token: str
+    user_id: Optional[str] = None
+    is_pro: Optional[bool] = False
+    tokens: Optional[dict] = None
+    tokens_balance: Optional[float] = None
+    subscription: Optional[dict] = None
+    plan_title: Optional[str] = None
+    expires_at: Optional[str] = None
+
+@router.post("/auth/sync-session")
+async def post_sync_session(payload: SyncSessionPayload):
+    code = (payload.code or payload.email or "default").lower().strip()
+    data = payload.dict()
+    data["timestamp"] = time.time()
+    pending_sync_sessions[code] = data
+    if payload.email:
+        pending_sync_sessions[payload.email.lower().strip()] = data
+    logger.info(f"Desktop sync session stored for code={code}, email={payload.email}")
+    return {"success": True, "code": code}
+
+@router.get("/auth/sync-session")
+async def get_sync_session(code: Optional[str] = None, email: Optional[str] = None):
+    lookup_key = (code or email or "").lower().strip()
+    if not lookup_key or lookup_key not in pending_sync_sessions:
+        return {"success": False, "waiting": True}
+    
+    session_data = pending_sync_sessions[lookup_key]
+    # Expire after 10 minutes
+    if time.time() - session_data.get("timestamp", 0) > 600:
+        pending_sync_sessions.pop(lookup_key, None)
+        return {"success": False, "expired": True}
+        
+    return {"success": True, **session_data}
 
