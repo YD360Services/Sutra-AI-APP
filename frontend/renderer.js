@@ -312,33 +312,91 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Centralized handler to apply web-entered or deep link session configuration
+async function applySessionConfig(config) {
+  if (!config) return;
+  console.log('[Stealth UI] Applying session configuration:', config);
+
+  const company = config.company || config.company_name || '';
+  const role = config.role || config.role_name || '';
+  const jd = config.jd || config.job_description || '';
+  const type = config.type || config.session_type || '';
+
+  if (company && setupCompany) setupCompany.value = company;
+  if (role && setupRole) setupRole.value = role;
+  if (jd && setupJd) setupJd.value = jd;
+
+  if (type) {
+    const targetType = type.toLowerCase();
+    document.querySelectorAll('.type-badge').forEach(b => {
+      b.classList.remove('active');
+      const bType = (b.dataset.type || '').toLowerCase();
+      if (bType.includes(targetType) || targetType.includes(bType) || (targetType.includes('coding') && bType.includes('coding')) || (targetType.includes('hr') && bType.includes('hr'))) {
+        b.classList.add('active');
+      }
+    });
+    if (!document.querySelector('.type-badge.active')) {
+      document.querySelector('.type-badge')?.classList.add('active');
+    }
+  }
+
+  if (config.model) {
+    const modelSelect = document.getElementById('setup-model-select');
+    if (modelSelect) modelSelect.value = config.model;
+  }
+  if (config.language) {
+    const languageSelect = document.getElementById('setup-language-select');
+    if (languageSelect) languageSelect.value = config.language;
+  }
+
+  liveSessionData = {
+    company: company || (setupCompany ? setupCompany.value : ''),
+    role: role || (setupRole ? setupRole.value : ''),
+    jd: jd || (setupJd ? setupJd.value : ''),
+    resumeId: config.resume_id || config.resume || '',
+    docId: config.doc_id || ''
+  };
+
+  if (!backendResumes.length || !backendDocs.length) {
+    await loadDropdowns();
+  }
+
+  if (config.resume_id && setupResumeSelect) {
+    setupResumeSelect.value = config.resume_id;
+  }
+  if (config.doc_id && setupDocSelect) {
+    const ids = String(config.doc_id).split(',');
+    Array.from(setupDocSelect.options).forEach(opt => {
+      opt.selected = ids.includes(opt.value);
+    });
+  }
+  if (config.auto_answer !== undefined) {
+    const autoAnswerInput = document.getElementById('setup-auto-answer');
+    if (autoAnswerInput) autoAnswerInput.checked = Boolean(config.auto_answer);
+  }
+  if (config.save_transcript !== undefined) {
+    const saveTranscriptInput = document.getElementById('setup-save-transcript');
+    if (saveTranscriptInput) saveTranscriptInput.checked = Boolean(config.save_transcript);
+  }
+
+  updateResumeJdScore();
+}
+
 // Initialise setup form on load
 (async () => {
-  // Load local context (L4) on startup for offline use
+  // Load local context (L4) and check for pending session config from web
   try {
+    let initialConfig = null;
+    if (window.electronAPI && typeof window.electronAPI.getPendingSessionConfig === 'function') {
+      initialConfig = await window.electronAPI.getPendingSessionConfig();
+    }
+
     offlineUserContext = await window.electronAPI.getL4Context() || { resume: '', job_description: '', code_context: '', company: '', role: '' };
 
-    // Only prefill form if this is an explicit web launch
-    if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
-      if (setupCompany && offlineUserContext.company) setupCompany.value = offlineUserContext.company;
-      if (setupRole && offlineUserContext.role) setupRole.value = offlineUserContext.role;
-      if (setupJd && offlineUserContext.job_description) setupJd.value = offlineUserContext.job_description;
-      if (offlineUserContext.model) {
-        const modelSelect = document.getElementById('setup-model-select');
-        if (modelSelect) modelSelect.value = offlineUserContext.model;
-      }
-      if (offlineUserContext.language) {
-        const langSelect = document.getElementById('setup-language-select');
-        if (langSelect) langSelect.value = offlineUserContext.language;
-      }
-      // Populate liveSessionData so Edit Session is immediately pre-filled with web data
-      liveSessionData = {
-        company: offlineUserContext.company || '',
-        role: offlineUserContext.role || '',
-        jd: offlineUserContext.job_description || '',
-        resumeId: offlineUserContext.resume_id || '',
-        docId: offlineUserContext.doc_id || ''
-      };
+    const effectiveConfig = initialConfig || (offlineUserContext && (offlineUserContext.is_web_launch || offlineUserContext.auto_start || offlineUserContext.company) ? offlineUserContext : null);
+
+    if (effectiveConfig) {
+      await applySessionConfig(effectiveConfig);
     } else {
       // Normal desktop launch: clear form fields completely (no stale auto-populating)
       if (setupCompany) setupCompany.value = '';
@@ -346,25 +404,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (setupJd) setupJd.value = '';
       liveSessionData = { company: '', role: '', jd: '', resumeId: '', docId: '' };
     }
-    console.log('[Stealth] Initialized setup form:', offlineUserContext);
+    console.log('[Stealth] Initialized setup form with config:', effectiveConfig || offlineUserContext);
   } catch (e) {
     console.error('[Stealth] Failed to load local L4 context:', e.message);
   }
 
   // Load dropdown options
   await loadDropdowns();
-
-  if (offlineUserContext.is_web_launch || offlineUserContext.auto_start) {
-    if (offlineUserContext.resume_id && setupResumeSelect) {
-      setupResumeSelect.value = offlineUserContext.resume_id;
-    }
-    if (offlineUserContext.doc_id && setupDocSelect) {
-      const ids = String(offlineUserContext.doc_id).split(',');
-      Array.from(setupDocSelect.options).forEach(opt => {
-        opt.selected = ids.includes(opt.value);
-      });
-    }
-  }
 
   updateResumeJdScore();
 
@@ -383,26 +429,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupView.style.display = 'flex';
   toolbarView.style.display = 'none';
   updateWizardView();
-
-  // Auto-start session ONLY if launched from web
-  if (offlineUserContext.is_web_launch || offlineUserContext.auto_start === true) {
-    // Consume auto-start flags so subsequent app restarts open normally without auto-triggering
-    delete offlineUserContext.auto_start;
-    delete offlineUserContext.is_web_launch;
-    window.electronAPI.saveL4Context({
-      ...offlineUserContext,
-      auto_start: false,
-      is_web_launch: false
-    }).catch(() => { });
-
-    setTimeout(() => {
-      const startBtn = document.getElementById('start-session-btn');
-      if (startBtn && !startBtn.disabled) {
-        console.log('[Stealth UI] Web launch detected — directly starting live session with web parameters...');
-        startBtn.click();
-      }
-    }, 150);
-  }
 })();
 
 // ── Setup View Header Buttons ─────────────────────────────────────────────────
@@ -6544,72 +6570,17 @@ if (window.electronAPI && typeof window.electronAPI.onDeepLinkSession === 'funct
   window.electronAPI.onDeepLinkSession(async (config) => {
     console.log('[Stealth UI] Received deep link session configuration update:', config);
     if (!config) return;
+    await applySessionConfig(config);
 
-    // Fill form fields with web-entered configuration
-    if (config.company !== undefined) {
-      const companyInput = document.getElementById('setup-company');
-      if (companyInput) companyInput.value = config.company;
+    if (config.auto_start) {
+      setTimeout(() => {
+        const startBtn = document.getElementById('start-session-btn');
+        if (startBtn && !startBtn.disabled) {
+          console.log('[Stealth UI] Direct launch to live session from web payload...');
+          startBtn.click();
+        }
+      }, 100);
     }
-    if (config.role !== undefined) {
-      const roleInput = document.getElementById('setup-role');
-      if (roleInput) roleInput.value = config.role;
-    }
-    if (config.jd !== undefined || config.job_description !== undefined) {
-      const jdInput = document.getElementById('setup-jd');
-      if (jdInput) jdInput.value = config.jd || config.job_description || '';
-    }
-    if (config.model) {
-      const modelSelect = document.getElementById('setup-model-select');
-      if (modelSelect) modelSelect.value = config.model;
-    }
-    if (config.language) {
-      const languageSelect = document.getElementById('setup-language-select');
-      if (languageSelect) languageSelect.value = config.language;
-    }
-
-    // Bind directly to liveSessionData so Edit Session modal has the exact web-entered content
-    liveSessionData = {
-      company: config.company || '',
-      role: config.role || '',
-      jd: config.jd || config.job_description || '',
-      resumeId: config.resume_id || '',
-      docId: config.doc_id || ''
-    };
-
-    // Ensure dropdown options are loaded and selected
-    if (!backendResumes.length || !backendDocs.length) {
-      await loadDropdowns();
-    }
-    if (config.resume_id) {
-      const resumeSelect = document.getElementById('setup-resume-select');
-      if (resumeSelect) resumeSelect.value = config.resume_id;
-    }
-    if (config.doc_id) {
-      const docSelect = document.getElementById('setup-doc-select');
-      if (docSelect) {
-        const ids = String(config.doc_id).split(',');
-        Array.from(docSelect.options).forEach(opt => {
-          opt.selected = ids.includes(opt.value);
-        });
-      }
-    }
-    if (config.auto_answer !== undefined) {
-      const autoAnswerInput = document.getElementById('setup-auto-answer');
-      if (autoAnswerInput) autoAnswerInput.checked = Boolean(config.auto_answer);
-    }
-    if (config.save_transcript !== undefined) {
-      const saveTranscriptInput = document.getElementById('setup-save-transcript');
-      if (saveTranscriptInput) saveTranscriptInput.checked = Boolean(config.save_transcript);
-    }
-
-    // Directly start live session with the web-entered data
-    setTimeout(() => {
-      const startBtn = document.getElementById('start-session-btn');
-      if (startBtn && !startBtn.disabled) {
-        console.log('[Stealth UI] Direct launch to live session from web payload...');
-        startBtn.click();
-      }
-    }, 100);
   });
 }
 

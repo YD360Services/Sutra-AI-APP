@@ -3,12 +3,28 @@ app.setName('RoundMate');
 app.name = 'RoundMate';
 const path = require('path');
 const fs = require('fs');
+
+// Ensure development mode shares identical userData path with installed production app
+if (!app.isPackaged) {
+  try {
+    app.setPath('userData', path.join(app.getPath('appData'), 'RM'));
+    console.log('[Dev Mode] userData forced to:', app.getPath('userData'));
+  } catch (_) {}
+}
+
 const https = require('https');
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 
 let tray = null;
 let isQuitting = false;
+let pendingSessionConfig = null;
+
+// Allow renderer to pull any session config passed via deep link or HTTP /launch on startup
+ipcMain.handle('get-pending-session-config', () => {
+  const cfg = pendingSessionConfig;
+  return cfg;
+});
 
 // Helper to keep window bounds strictly inside the screen workspace.
 // Ensures navbar, transcript layer, and answer panel always remain fully visible on screen.
@@ -378,11 +394,14 @@ async function callGeminiWithRotation(prompt, base64Image = null) {
 }
 
 function loadSessionConfig() {
-  const configPath = path.join(__dirname, 'stealth_session_config.json');
-  if (fs.existsSync(configPath)) {
+  const userPath = path.join(app.getPath('userData'), 'stealth_session_config.json');
+  const dirPath = path.join(__dirname, 'stealth_session_config.json');
+  const targetPath = fs.existsSync(userPath) ? userPath : (fs.existsSync(dirPath) ? dirPath : null);
+
+  if (targetPath) {
     try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      fs.unlinkSync(configPath); // Delete immediately so it's only read once
+      const config = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+      try { fs.unlinkSync(targetPath); } catch (_) {}
       return config;
     } catch (e) {
       console.error('Failed to read stealth_session_config.json:', e.message);
@@ -391,15 +410,12 @@ function loadSessionConfig() {
   return null;
 }
 
-
-
-
-
 function createWindow() {
 
   // Read and apply configuration if launcher passed one
-  const config = loadSessionConfig();
+  const config = loadSessionConfig() || pendingSessionConfig;
   if (config) {
+    pendingSessionConfig = config;
     try {
       const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
       const contextData = {
@@ -409,6 +425,7 @@ function createWindow() {
         code_context: '',
         company: config.company || '',
         role: config.role || '',
+        type: config.type || '',
         model: config.model || '',
         language: config.language || '',
         doc_id: config.doc_id || '',
@@ -479,6 +496,14 @@ function createWindow() {
     mainWindow.setBounds({ x, y: screenY, width: winWidth, height: winHeight });
     console.log('[Stealth] No saved bounds — using default top-center position');
   }
+
+  // When webContents finishes loading, send pending web launch configuration if available
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (pendingSessionConfig) {
+      console.log('[Stealth] Window loaded — sending deep-link-session config to renderer:', pendingSessionConfig);
+      mainWindow.webContents.send('deep-link-session', pendingSessionConfig);
+    }
+  });
 
   // Load the root index.html (stealth toolbar)
   mainWindow.loadFile(path.join(__dirname, 'frontend', 'index.html'));
@@ -1825,6 +1850,7 @@ const server = http.createServer((req, res) => {
       req.on('end', () => {
         try {
           const config = JSON.parse(body || '{}');
+          pendingSessionConfig = config;
           // Write to local context
           const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
           const contextData = {
@@ -1834,6 +1860,7 @@ const server = http.createServer((req, res) => {
             code_context: '',
             company: config.company || '',
             role: config.role || '',
+            type: config.type || '',
             model: config.model || '',
             language: config.language || '',
             doc_id: config.doc_id || '',
@@ -1883,30 +1910,52 @@ const server = http.createServer((req, res) => {
               auto_start: true,
               is_web_launch: true
             };
+            pendingSessionConfig = mappedConfig;
             mainWindow.webContents.send('deep-link-session', mappedConfig);
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.show();
+            mainWindow.focus();
           }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, message: 'Session parameters updated and window focused' }));
         } catch (e) {
           console.error('[Stealth Server] Failed to update context:', e.message);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
         }
       });
+      return;
+    } else {
+      res.writeHead(405);
+      res.end();
     }
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ success: true, message: 'Launching native stealth toolbar' }));
-
-    // Trigger full launcher morphing
-    triggerLaunchToolbar();
   } else {
     res.writeHead(404);
     res.end();
   }
 });
 
+// Helper to extract a deep link url from argv regardless of enclosing quotes or whitespace
+function extractDeepLinkFromArgv(argv) {
+  if (!Array.isArray(argv)) return null;
+  for (const raw of argv) {
+    if (typeof raw !== 'string') continue;
+    const clean = raw.trim().replace(/^["']|["']$/g, '');
+    if (clean.startsWith('roundmate://') || clean.startsWith('sutra://')) {
+      return clean;
+    }
+  }
+  return null;
+}
+
 // ─── Deep Link Protocol Handler (sutra:// & roundmate://) ─────────────────────
 // Parses a roundmate://start-session?company=...&role=... URL into a session config
 function parseDeepLinkUrl(urlStr) {
   try {
-    const url = new URL(urlStr);
+    if (!urlStr) return null;
+    const clean = urlStr.trim().replace(/^["']|["']$/g, '');
+    const url = new URL(clean);
     const params = url.searchParams;
     const config = {};
     if (params.get('session_name')) config.session_name = params.get('session_name');
@@ -1926,6 +1975,7 @@ function parseDeepLinkUrl(urlStr) {
     if (params.get('is_pro') !== null) config.is_pro = params.get('is_pro');
     if (params.get('plan_title') !== null) config.plan_title = params.get('plan_title');
     if (params.get('expires_at') !== null) config.expires_at = params.get('expires_at');
+    if (params.get('user_id') !== null) config.user_id = params.get('user_id');
 
     if (config.tokens_balance !== undefined || config.is_pro !== undefined) {
       try {
@@ -1958,14 +2008,36 @@ function parseDeepLinkUrl(urlStr) {
 // Write deep link config so createWindow() can read it via loadSessionConfig()
 function applyDeepLinkConfig(deepLinkUrl) {
   const config = parseDeepLinkUrl(deepLinkUrl);
-  if (!config) return;
+  if (!config) return null;
+  pendingSessionConfig = config;
   try {
-    const configPath = path.join(__dirname, 'stealth_session_config.json');
+    const configPath = path.join(app.getPath('userData'), 'stealth_session_config.json');
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
     console.log('[DeepLink] Wrote session config from deep link:', config);
   } catch (e) {
     console.error('[DeepLink] Failed to write session config:', e.message);
   }
+  try {
+    const localPath = path.join(app.getPath('userData'), 'stealth_context.json');
+    const contextData = {
+      resume: config.resume_id || config.resume || '',
+      resume_id: config.resume_id || '',
+      job_description: config.jd || config.job_description || '',
+      code_context: '',
+      company: config.company || '',
+      role: config.role || '',
+      type: config.type || '',
+      model: config.model || '',
+      language: config.language || '',
+      doc_id: config.doc_id || '',
+      auto_start: true,
+      is_web_launch: true
+    };
+    fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[DeepLink] Failed to write stealth_context.json:', e.message);
+  }
+  return config;
 }
 
 // Register roundmate:// (and legacy sutra://) protocol — handles development vs packaged environment parameter matching
@@ -2013,19 +2085,18 @@ if (!gotTheLock) {
   // Windows / Linux: second-instance fires when a roundmate:// or sutra:// URL is clicked while app is already running
   app.on('second-instance', (_event, argv) => {
     // argv includes the deep link URL on Windows
-    const deepLinkArg = argv.find(arg => arg.startsWith('roundmate://') || arg.startsWith('sutra://'));
+    const deepLinkArg = extractDeepLinkFromArgv(argv);
     if (deepLinkArg) {
-      applyDeepLinkConfig(deepLinkArg);
-      if (mainWindow) {
+      const config = applyDeepLinkConfig(deepLinkArg);
+      if (config && mainWindow) {
         // Send config directly to renderer
-        const config = parseDeepLinkUrl(deepLinkArg);
-        if (config) {
-          mainWindow.webContents.send('deep-link-session', config);
-        }
+        mainWindow.webContents.send('deep-link-session', config);
       }
     }
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
     }
   });
 
@@ -2053,6 +2124,21 @@ if (!gotTheLock) {
           {
             label: 'Sync Status (Port 48999 Active)',
             enabled: false
+          },
+          {
+            label: 'Reset Window Position',
+            click: () => {
+              if (mainWindow) {
+                const primaryDisplay = screen.getPrimaryDisplay();
+                const { width: screenWidth, y: screenY, x: screenX } = primaryDisplay.workArea;
+                const winWidth = 600;
+                const winHeight = isToolbarMode ? 56 : 580;
+                const x = Math.round((screenWidth - winWidth) / 2) + screenX;
+                mainWindow.setBounds(clampBoundsToScreen(x, screenY, winWidth, winHeight));
+                mainWindow.show();
+                mainWindow.focus();
+              }
+            }
           },
           { type: 'separator' },
           {
@@ -2090,7 +2176,7 @@ if (!gotTheLock) {
 
   app.whenReady().then(() => {
     // Check if launched via roundmate:// or sutra:// deep link on Windows (URL will be in argv)
-    const deepLinkArg = process.argv.find(arg => arg.startsWith('roundmate://') || arg.startsWith('sutra://'));
+    const deepLinkArg = extractDeepLinkFromArgv(process.argv);
     if (deepLinkArg) {
       applyDeepLinkConfig(deepLinkArg);
     }

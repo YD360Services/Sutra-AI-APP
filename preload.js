@@ -104,4 +104,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Deep Link Session Handler ─────────────────────────────────────
   // Fires when the app is opened via roundmate://start-session?... or sutra://start-session?... deep link
   onDeepLinkSession: (cb) => ipcRenderer.on('deep-link-session', (_, config) => cb(config)),
+  getPendingSessionConfig: () => ipcRenderer.invoke('get-pending-session-config'),
 });
