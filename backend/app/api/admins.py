@@ -112,6 +112,8 @@ async def remove_admin(
 
 class UserPlanUpdate(BaseModel):
     plan: str
+    tokens_balance: Optional[float] = None
+    expires_at: Optional[str] = None
 
 # Support both /api/admins/users and /api/users routes
 @router.get("/admins/users")
@@ -196,7 +198,13 @@ async def update_user_plan(
             
         user.plan = payload.plan
         await db.commit()
-        return {"success": True, "user_id": str(user.id), "plan": payload.plan}
+        return {
+            "success": True,
+            "user_id": str(user.id),
+            "plan": payload.plan,
+            "tokens_balance": payload.tokens_balance,
+            "expires_at": payload.expires_at
+        }
     except HTTPException as e:
         raise e
     except Exception as e:
