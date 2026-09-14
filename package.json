@@ -1,9 +1,9 @@
 {
-  "name": "roundmate-ai",
-  "productName": "RoundMate",
+  "name": "rm",
+  "productName": "RM",
   "version": "1.0.1",
-  "description": "RoundMate AI Stealth Desktop Application",
-  "author": "RoundMate AI <support@roundmateai.com>",
+  "description": "RM",
+  "author": "RM <support@roundmateai.com>",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -16,8 +16,8 @@
     "dist:all": "electron-builder -mwl"
   },
   "build": {
-    "appId": "com.roundmateai.stealthapp",
-    "productName": "RoundMate",
+    "appId": "com.rm.stealthapp",
+    "productName": "RM",
     "asar": true,
     "asarUnpack": [
       "node_modules/electron/**",
@@ -39,6 +39,7 @@
       }
     ],
     "win": {
+      "artifactName": "${productName} Setup ${version}.${ext}",
       "target": [
         {
           "target": "nsis",
@@ -63,7 +64,8 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "RoundMate",
+      "shortcutName": "RM",
+      "uninstallDisplayName": "RM",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico"
     },

@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShortcut, clipboard, Tray, Menu, nativeImage } = require('electron');
-app.setName('RoundMate');
-app.name = 'RoundMate';
+app.setName('RM');
+app.name = 'RM';
 const path = require('path');
 const fs = require('fs');
 
@@ -452,7 +452,7 @@ function createWindow() {
   const winHeight = 580;
 
   mainWindow = new BrowserWindow({
-    title: "RoundMate",
+    title: "RM",
     width: winWidth,
     height: winHeight,
     frame: false,
@@ -2089,13 +2089,13 @@ if (process.defaultApp) {
   app.setAsDefaultProtocolClient('sutra');
 }
 
-// Ensure Windows displays "RoundMate" instead of "Electron" in browser protocol prompts
+// Ensure Windows displays "RM" instead of "Electron" in browser protocol prompts
 if (process.platform === 'win32') {
   try {
     const { exec } = require('child_process');
-    const regCmd = 'reg add "HKCU\\Software\\Classes\\Applications\\electron.exe" /v "FriendlyAppName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\roundmate" /v "FriendlyTypeName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\roundmate" /ve /t REG_SZ /d "URL:RoundMate" /f & reg add "HKCU\\Software\\Classes\\roundmate\\Application" /v "ApplicationName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\sutra" /v "FriendlyTypeName" /t REG_SZ /d "RoundMate" /f & reg add "HKCU\\Software\\Classes\\sutra" /ve /t REG_SZ /d "URL:RoundMate" /f';
+    const regCmd = 'reg add "HKCU\\Software\\Classes\\Applications\\electron.exe" /v "FriendlyAppName" /t REG_SZ /d "RM" /f & reg add "HKCU\\Software\\Classes\\roundmate" /v "FriendlyTypeName" /t REG_SZ /d "RM" /f & reg add "HKCU\\Software\\Classes\\roundmate" /ve /t REG_SZ /d "URL:RM" /f & reg add "HKCU\\Software\\Classes\\roundmate\\Application" /v "ApplicationName" /t REG_SZ /d "RM" /f & reg add "HKCU\\Software\\Classes\\sutra" /v "FriendlyTypeName" /t REG_SZ /d "RM" /f & reg add "HKCU\\Software\\Classes\\sutra" /ve /t REG_SZ /d "URL:RM" /f';
     exec(regCmd, (err) => {
-      if (!err) console.log('[Protocol] Registry FriendlyAppName configured as RoundMate');
+      if (!err) console.log('[Protocol] Registry FriendlyAppName configured as RM');
     });
   } catch (_) {}
 }
@@ -2166,7 +2166,7 @@ if (!gotTheLock) {
         tray = new Tray(trayIcon);
         const contextMenu = Menu.buildFromTemplate([
           {
-            label: 'Show RoundMate AI',
+            label: 'Show RM',
             click: () => {
               if (mainWindow) {
                 mainWindow.show();
@@ -2195,7 +2195,7 @@ if (!gotTheLock) {
           },
           { type: 'separator' },
           {
-            label: 'Quit RoundMate AI',
+            label: 'Quit RM',
             click: async () => {
               isQuitting = true;
               try {
@@ -2206,7 +2206,7 @@ if (!gotTheLock) {
           }
         ]);
 
-        tray.setToolTip('RoundMate AI (Stealth Assistant Active)');
+        tray.setToolTip('RM (Stealth Assistant Active)');
         tray.setContextMenu(contextMenu);
         tray.on('double-click', () => {
           if (mainWindow) {
