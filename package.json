@@ -39,7 +39,8 @@
       }
     ],
     "win": {
-      "artifactName": "${productName} Setup ${version}.${ext}",
+      "icon": "icon.ico",
+      "requestedExecutionLevel": "asInvoker",
       "target": [
         {
           "target": "nsis",
@@ -53,21 +54,24 @@
             "x64"
           ]
         }
-      ],
-      "icon": "icon.ico",
-      "requestedExecutionLevel": "asInvoker"
+      ]
     },
     "nsis": {
-      "oneClick": true,
+      "artifactName": "${productName} Setup ${version}.${ext}",
+      "oneClick": false,
       "perMachine": false,
-      "allowElevation": false,
-      "allowToChangeInstallationDirectory": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "RM",
       "uninstallDisplayName": "RM",
       "installerIcon": "icon.ico",
-      "uninstallerIcon": "icon.ico"
+      "uninstallerIcon": "icon.ico",
+      "runAfterFinish": true
+    },
+    "portable": {
+      "artifactName": "${productName} Portable ${version}.${ext}"
     },
     "mac": {
       "target": [
