@@ -2,14 +2,6 @@ const { app, BrowserWindow, ipcMain, screen, desktopCapturer, shell, globalShort
 app.setName('RM');
 app.name = 'RM';
 
-// Enforce single instance lock so multiple background instances do not conflict or block updates/installations
-const gotTheLock = app.requestSingleInstanceLock();
-if (!gotTheLock) {
-  console.log('[App] Another instance of RM is already running. Terminating duplicate instance.');
-  app.quit();
-  process.exit(0);
-}
-
 const path = require('path');
 const fs = require('fs');
 
