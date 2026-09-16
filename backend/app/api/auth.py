@@ -508,17 +508,27 @@ def _verify_token(token: str) -> dict | None:
 
 
 @router.get("/auth/google/login")
-async def google_oauth_login(redirect_after: str = "/"):
+async def google_oauth_login(
+    redirect_after: str = "/",
+    frontend_origin: str = "",
+):
     """
     Initiates Google OAuth full-tab redirect.
     Frontend navigates the current tab to this endpoint, which immediately
     redirects to Google's account chooser — no popup involved.
+
+    frontend_origin: the caller's domain (e.g. http://localhost:5173 or
+    https://roundmateai.com) so the callback knows where to send the user back.
     """
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(
             status_code=501,
             detail="GOOGLE_CLIENT_ID not configured. Add it to backend .env"
         )
+
+    # Encode both redirect path and frontend origin in state
+    state_data = json.dumps({"path": redirect_after, "origin": frontend_origin or FRONTEND_BASE})
+    state_encoded = urllib.parse.quote(state_data)
 
     params = {
         "client_id":     GOOGLE_CLIENT_ID,
@@ -527,8 +537,7 @@ async def google_oauth_login(redirect_after: str = "/"):
         "scope":         "openid email profile",
         "access_type":   "online",
         "prompt":        "select_account",
-        # Pass redirect_after through state so callback knows where to send user
-        "state":         urllib.parse.quote(redirect_after),
+        "state":         state_encoded,
     }
     google_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
     return RedirectResponse(url=google_url, status_code=302)
@@ -546,7 +555,21 @@ async def google_oauth_callback(
     Exchanges the code for user info, upserts the user in DB,
     then redirects the browser back to the frontend with a signed token.
     """
+    # Decode state: may be JSON {path, origin} or plain path string (legacy)
     frontend_url = FRONTEND_BASE.rstrip("/")
+    redirect_path = "/"
+    try:
+        state_str = urllib.parse.unquote(state or "{}")
+        state_data = json.loads(state_str)
+        redirect_path = state_data.get("path", "/")
+        origin = state_data.get("origin", "").rstrip("/")
+        # Validate origin is one of our known frontends (security check)
+        allowed = {"https://roundmateai.com", "http://localhost:5173", "http://localhost:3000",
+                   "https://www.roundmateai.com"}
+        if origin and (origin in allowed or origin.startswith("http://localhost")):
+            frontend_url = origin
+    except Exception:
+        redirect_path = urllib.parse.unquote(state or "/")
 
     if error or not code:
         return RedirectResponse(
@@ -579,7 +602,7 @@ async def google_oauth_callback(
                 logger.error(f"Token exchange failed: {token_res.text}")
                 return RedirectResponse(url=f"{frontend_url}/?auth_error=token_exchange_failed")
 
-            token_data  = token_res.json()
+            token_data   = token_res.json()
             access_token = token_data.get("access_token")
 
             # 2. Fetch user info from Google
@@ -600,7 +623,7 @@ async def google_oauth_callback(
         if not email or not firebase_uid:
             return RedirectResponse(url=f"{frontend_url}/?auth_error=missing_user_info")
 
-        # 3. Upsert user in database (same logic as /api/auth/google POST)
+        # 3. Upsert user in database
         user_repo = UserRepository(db)
         session_id = str(uuid.uuid4())
         device_type = "web"
@@ -627,20 +650,19 @@ async def google_oauth_callback(
             logger.warning(f"DB upsert failed (non-fatal): {e}")
             db_id = firebase_uid
 
-        # 4. Build signed token payload and redirect back to frontend
+        # 4. Build signed token and redirect back to the originating frontend
         payload = {
-            "uid":          firebase_uid,
-            "id":           db_id,
-            "email":        email,
-            "displayName":  name,
-            "name":         name,
-            "photoURL":     photo_url,
-            "loginToken":   session_id,
-            "exp":          int(time.time()) + 300,  # 5 min — frontend exchanges immediately
+            "uid":         firebase_uid,
+            "id":          db_id,
+            "email":       email,
+            "displayName": name,
+            "name":        name,
+            "photoURL":    photo_url,
+            "loginToken":  session_id,
+            "exp":         int(time.time()) + 300,
         }
         signed = _sign_payload(payload)
 
-        redirect_path = urllib.parse.unquote(state or "/")
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?sutra_auth_token={signed}",
             status_code=302,
