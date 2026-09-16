@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
+    USE_SPEECHMATICS: bool = True
     
     # Standard Production Real Model Identifiers
     GEMINI_MODEL: str = "gemini-3.6-flash"
@@ -101,6 +102,8 @@ class Settings(BaseSettings):
                                         self.SPEECHMATICS_API_KEY = v
                                     elif k == "DATABASE_URL" and not self.DATABASE_URL:
                                         self.DATABASE_URL = v
+                                    elif k == "USE_SPEECHMATICS":
+                                        self.USE_SPEECHMATICS = v.lower() in ("true", "1", "yes")
                     except Exception:
                         continue
 
