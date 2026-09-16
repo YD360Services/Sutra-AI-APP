@@ -26,7 +26,7 @@ function launchStealth() {
   const electronPath = require('electron');
   const args = ['.', '--stealth'];
 
-  console.log('\x1b[35m%s\x1b[0m', '🚀 Browser requested Stealth Mode launch...');
+  console.log('\x1b[35m%s\x1b[0m', 'Browser requested Stealth Mode launch...');
 
   stealthProcess = spawn(electronPath, args, {
     cwd: __dirname,
@@ -37,18 +37,18 @@ function launchStealth() {
   isStealthRunning = true;
 
   stealthProcess.on('close', (code) => {
-    console.log('\x1b[90m%s\x1b[0m', `👁️  Stealth Toolbar closed (exit ${code}). Ready to launch again.`);
+    console.log('\x1b[90m%s\x1b[0m', `Stealth Toolbar closed (exit ${code}). Ready to launch again.`);
     stealthProcess = null;
     isStealthRunning = false;
   });
 
   stealthProcess.on('error', (err) => {
-    console.error('\x1b[31m%s\x1b[0m', '❌ Failed to launch Electron:', err.message);
+    console.error('\x1b[31m%s\x1b[0m', 'Failed to launch Electron:', err.message);
     stealthProcess = null;
     isStealthRunning = false;
   });
 
-  console.log('\x1b[32m%s\x1b[0m', '✅ Stealth Toolbar launched from browser button!');
+  console.log('\x1b[32m%s\x1b[0m', 'Stealth Toolbar launched from browser button!');
   return { success: true, message: 'Stealth toolbar launched successfully!' };
 }
 
@@ -105,7 +105,7 @@ const server = http.createServer((req, res) => {
 
       if (isStealthRunning) {
         // Forward the payload to the running Electron process on port 48999
-        console.log('\x1b[35m%s\x1b[0m', '🔄 Stealth is already running. Forwarding config update to port 48999...');
+        console.log('\x1b[35m%s\x1b[0m', 'Stealth is already running. Forwarding config update to port 48999...');
         const forwarded = await new Promise((resolve) => {
           const dataStr = JSON.stringify(payload);
           const fReq = http.request({
@@ -177,18 +177,18 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   console.log('');
   console.log('\x1b[36m%s\x1b[0m', '  ╔══════════════════════════════════════════╗');
-  console.log('\x1b[36m%s\x1b[0m', '  ║      👁️  Stealth Toolbar Server            ║');
+  console.log('\x1b[36m%s\x1b[0m', '  ║      Stealth Toolbar Server            ║');
   console.log('\x1b[36m%s\x1b[0m', '  ╚══════════════════════════════════════════╝');
   console.log('');
-  console.log('\x1b[32m%s\x1b[0m', `  ✅ Server running at http://${HOST}:${PORT}`);
-  console.log('\x1b[33m%s\x1b[0m', `  🌐 Open in browser → http://${HOST}:${PORT}`);
+  console.log('\x1b[32m%s\x1b[0m', `  Server running at http://${HOST}:${PORT}`);
+  console.log('\x1b[33m%s\x1b[0m', `  Open in browser → http://${HOST}:${PORT}`);
   console.log('\x1b[90m%s\x1b[0m', '  Click "Launch Stealth Toolbar" in the page to activate.');
   console.log('');
 });
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error('\x1b[31m%s\x1b[0m', `❌ Port ${PORT} is already in use. Is the server already running?`);
+    console.error('\x1b[31m%s\x1b[0m', `Port ${PORT} is already in use. Is the server already running?`);
   } else {
     console.error('Server error:', err);
   }

@@ -208,7 +208,7 @@ function setDropdownStatus(type, message) {
 }
 
 async function loadDropdowns() {
-  setDropdownStatus('loading', '⏳ Loading resumes and documents...');
+  setDropdownStatus('loading', 'Loading resumes and documents...');
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
@@ -291,16 +291,16 @@ async function loadDropdowns() {
       const parts = [];
       if (resumeError) parts.push('resumes');
       if (docError) parts.push('documents');
-      setDropdownStatus('error', `⚠️ Could not load ${parts.join(' & ')} — backend may be offline. Click ↺ Retry.`);
+      setDropdownStatus('error', `Could not load ${parts.join(' & ')} — backend may be offline. Click ↺ Retry.`);
     } else {
       const total = backendResumes.length + backendDocs.length;
-      setDropdownStatus('success', `✓ Loaded ${backendResumes.length} resume(s) and ${backendDocs.length} document(s)`);
+      setDropdownStatus('success', `Loaded ${backendResumes.length} resume(s) and ${backendDocs.length} document(s)`);
       updateResumeJdScore();
     }
 
   } catch (e) {
     console.error('[Stealth] Failed to load dropdowns from backend:', e.message);
-    setDropdownStatus('error', `⚠️ Backend unreachable (${e.message}). Start the backend then click ↺ Retry.`);
+    setDropdownStatus('error', `Backend unreachable (${e.message}). Start the backend then click ↺ Retry.`);
   }
 }
 
@@ -665,11 +665,11 @@ async function loadRecentSessions() {
                     [${timeStr}] AI
                   </div>
                   <div style="margin-bottom: 6px; font-size: 10.5px; color: #e4e4e7; line-height: 1.4;">
-                    <span style="margin-right: 4px;">💬</span><strong>Question:</strong> ${b.question}
+                    <span style="margin-right: 4px;"></span><strong>Question:</strong> ${b.question}
                   </div>
                   <div style="border-top: 1px dashed rgba(20, 184, 166, 0.2); margin: 6px 0; padding-top: 6px;">
                     <div style="font-size: 10.5px; color: #2dd4bf; font-weight: 600; margin-bottom: 4px; line-height: 1.4;">
-                      <span style="margin-right: 4px;">⭐️</span><strong>Answer:</strong>
+                      <span style="margin-right: 4px;"></span><strong>Answer:</strong>
                     </div>
                     <div style="white-space: pre-wrap; font-size: 10.5px; line-height: 1.5; color: #fff;">${formatMathAndMarkdown(escapeHTML(b.answer || ''))}</div>
                   </div>
@@ -689,7 +689,7 @@ async function loadRecentSessions() {
               else speakerLabel = 'Audio'; // 'system', 'mixed_audio', etc.
               return `[${timeStr}] ${speakerLabel}\n${b.content}`;
             } else {
-              return `[${timeStr}] AI\n💬 **Question**: ${b.question}\n\n---\n\n⭐️ **Answer**:  \n${b.answer}`;
+              return `[${timeStr}] AI\n**Question**: ${b.question}\n\n---\n\n**Answer**:  \n${b.answer}`;
             }
           }).join('\n\n');
 
@@ -899,8 +899,8 @@ function showInlineError(msg, container) {
     'font-size:11px', 'line-height:1.4', 'margin:6px 0',
     'animation:fadeInDown 0.2s ease', 'position:relative', 'z-index:9'
   ].join(';');
-  banner.innerHTML = `<span style="font-size:14px;flex-shrink:0;">⚠️</span><span style="flex:1;">${msg}</span>`
-    + `<button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fca5a5;cursor:pointer;font-size:14px;padding:0 0 0 6px;line-height:1;">✕</button>`;
+  banner.innerHTML = `<span style="font-size:14px;flex-shrink:0;"></span><span style="flex:1;">${msg}</span>`
+    + `<button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fca5a5;cursor:pointer;font-size:14px;padding:0 0 0 6px;line-height:1;"></button>`;
   target.prepend(banner);
   setTimeout(() => { if (banner.parentElement) banner.remove(); }, 5000);
 }
@@ -1005,11 +1005,11 @@ async function loadDropdowns() {
     if (resResume.ok) {
       backendResumes = await resResume.json();
       if (setupResumeSelect && Array.isArray(backendResumes)) {
-        setupResumeSelect.innerHTML = '<option value="">📄 -- Select Resume --</option><option value="__upload__">📁 Upload new resume...</option>';
+        setupResumeSelect.innerHTML = '<option value="">-- Select Resume --</option><option value="__upload__">Upload new resume...</option>';
         backendResumes.forEach(r => {
           const opt = document.createElement('option');
           opt.value = r.id;
-          opt.textContent = `📄 ${r.file_name || 'Resume'}`;
+          opt.textContent = `${r.file_name || 'Resume'}`;
           setupResumeSelect.appendChild(opt);
         });
       }
@@ -1024,21 +1024,21 @@ async function loadDropdowns() {
         const promptItems = backendDocs.filter(d => d.document_type === 'prompt');
 
         if (setupDocSelect) {
-          setupDocSelect.innerHTML = '<option value="">📁 -- Select Reference Document --</option>';
+          setupDocSelect.innerHTML = '<option value="">-- Select Reference Document --</option>';
           docItems.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d.id;
-            opt.textContent = `📚 ${d.document_name}`;
+            opt.textContent = `${d.document_name}`;
             setupDocSelect.appendChild(opt);
           });
         }
 
         if (setupPromptSelect) {
-          setupPromptSelect.innerHTML = '<option value="">✍️ -- Select Custom Prompt / Instruction Rule --</option>';
+          setupPromptSelect.innerHTML = '<option value="">-- Select Custom Prompt / Instruction Rule --</option>';
           promptItems.forEach(p => {
             const opt = document.createElement('option');
             opt.value = p.id;
-            opt.textContent = `✍️ ${p.document_name}`;
+            opt.textContent = `${p.document_name}`;
             setupPromptSelect.appendChild(opt);
           });
         }
@@ -1066,13 +1066,13 @@ async function loadRecentSessionsForStep2() {
     }
     if (!res || !res.ok) return;
     const sessions = await res.json();
-    setupRecentContextSelect.innerHTML = '<option value="">🕒 -- Select Past Session Context to Inject --</option>';
+    setupRecentContextSelect.innerHTML = '<option value="">-- Select Past Session Context to Inject --</option>';
     if (Array.isArray(sessions)) {
       sessions.forEach(s => {
         const title = s.company_name ? `${s.company_name} — ${s.role_name || 'Session'}` : (s.session_name || 'Previous Session');
         const opt = document.createElement('option');
         opt.value = s.id;
-        opt.textContent = `🕒 ${title}`;
+        opt.textContent = `${title}`;
         setupRecentContextSelect.appendChild(opt);
       });
     }
@@ -1200,7 +1200,7 @@ function createChip({ tag, name, theme, onRemove }) {
 
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.textContent = '✕';
+  closeBtn.textContent = '';
   closeBtn.style.cssText = `
     background: rgba(255, 255, 255, 0.08);
     border: none;
@@ -1242,9 +1242,9 @@ function renderContextChips() {
     const selectedOpt = setupResumeSelect.options[setupResumeSelect.selectedIndex];
     if (selectedOpt && selectedOpt.value) {
       count++;
-      const cleanName = selectedOpt.textContent.replace('📄', '').trim();
+      const cleanName = selectedOpt.textContent.replace('', '').trim();
       const chip = createChip({
-        tag: '📄 RESUME',
+        tag: 'RESUME',
         name: cleanName,
         theme: 'resume',
         onRemove: () => {
@@ -1264,7 +1264,7 @@ function renderContextChips() {
     const isPrompt = docObj && (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt'));
     count++;
     const chip = createChip({
-      tag: isPrompt ? '✍️ RULE' : '📁 REF DOC',
+      tag: isPrompt ? 'RULE' : 'REF DOC',
       name: label,
       theme: isPrompt ? 'prompt' : 'doc',
       onRemove: () => {
@@ -1278,10 +1278,10 @@ function renderContextChips() {
   // 3. Recent Sessions Context Chips
   selectedSessionIdsSet.forEach(sessId => {
     const opt = Array.from(setupRecentContextSelect.options).find(o => String(o.value) === String(sessId));
-    const rawLabel = opt ? opt.textContent.replace('🕒', '').replace('-- Add Recent Session Context --', '').replace('-- Select Past Session Context to Inject --', '').replace('-- Select Past Interview Round to Inject as Memory --', '').trim() : `Session (${String(sessId).substring(0, 8)})`;
+    const rawLabel = opt ? opt.textContent.replace('', '').replace('-- Add Recent Session Context --', '').replace('-- Select Past Session Context to Inject --', '').replace('-- Select Past Interview Round to Inject as Memory --', '').trim() : `Session (${String(sessId).substring(0, 8)})`;
     count++;
     const chip = createChip({
-      tag: '🕒 PAST ROUND',
+      tag: 'PAST ROUND',
       name: rawLabel,
       theme: 'session',
       onRemove: () => {
@@ -1324,19 +1324,19 @@ function setContextFilterTab(activeTab) {
       btn: filterDocsBtn,
       sec: contextDocsSection,
       name: 'docs',
-      helper: '📁 Reference notes, cheat sheets & STAR stories the AI will consult for technical answers.'
+      helper: 'Reference notes, cheat sheets & STAR stories the AI will consult for technical answers.'
     },
     {
       btn: filterPromptsBtn,
       sec: contextPromptsSection,
       name: 'prompts',
-      helper: '✍️ Custom behavioral rules to instruct how the AI should talk or format responses.'
+      helper: 'Custom behavioral rules to instruct how the AI should talk or format responses.'
     },
     {
       btn: filterSessionsBtn,
       sec: contextSessionsSection,
       name: 'sessions',
-      helper: '🕒 Memory from a previous interview round to keep questions & answers consistent.'
+      helper: 'Memory from a previous interview round to keep questions & answers consistent.'
     }
   ];
 
@@ -1548,9 +1548,9 @@ if (modalPromptSave && promptModal) {
       if (modalPromptStatus && modalPromptStatusText) {
         modalPromptStatus.className = 'upload-status-banner success';
         if (modalPromptSpinner) modalPromptSpinner.style.display = 'none';
-        modalPromptStatusText.textContent = `✓ Prompt "${promptName}" uploaded successfully!`;
+        modalPromptStatusText.textContent = `Prompt "${promptName}" uploaded successfully!`;
       }
-      setStep2UploadStatus(`✓ Custom prompt "${promptName}" added to knowledge bank`, 'success', 3500);
+      setStep2UploadStatus(`Custom prompt "${promptName}" added to knowledge bank`, 'success', 3500);
       setTimeout(() => {
         promptModal.style.display = 'none';
       }, 700);
@@ -1593,7 +1593,7 @@ async function updateResumeJdScore() {
   }
 
   scoreSpan.style.display = 'inline-block';
-  scoreSpan.textContent = '⏳ Scoring...';
+  scoreSpan.textContent = 'Scoring...';
   scoreSpan.style.color = '#38bdf8';
   scoreSpan.style.background = 'rgba(56,189,248,0.1)';
 
@@ -1616,7 +1616,7 @@ async function updateResumeJdScore() {
       const data = await res.json();
       const scoreNum = parseInt(data.answer);
       if (!isNaN(scoreNum)) {
-        scoreSpan.textContent = `🎯 Match: ${scoreNum}%`;
+        scoreSpan.textContent = `Match: ${scoreNum}%`;
         if (scoreNum >= 80) {
           scoreSpan.style.color = '#10b981';
           scoreSpan.style.background = 'rgba(16,185,129,0.1)';
@@ -1628,14 +1628,14 @@ async function updateResumeJdScore() {
           scoreSpan.style.background = 'rgba(239,68,68,0.1)';
         }
       } else {
-        scoreSpan.textContent = '⚠️ Match: N/A';
+        scoreSpan.textContent = 'Match: N/A';
       }
     } else {
-      scoreSpan.textContent = '⚠️ Match: Error';
+      scoreSpan.textContent = 'Match: Error';
     }
   } catch (e) {
     console.error('[Stealth] Score calculation error:', e);
-    scoreSpan.textContent = '⚠️ Match: Offline';
+    scoreSpan.textContent = 'Match: Offline';
   }
 }
 
@@ -1652,7 +1652,7 @@ setupResumeFile.addEventListener('change', async () => {
     uploadBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
     uploadBtn.classList.add('btn-uploading-active');
   }
-  setStep2UploadStatus(`⏳ Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
+  setStep2UploadStatus(`Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
@@ -1666,12 +1666,12 @@ setupResumeFile.addEventListener('change', async () => {
     await loadDropdowns();
     setupResumeSelect.value = data.id;
     renderContextChips();
-    setStep2UploadStatus(`✓ Resume "${file.name}" uploaded and parsed successfully!`, 'success', 3500);
+    setStep2UploadStatus(`Resume "${file.name}" uploaded and parsed successfully!`, 'success', 3500);
 
     if (uploadBtn) {
-      uploadBtn.innerHTML = '✓ Uploaded';
+      uploadBtn.innerHTML = 'Uploaded';
       setTimeout(() => {
-        uploadBtn.innerHTML = '📁 Upload';
+        uploadBtn.innerHTML = 'Upload';
         uploadBtn.classList.remove('btn-uploading-active');
       }, 1500);
     }
@@ -1687,25 +1687,25 @@ setupResumeFile.addEventListener('change', async () => {
       backendResumes.push(localResume);
       const opt = document.createElement('option');
       opt.value = localResume.id;
-      opt.textContent = `📄 ${localResume.file_name}`;
+      opt.textContent = `${localResume.file_name}`;
       setupResumeSelect.appendChild(opt);
       setupResumeSelect.value = localResume.id;
       renderContextChips();
-      setStep2UploadStatus(`✓ Local resume "${file.name}" loaded successfully!`, 'success', 3500);
+      setStep2UploadStatus(`Local resume "${file.name}" loaded successfully!`, 'success', 3500);
 
       if (uploadBtn) {
-        uploadBtn.innerHTML = '✓ Loaded';
+        uploadBtn.innerHTML = 'Loaded';
         setTimeout(() => {
-          uploadBtn.innerHTML = '📁 Upload';
+          uploadBtn.innerHTML = 'Upload';
           uploadBtn.classList.remove('btn-uploading-active');
         }, 1500);
       }
     } catch (readErr) {
       console.error('[Stealth] Local resume read failed:', readErr);
-      setStep2UploadStatus(`⚠️ Failed to parse resume "${file.name}": ${readErr.message}`, 'error', 5000);
+      setStep2UploadStatus(`Failed to parse resume "${file.name}": ${readErr.message}`, 'error', 5000);
       showInlineError('Failed to read resume file.', document.getElementById('setup-step-2'));
       if (uploadBtn) {
-        uploadBtn.innerHTML = '📁 Upload';
+        uploadBtn.innerHTML = 'Upload';
         uploadBtn.classList.remove('btn-uploading-active');
       }
     }
@@ -1726,7 +1726,7 @@ setupDocFile.addEventListener('change', async () => {
     uploadDocBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
     uploadDocBtn.classList.add('btn-uploading-active');
   }
-  setStep2UploadStatus(`⏳ Uploading reference document: "${file.name}"...`, 'uploading');
+  setStep2UploadStatus(`Uploading reference document: "${file.name}"...`, 'uploading');
 
   try {
     const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
@@ -1741,12 +1741,12 @@ setupDocFile.addEventListener('change', async () => {
     selectedDocIdsSet.add(data.id);
     if (addContextMenu) addContextMenu.style.display = 'none';
     renderContextChips();
-    setStep2UploadStatus(`✓ Document "${file.name}" added to knowledge bank!`, 'success', 3500);
+    setStep2UploadStatus(`Document "${file.name}" added to knowledge bank!`, 'success', 3500);
 
     if (uploadDocBtn) {
-      uploadDocBtn.innerHTML = '✓ Uploaded';
+      uploadDocBtn.innerHTML = 'Uploaded';
       setTimeout(() => {
-        uploadDocBtn.innerHTML = '📁 Upload Doc';
+        uploadDocBtn.innerHTML = 'Upload Doc';
         uploadDocBtn.classList.remove('btn-uploading-active');
       }, 1500);
     }
@@ -1764,21 +1764,21 @@ setupDocFile.addEventListener('change', async () => {
       selectedDocIdsSet.add(localDoc.id);
       if (addContextMenu) addContextMenu.style.display = 'none';
       renderContextChips();
-      setStep2UploadStatus(`✓ Local document "${file.name}" attached to memory!`, 'success', 3500);
+      setStep2UploadStatus(`Local document "${file.name}" attached to memory!`, 'success', 3500);
 
       if (uploadDocBtn) {
-        uploadDocBtn.innerHTML = '✓ Loaded';
+        uploadDocBtn.innerHTML = 'Loaded';
         setTimeout(() => {
-          uploadDocBtn.innerHTML = '📁 Upload Doc';
+          uploadDocBtn.innerHTML = 'Upload Doc';
           uploadDocBtn.classList.remove('btn-uploading-active');
         }, 1500);
       }
     } catch (readErr) {
       console.error('[Stealth] Local document read failed:', readErr);
-      setStep2UploadStatus(`⚠️ Failed to parse document "${file.name}": ${readErr.message}`, 'error', 5000);
+      setStep2UploadStatus(`Failed to parse document "${file.name}": ${readErr.message}`, 'error', 5000);
       showInlineError('Failed to read reference document file.', document.getElementById('setup-step-2'));
       if (uploadDocBtn) {
-        uploadDocBtn.innerHTML = '📁 Upload Doc';
+        uploadDocBtn.innerHTML = 'Upload Doc';
         uploadDocBtn.classList.remove('btn-uploading-active');
       }
     }
@@ -1836,7 +1836,7 @@ function updateWizardView() {
     if (stepIdx < currentStep) {
       ind.num.style.background = '#10b981';
       ind.num.style.borderColor = '#10b981';
-      ind.num.textContent = '✓';
+      ind.num.textContent = '';
       ind.num.style.color = '#fff';
       ind.text.style.color = '#10b981';
     } else if (stepIdx === currentStep) {
@@ -1906,7 +1906,7 @@ function updateWizardView() {
     };
 
     if (tokenStatus.isPro) {
-      if (tokenIcon) tokenIcon.textContent = '👑';
+      if (tokenIcon) tokenIcon.textContent = '';
       const currentPlan = tokenStatus.subscription?.planTitle || 'Unlimited Pro';
       if (tokenTitle) tokenTitle.textContent = currentPlan.includes('Pass') || currentPlan.includes('Active') ? currentPlan : `${currentPlan} Active`;
       if (tokenSubtitle) tokenSubtitle.textContent = 'Unlimited live interview streaming & background memory.';
@@ -1923,7 +1923,7 @@ function updateWizardView() {
       startSessionBtn.style.opacity = '1';
       startSessionBtn.textContent = 'Start Session & Collapse';
     } else if (tokenStatus.tokens.balance >= 0.5) {
-      if (tokenIcon) tokenIcon.textContent = '⚡';
+      if (tokenIcon) tokenIcon.textContent = '';
       if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance} Session Token(s) Available`;
       if (tokenSubtitle) tokenSubtitle.textContent = '0.5 token = 30 minutes of live stealth copilot assistance.';
       if (tokenBox) {
@@ -1941,7 +1941,7 @@ function updateWizardView() {
       startSessionBtn.style.opacity = '1';
       startSessionBtn.textContent = 'Start Session (Use 0.5 Token)';
     } else {
-      if (tokenIcon) tokenIcon.textContent = '🔒';
+      if (tokenIcon) tokenIcon.textContent = '';
       if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance || 0} Session Tokens (Min 0.5 Needed)`;
       if (tokenSubtitle) tokenSubtitle.textContent = 'At least 0.5 token required for 30 minutes live session.';
       if (tokenBox) {
@@ -1955,7 +1955,7 @@ function updateWizardView() {
         planExpiryBadge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
       }
       startSessionBtn.style.opacity = '0.7';
-      startSessionBtn.textContent = '⚡ Min 0.5 Token Required';
+      startSessionBtn.textContent = 'Min 0.5 Token Required';
     }
   }
 }
@@ -2269,7 +2269,7 @@ function populateEditResumeOptions(selectedId) {
   backendResumes.forEach(r => {
     const opt = document.createElement('option');
     opt.value = r.id;
-    opt.textContent = `📄 ${r.file_name || r.id}`;
+    opt.textContent = `${r.file_name || r.id}`;
     if (String(r.id) === String(activeId)) opt.selected = true;
     editResumeSelect.appendChild(opt);
   });
@@ -2282,7 +2282,7 @@ function populateEditDocOptions(selectedId) {
   backendDocs.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.id;
-    opt.textContent = (d.document_type === 'prompt' ? '✍️ ' : '📚 ') + (d.document_name || d.id);
+    opt.textContent = (d.document_type === 'prompt' ? '' : '') + (d.document_name || d.id);
     if (String(d.id) === String(activeId)) opt.selected = true;
     editDocSelect.appendChild(opt);
   });
@@ -2338,7 +2338,7 @@ if (editUploadResumeBtn && editResumeFile) {
 
     editUploadResumeBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
     editUploadResumeBtn.classList.add('btn-uploading-active');
-    setEditSessionStatus(`⏳ Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
+    setEditSessionStatus(`Uploading & parsing candidate resume: "${file.name}"...`, 'uploading');
 
     try {
       const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
@@ -2349,11 +2349,11 @@ if (editUploadResumeBtn && editResumeFile) {
       await loadDropdowns();
       liveSessionData.resumeId = data.id;
       populateEditResumeOptions(data.id);
-      setEditSessionStatus(`✓ Resume "${file.name}" uploaded and selected!`, 'success', 3500);
+      setEditSessionStatus(`Resume "${file.name}" uploaded and selected!`, 'success', 3500);
 
-      editUploadResumeBtn.innerHTML = '✓ Uploaded';
+      editUploadResumeBtn.innerHTML = 'Uploaded';
       setTimeout(() => {
-        editUploadResumeBtn.innerHTML = '📁 Upload';
+        editUploadResumeBtn.innerHTML = 'Upload';
         editUploadResumeBtn.classList.remove('btn-uploading-active');
       }, 1500);
     } catch (e) {
@@ -2368,16 +2368,16 @@ if (editUploadResumeBtn && editResumeFile) {
         backendResumes.push(localResume);
         liveSessionData.resumeId = localResume.id;
         populateEditResumeOptions(localResume.id);
-        setEditSessionStatus(`✓ Local resume "${file.name}" loaded successfully!`, 'success', 3500);
-        editUploadResumeBtn.innerHTML = '✓ Loaded';
+        setEditSessionStatus(`Local resume "${file.name}" loaded successfully!`, 'success', 3500);
+        editUploadResumeBtn.innerHTML = 'Loaded';
         setTimeout(() => {
-          editUploadResumeBtn.innerHTML = '📁 Upload';
+          editUploadResumeBtn.innerHTML = 'Upload';
           editUploadResumeBtn.classList.remove('btn-uploading-active');
         }, 1500);
       } catch (readErr) {
         console.error('[EditSession] Local resume read failed:', readErr);
-        setEditSessionStatus(`⚠️ Failed to parse resume: ${readErr.message}`, 'error', 5000);
-        editUploadResumeBtn.innerHTML = '📁 Upload';
+        setEditSessionStatus(`Failed to parse resume: ${readErr.message}`, 'error', 5000);
+        editUploadResumeBtn.innerHTML = 'Upload';
         editUploadResumeBtn.classList.remove('btn-uploading-active');
       }
     } finally {
@@ -2399,7 +2399,7 @@ if (editUploadDocBtn && editDocFile) {
 
     editUploadDocBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Uploading...';
     editUploadDocBtn.classList.add('btn-uploading-active');
-    setEditSessionStatus(`⏳ Uploading reference document: "${file.name}"...`, 'uploading');
+    setEditSessionStatus(`Uploading reference document: "${file.name}"...`, 'uploading');
 
     try {
       const base = (await window.electronAPI.getBackendUrl()) || 'https://round-mate-ai.onrender.com';
@@ -2410,11 +2410,11 @@ if (editUploadDocBtn && editDocFile) {
       await loadDropdowns();
       liveSessionData.docId = data.id;
       populateEditDocOptions(data.id);
-      setEditSessionStatus(`✓ Document "${file.name}" added to knowledge bank!`, 'success', 3500);
+      setEditSessionStatus(`Document "${file.name}" added to knowledge bank!`, 'success', 3500);
 
-      editUploadDocBtn.innerHTML = '✓ Uploaded';
+      editUploadDocBtn.innerHTML = 'Uploaded';
       setTimeout(() => {
-        editUploadDocBtn.innerHTML = '📁 Upload Doc';
+        editUploadDocBtn.innerHTML = 'Upload Doc';
         editUploadDocBtn.classList.remove('btn-uploading-active');
       }, 1500);
     } catch (e) {
@@ -2430,16 +2430,16 @@ if (editUploadDocBtn && editDocFile) {
         backendDocs.push(localDoc);
         liveSessionData.docId = localDoc.id;
         populateEditDocOptions(localDoc.id);
-        setEditSessionStatus(`✓ Local document "${file.name}" attached to memory!`, 'success', 3500);
-        editUploadDocBtn.innerHTML = '✓ Loaded';
+        setEditSessionStatus(`Local document "${file.name}" attached to memory!`, 'success', 3500);
+        editUploadDocBtn.innerHTML = 'Loaded';
         setTimeout(() => {
-          editUploadDocBtn.innerHTML = '📁 Upload Doc';
+          editUploadDocBtn.innerHTML = 'Upload Doc';
           editUploadDocBtn.classList.remove('btn-uploading-active');
         }, 1500);
       } catch (readErr) {
         console.error('[EditSession] Local doc read failed:', readErr);
-        setEditSessionStatus(`⚠️ Failed to parse document: ${readErr.message}`, 'error', 5000);
-        editUploadDocBtn.innerHTML = '📁 Upload Doc';
+        setEditSessionStatus(`Failed to parse document: ${readErr.message}`, 'error', 5000);
+        editUploadDocBtn.innerHTML = 'Upload Doc';
         editUploadDocBtn.classList.remove('btn-uploading-active');
       }
     } finally {
@@ -2468,7 +2468,7 @@ if (editSessionSaveBtn) {
 
     editSessionSaveBtn.disabled = true;
     editSessionSaveBtn.innerHTML = '<span class="upload-spinner" style="width:10px;height:10px;"></span> Updating...';
-    setEditSessionStatus('⏳ Updating session configuration & syncing context with AI...', 'uploading');
+    setEditSessionStatus('Updating session configuration & syncing context with AI...', 'uploading');
 
     // 1. Patch backend session metadata (company/role/session_name)
     if (backendUrl && sessionToken) {
@@ -2512,7 +2512,7 @@ if (editSessionSaveBtn) {
     liveSessionData = { company: newCompany, role: newRole, jd: newJd, resumeId: newResumeId, docId: newDocId };
 
     // 4. Show success and close
-    setEditSessionStatus('✓ Session context updated — AI will use new data for next answer!', 'success', 2000);
+    setEditSessionStatus('Session context updated — AI will use new data for next answer!', 'success', 2000);
     editSessionSaveBtn.disabled = false;
     editSessionSaveBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Update Session';
 
@@ -2761,14 +2761,14 @@ startSessionBtn.addEventListener('click', async () => {
   if (!tokenStatus.isPro && (tokenStatus.tokens.balance < 0.5)) {
     showModalOverlay('Session Token Required', `
       <div style="text-align: center; padding: 18px 10px;">
-        <div style="font-size: 32px; margin-bottom: 12px;">⚡</div>
+        <div style="font-size: 32px; margin-bottom: 12px;"></div>
         <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;">0.5 Session Token Required</h3>
         <p style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 18px;">
           You need at least 0.5 Session Token (30 minutes) or an active Unlimited Pro Subscription to launch live interview stealth assistance.
         </p>
         <div style="display: flex; gap: 10px; justify-content: center;">
           <button id="gate-topup-btn" style="padding: 9px 18px; background: #2dd4bf; color: #0f172a; font-weight: 700; border-radius: 8px; border: none; font-size: 11.5px; cursor: pointer;">
-            ⚡ Open Billing & Top Up
+            Open Billing & Top Up
           </button>
           <button id="gate-cancel-btn" style="padding: 9px 18px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-weight: 600; border-radius: 8px; font-size: 11.5px; cursor: pointer;">
             Cancel
@@ -4084,8 +4084,8 @@ if (copyAllAnswerBtn) {
     const text = answerBlock.textContent.trim();
     if (text) {
       navigator.clipboard.writeText(text);
-      copyAllAnswerBtn.textContent = '✓ Copied!';
-      setTimeout(() => { copyAllAnswerBtn.textContent = '⎘ Copy All'; }, 1500);
+      copyAllAnswerBtn.textContent = 'Copied!';
+      setTimeout(() => { copyAllAnswerBtn.textContent = 'Copy All'; }, 1500);
     }
   });
 }
@@ -4363,7 +4363,7 @@ async function queryAssistant(manualQuestionText, isManual = false) {
     if (msg.includes('quota') || msg.includes('Quota') || msg.includes('limit') || msg.includes('rate')) {
       answerBlock.innerHTML = `
         <div style="color: #fca5a5; font-size: 11.5px; border: 1px solid rgba(239,68,68,0.25); background: rgba(239,68,68,0.08); padding: 10px; border-radius: 8px; line-height: 1.45;">
-          <strong style="color: #ef4444; display: block; margin-bottom: 4px;">⚠️ Quota Exceeded (Gemini API)</strong>
+          <strong style="color: #ef4444; display: block; margin-bottom: 4px;">Quota Exceeded (Gemini API)</strong>
           All available API keys have hit their free-tier request limits.
           <ul style="margin-left: 14px; margin-top: 6px; display: flex; flex-direction: column; gap: 4px;">
             <li>Please wait ~30-60 seconds for the rate limits to cool down, then try again.</li>
@@ -4442,7 +4442,7 @@ function renderActiveAnswer() {
     const badge = document.createElement('div');
     badge.className = 'ttft-badge';
     badge.style.cssText = 'margin-top:6px;font-size:10px;color:rgba(255,255,255,0.35);text-align:right;padding-right:2px;letter-spacing:0.3px;';
-    badge.textContent = `⏱ ${entry.totalTimeSec}`;
+    badge.textContent = `${entry.totalTimeSec}`;
     answerBlock.appendChild(badge);
   }
 
@@ -4584,7 +4584,7 @@ async function solveFromScreenshot() {
   if (activeTab !== 'ai') openPanel('ai');
 
   // Add new entry to history for horizontal carousel
-  const newEntry = { question: '[Screen Capture]', answer: '⏳ Taking screenshot...', totalTimeSec: '' };
+  const newEntry = { question: '[Screen Capture]', answer: 'Taking screenshot...', totalTimeSec: '' };
   answerHistory.push(newEntry);
   currentAnswerIndex = answerHistory.length - 1;
   updateAnswerNav();
@@ -4592,7 +4592,7 @@ async function solveFromScreenshot() {
 
   try {
     const base64Image = await window.electronAPI.takeScreenshot();
-    newEntry.answer = '⚙️ Analyzing with vision AI...';
+    newEntry.answer = 'Analyzing with vision AI...';
     renderActiveAnswer();
 
     const prompt = `Analyze the provided screenshot of the screen. Find the question, coding problem, or conceptual statement visible on the screen.
@@ -6525,7 +6525,7 @@ function updateStealthTypingUI(active) {
     if (aiInputStatusEl && aiInputStatusText) {
       aiInputStatusEl.style.display = 'flex';
       const count = aiInput ? aiInput.value.length : 0;
-      aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> ⚡ <strong>Stealth Typing Active</strong> • Type & press Enter to ask (click away to exit)${count > 0 ? ` (${count} chars)` : ''}`;
+      aiInputStatusText.innerHTML = `<span class="typing-dot-pulse"></span> <strong>Stealth Typing Active</strong> • Type & press Enter to ask (click away to exit)${count > 0 ? ` (${count} chars)` : ''}`;
     }
   } else {
     if (aiInput) {

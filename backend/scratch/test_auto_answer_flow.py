@@ -35,12 +35,12 @@ async def test_auto_answer():
             prompt=user_prompt,
             system_prompt=system_prompt
         )
-        print("✅ Auto Answer Generation SUCCESSFUL!")
+        print("Auto Answer Generation SUCCESSFUL!")
         print("\n=== AI RESPONSE PREVIEW ===")
         print(response[:600] if response else "(empty response)")
         return True
     except Exception as e:
-        print(f"❌ Auto Answer Generation FAILED: {e}")
+        print(f"Auto Answer Generation FAILED: {e}")
         return False
 
 if __name__ == "__main__":

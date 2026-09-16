@@ -36,9 +36,9 @@ async def check_database():
     # 1. Initialize & Verify DB
     try:
         await verify_and_initialize_db()
-        print("✅ verify_and_initialize_db() completed successfully.")
+        print("verify_and_initialize_db() completed successfully.")
     except Exception as e:
-        print(f"❌ verify_and_initialize_db() failed: {e}")
+        print(f"verify_and_initialize_db() failed: {e}")
         return False, {}
 
     # 2. Check each table & schema query
@@ -54,7 +54,7 @@ async def check_database():
             except Exception as e:
                 db_ok = False
                 table_stats[table_name] = {"status": "ERROR", "error": str(e)}
-                print(f"  🔴 Table '{table_name}': ERROR ({e})")
+                print(f"  Table '{table_name}': ERROR ({e})")
 
         # 3. Test DB Read/Write transaction capability
         print("\n--- Testing Read/Write Transaction ---")
@@ -76,10 +76,10 @@ async def check_database():
                 await db.commit()
                 print("  🟢 DB Cleanup Test: SUCCESS")
             else:
-                print("  🔴 DB Write & Read Test: FAILED to retrieve inserted record")
+                print("  DB Write & Read Test: FAILED to retrieve inserted record")
                 db_ok = False
         except Exception as e:
-            print(f"  🔴 DB Write/Read Transaction Failed: {e}")
+            print(f"  DB Write/Read Transaction Failed: {e}")
             db_ok = False
 
     return db_ok, table_stats
@@ -103,10 +103,10 @@ async def check_api_endpoints():
             try:
                 resp = await client.request(method, url)
                 api_stats[path] = {"status_code": resp.status_code, "ok": resp.is_success or resp.status_code in (200, 307, 401)}
-                print(f"  {'🟢' if resp.status_code < 500 else '🔴'} Endpoint '{path}': Status {resp.status_code}")
+                print(f"  {'🟢' if resp.status_code < 500 else ''} Endpoint '{path}': Status {resp.status_code}")
             except Exception as e:
                 api_stats[path] = {"status_code": None, "error": str(e)}
-                print(f"  🔴 Endpoint '{path}': Connection Failed ({e})")
+                print(f"  Endpoint '{path}': Connection Failed ({e})")
                 
     return api_stats
 
