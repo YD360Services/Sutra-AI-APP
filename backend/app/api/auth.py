@@ -439,3 +439,227 @@ async def get_sync_session(code: Optional[str] = None, email: Optional[str] = No
         
     return {"success": True, **session_data}
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend-driven Google OAuth (full-tab redirect, no Firebase popup needed)
+# Flow: Frontend → GET /api/auth/google/login
+#       → Google accounts.google.com (current tab, full screen)
+#       → GET /api/auth/google/callback?code=…
+#       → Verify with Google API → redirect to frontend with user payload
+# ─────────────────────────────────────────────────────────────────────────────
+
+import os
+import json
+import hmac
+import hashlib
+import urllib.parse
+from fastapi.responses import RedirectResponse
+
+def _get_env(key: str, default: str = "") -> str:
+    """Read env var from environment or .env file (supports deferred loading)."""
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    # Try reading directly from .env file as fallback
+    for path in [".env", "backend/.env", "../backend/.env"]:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() == key:
+                            return v.strip().strip("'\"")
+        except Exception:
+            continue
+    return default
+
+GOOGLE_CLIENT_ID     = _get_env("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = _get_env("GOOGLE_CLIENT_SECRET")
+BACKEND_OAUTH_CALLBACK = _get_env(
+    "GOOGLE_OAUTH_REDIRECT_URI",
+    "http://localhost:8000/api/auth/google/callback"
+)
+FRONTEND_BASE = _get_env("FRONTEND_URL", "http://localhost:5173")
+_SIGNING_KEY  = _get_env("JWT_SECRET", "sutra-oauth-signing-secret")
+
+
+def _sign_payload(payload: dict) -> str:
+    """Encode payload as base64url JSON + HMAC signature."""
+    import base64
+    body = json.dumps(payload, separators=(",", ":"))
+    body_b64 = base64.urlsafe_b64encode(body.encode()).decode().rstrip("=")
+    sig = hmac.new(_SIGNING_KEY.encode(), body_b64.encode(), hashlib.sha256).hexdigest()
+    return f"{body_b64}.{sig}"
+
+def _verify_token(token: str) -> dict | None:
+    """Verify and decode a signed token. Returns payload or None."""
+    import base64
+    try:
+        body_b64, sig = token.rsplit(".", 1)
+        expected = hmac.new(_SIGNING_KEY.encode(), body_b64.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        padding = 4 - len(body_b64) % 4
+        body = base64.urlsafe_b64decode(body_b64 + "=" * padding)
+        return json.loads(body)
+    except Exception:
+        return None
+
+
+@router.get("/auth/google/login")
+async def google_oauth_login(redirect_after: str = "/"):
+    """
+    Initiates Google OAuth full-tab redirect.
+    Frontend navigates the current tab to this endpoint, which immediately
+    redirects to Google's account chooser — no popup involved.
+    """
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=501,
+            detail="GOOGLE_CLIENT_ID not configured. Add it to backend .env"
+        )
+
+    params = {
+        "client_id":     GOOGLE_CLIENT_ID,
+        "redirect_uri":  BACKEND_OAUTH_CALLBACK,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "access_type":   "online",
+        "prompt":        "select_account",
+        # Pass redirect_after through state so callback knows where to send user
+        "state":         urllib.parse.quote(redirect_after),
+    }
+    google_url = "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+    return RedirectResponse(url=google_url, status_code=302)
+
+
+@router.get("/auth/google/callback")
+async def google_oauth_callback(
+    code: str | None = None,
+    error: str | None = None,
+    state: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Google redirects here after user authenticates.
+    Exchanges the code for user info, upserts the user in DB,
+    then redirects the browser back to the frontend with a signed token.
+    """
+    frontend_url = FRONTEND_BASE.rstrip("/")
+
+    if error or not code:
+        return RedirectResponse(
+            url=f"{frontend_url}/?auth_error={error or 'cancelled'}",
+            status_code=302,
+        )
+
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        return RedirectResponse(
+            url=f"{frontend_url}/?auth_error=server_not_configured",
+            status_code=302,
+        )
+
+    try:
+        import httpx
+
+        # 1. Exchange authorization code for access token
+        async with httpx.AsyncClient() as client:
+            token_res = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code":          code,
+                    "client_id":     GOOGLE_CLIENT_ID,
+                    "client_secret": GOOGLE_CLIENT_SECRET,
+                    "redirect_uri":  BACKEND_OAUTH_CALLBACK,
+                    "grant_type":    "authorization_code",
+                },
+            )
+            if token_res.status_code != 200:
+                logger.error(f"Token exchange failed: {token_res.text}")
+                return RedirectResponse(url=f"{frontend_url}/?auth_error=token_exchange_failed")
+
+            token_data  = token_res.json()
+            access_token = token_data.get("access_token")
+
+            # 2. Fetch user info from Google
+            userinfo_res = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                params={"access_token": access_token},
+            )
+            if userinfo_res.status_code != 200:
+                return RedirectResponse(url=f"{frontend_url}/?auth_error=userinfo_failed")
+
+            info = userinfo_res.json()
+
+        email        = info.get("email", "")
+        name         = info.get("name", "")
+        firebase_uid = info.get("sub", "")   # Google's unique user ID
+        photo_url    = info.get("picture", "")
+
+        if not email or not firebase_uid:
+            return RedirectResponse(url=f"{frontend_url}/?auth_error=missing_user_info")
+
+        # 3. Upsert user in database (same logic as /api/auth/google POST)
+        user_repo = UserRepository(db)
+        session_id = str(uuid.uuid4())
+        device_type = "web"
+
+        try:
+            db_user = await user_repo.get_user_by_firebase_uid(firebase_uid)
+            if not db_user:
+                db_user = await user_repo.get_user_by_email(email)
+            if db_user:
+                await user_repo.update_user(
+                    db_user.id,
+                    {"name": name, "active_session_token": session_id, "device_type": device_type},
+                )
+            else:
+                db_user = await user_repo.create_user(
+                    firebase_uid=firebase_uid,
+                    email=email,
+                    name=name,
+                    login_token=session_id,
+                    device_type=device_type,
+                )
+            db_id = str(db_user.id) if db_user else firebase_uid
+        except Exception as e:
+            logger.warning(f"DB upsert failed (non-fatal): {e}")
+            db_id = firebase_uid
+
+        # 4. Build signed token payload and redirect back to frontend
+        payload = {
+            "uid":          firebase_uid,
+            "id":           db_id,
+            "email":        email,
+            "displayName":  name,
+            "name":         name,
+            "photoURL":     photo_url,
+            "loginToken":   session_id,
+            "exp":          int(time.time()) + 300,  # 5 min — frontend exchanges immediately
+        }
+        signed = _sign_payload(payload)
+
+        redirect_path = urllib.parse.unquote(state or "/")
+        return RedirectResponse(
+            url=f"{frontend_url}{redirect_path}?sutra_auth_token={signed}",
+            status_code=302,
+        )
+
+    except Exception as e:
+        logger.exception(f"OAuth callback error: {e}")
+        return RedirectResponse(url=f"{frontend_url}/?auth_error=server_error")
+
+
+@router.get("/auth/google/verify-token")
+async def verify_oauth_token(token: str):
+    """
+    Frontend calls this to verify a sutra_auth_token received in the URL.
+    Returns the user payload if valid, 401 if not.
+    """
+    payload = _verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if payload.get("exp", 0) < time.time():
+        raise HTTPException(status_code=401, detail="Token expired")
+    return payload
