@@ -49,8 +49,14 @@ class SessionRepository(BaseRepository):
     async def create(self, session_name: str, company_name: str, role_name: str, 
                      language: str, audio_source: str, user_id: Optional[uuid.UUID] = None,
                      job_description_id: Optional[uuid.UUID] = None) -> Session:
+        valid_user_id = None
+        if user_id:
+            user_exists = await self.db.get(User, user_id)
+            if user_exists:
+                valid_user_id = user_id
+
         session = Session(
-            user_id=user_id,
+            user_id=valid_user_id,
             session_name=session_name,
             company_name=company_name,
             role_name=role_name,
@@ -113,10 +119,17 @@ class QARepository(BaseRepository):
 
 class ResumeRepository(BaseRepository):
     async def create(self, user_id: Optional[uuid.UUID], file_name: str, parsed_content: str) -> Resume:
-        # deactivate previous active resumes first
+        # verify user exists in DB before attaching to prevent ForeignKeyViolationError
+        valid_user_id = None
         if user_id:
+            user_exists = await self.db.get(User, user_id)
+            if user_exists:
+                valid_user_id = user_id
+
+        # deactivate previous active resumes first
+        if valid_user_id:
             await self.db.execute(
-                update(Resume).where(Resume.user_id == user_id).values(is_active=False)
+                update(Resume).where(Resume.user_id == valid_user_id).values(is_active=False)
             )
         
         # Generate resume summaries using LLM
@@ -124,7 +137,7 @@ class ResumeRepository(BaseRepository):
         summaries = await generate_resume_summaries(parsed_content)
 
         resume = Resume(
-            user_id=user_id,
+            user_id=valid_user_id,
             file_name=file_name,
             parsed_content=parsed_content,
             is_active=True,
@@ -174,7 +187,13 @@ class ResumeRepository(BaseRepository):
 
 class KnowledgeRepository(BaseRepository):
     async def create(self, user_id: Optional[uuid.UUID], name: str, doc_type: str, content: str) -> KnowledgeDocument:
-        doc = KnowledgeDocument(user_id=user_id, document_name=name, document_type=doc_type, content=content)
+        valid_user_id = None
+        if user_id:
+            user_exists = await self.db.get(User, user_id)
+            if user_exists:
+                valid_user_id = user_id
+
+        doc = KnowledgeDocument(user_id=valid_user_id, document_name=name, document_type=doc_type, content=content)
         self.db.add(doc)
         await self.db.flush()
         return doc
@@ -201,11 +220,17 @@ class KnowledgeRepository(BaseRepository):
 
 class JDRepository(BaseRepository):
     async def create(self, user_id: Optional[uuid.UUID], company_name: str, role_name: str, description: str) -> JobDescription:
+        valid_user_id = None
         if user_id:
+            user_exists = await self.db.get(User, user_id)
+            if user_exists:
+                valid_user_id = user_id
+
+        if valid_user_id:
             await self.db.execute(
-                update(JobDescription).where(JobDescription.user_id == user_id).values(is_active=False)
+                update(JobDescription).where(JobDescription.user_id == valid_user_id).values(is_active=False)
             )
-        jd = JobDescription(user_id=user_id, company_name=company_name, role_name=role_name, description=description, is_active=True)
+        jd = JobDescription(user_id=valid_user_id, company_name=company_name, role_name=role_name, description=description, is_active=True)
         self.db.add(jd)
         await self.db.flush()
         return jd
