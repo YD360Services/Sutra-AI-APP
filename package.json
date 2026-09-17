@@ -13,6 +13,7 @@
     "dist:win": "electron-builder --win",
     "dist:mac": "electron-builder --mac",
     "dist:linux": "electron-builder --linux",
+    "dist:bootstrapper": "powershell -ExecutionPolicy Bypass -File ../installer/scripts/build_bootstrapper.ps1",
     "dist:all": "electron-builder -mwl"
   },
   "build": {
