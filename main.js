@@ -27,6 +27,67 @@ ipcMain.handle('get-pending-session-config', () => {
   return cfg;
 });
 
+// Register protocol client for roundmate:// and sutra://
+try {
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient('roundmate', process.execPath, [path.resolve(process.argv[1])]);
+      app.setAsDefaultProtocolClient('sutra', process.execPath, [path.resolve(process.argv[1])]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient('roundmate');
+    app.setAsDefaultProtocolClient('sutra');
+  }
+} catch (_) {}
+
+function parseProtocolUrl(urlStr) {
+  if (!urlStr || typeof urlStr !== 'string') return null;
+  if (!urlStr.startsWith('roundmate://') && !urlStr.startsWith('sutra://')) return null;
+
+  try {
+    const rawUrl = urlStr.replace(/^roundmate:\/\/start-session\/?\??/, 'http://dummy.local/?')
+                         .replace(/^sutra:\/\/start-session\/?\??/, 'http://dummy.local/?')
+                         .replace(/^roundmate:\/\/\??/, 'http://dummy.local/?')
+                         .replace(/^sutra:\/\/\??/, 'http://dummy.local/?');
+    const parsed = new URL(rawUrl);
+    const params = Object.fromEntries(parsed.searchParams.entries());
+    console.log('[Protocol Handler] Parsed deep link payload:', params);
+    return params;
+  } catch (err) {
+    console.error('[Protocol Handler] Error parsing protocol URL:', err);
+    return null;
+  }
+}
+
+function handleDeepLinkUrl(urlStr) {
+  const config = parseProtocolUrl(urlStr);
+  if (config) {
+    pendingSessionConfig = config;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      mainWindow.webContents.send('protocol-launch-session', config);
+    }
+  }
+}
+
+// Single Instance Lock handling for protocol deep links
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, commandLine) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+    const url = commandLine.find(arg => arg && (arg.startsWith('roundmate://') || arg.startsWith('sutra://')));
+    if (url) {
+      handleDeepLinkUrl(url);
+    }
+  });
+}
+
 // Helper to keep window bounds strictly inside the screen workspace.
 // Ensures navbar, transcript layer, and answer panel always remain fully visible on screen.
 function clampBoundsToScreen(x, y, width, height) {
