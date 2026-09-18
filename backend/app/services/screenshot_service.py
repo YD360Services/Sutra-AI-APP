@@ -1,9 +1,9 @@
-from google import genai
+﻿from google import genai
 from google.genai import types
 from app.core.config import settings
 from app.services.ai_service import (
-    genai_client,
-    openai_client,
+    get_gemini_client,
+    get_openai_client,
     log_prompt,
     log_response,
 )
@@ -16,29 +16,35 @@ def _pick_vision_model(preferred_model: str = None):
     """
     Pick the best vision-capable model.
     Priority:
-      1. If OpenAI key is available → use gpt-4o-mini (fast, cheap, vision-capable)
-      2. If Gemini key is available → use gemini-2.0-flash (vision-capable)
-      3. Raise so the endpoint can return a clear error.
+      1. If Gemini was requested or Gemini client is available -> use Gemini (fast, native multimodal)
+      2. If OpenAI client is available -> use gpt-4o or gpt-4o-mini
+      3. Otherwise raise ValueError with setup instructions.
     """
     model_lower = (preferred_model or "").lower()
+    gemini_client = get_gemini_client()
+    openai_client = get_openai_client()
 
-    # If the user explicitly requested a Gemini model, honour it (Gemini has vision)
-    if "gemini" in model_lower and settings.GEMINI_API_KEY and genai_client:
-        return ("gemini", "gemini-3.6-flash")
+    # If the user explicitly requested a Gemini model, honour it
+    if "gemini" in model_lower and gemini_client:
+        vision_model = settings.GEMINI_MODEL or "gemini-2.0-flash"
+        return ("gemini", vision_model, gemini_client)
 
-    # OpenAI vision path (maps gpt-5.5 / gpt-5.5-mini / gpt-5.6 -> gpt-4o-mini or gpt-4o)
-    if settings.OPENAI_API_KEY and openai_client:
+    # If OpenAI client is available
+    if openai_client:
         if preferred_model and any(k in model_lower for k in ["5.6", "4o", "heavy", "pro"]):
-            return ("openai", "gpt-4o")
-        return ("openai", "gpt-5.4-mini")
+            vision_model = "gpt-4o"
+        else:
+            vision_model = "gpt-4o-mini"
+        return ("openai", vision_model, openai_client)
 
-    # Fallback to Gemini even if the user didn't ask for it
-    if settings.GEMINI_API_KEY and genai_client:
-        return ("gemini", "gemini-3.6-flash")
+    # Fallback to Gemini if available
+    if gemini_client:
+        vision_model = settings.GEMINI_MODEL or "gemini-2.0-flash"
+        return ("gemini", vision_model, gemini_client)
 
     raise ValueError(
         "No vision-capable API key configured. "
-        "Add OPEN_API_KEY (OpenAI) or GEMINI_API_KEY to backend/.env"
+        "Add GEMINI_API_KEY or OPENAI_API_KEY to backend/.env"
     )
 
 
@@ -46,10 +52,10 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
     """Analyze a screenshot image and return a JSON string with 'question' and 'answer' keys."""
 
     try:
-        provider, vision_model = _pick_vision_model(model)
+        provider, vision_model, client = _pick_vision_model(model)
     except ValueError as e:
         logger.error(f"[Screenshot] No vision model available: {e}")
-        return f'{{"question":"Screenshot Question","answer":"No vision-capable API key configured. Add OPEN_API_KEY or GEMINI_API_KEY to backend/.env"}}'
+        return f'{{"question":"Screenshot Question","answer":"No vision-capable API key configured. Add GEMINI_API_KEY or OPENAI_API_KEY to backend/.env"}}'
 
     logger.info(f"[Screenshot] Using {provider} / {vision_model} (requested: {model!r})")
 
@@ -66,7 +72,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                 temperature=0.3,
                 stream=False,
             )
-            response = await openai_client.chat.completions.create(
+            response = await client.chat.completions.create(
                 model=vision_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -88,18 +94,16 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
             return content
         except Exception as e:
             logger.error(f"[Screenshot] OpenAI Vision error: {e}")
-            # Fall through to Gemini if available
-            if not (settings.GEMINI_API_KEY and genai_client):
+            gemini_client = get_gemini_client()
+            if not gemini_client:
                 return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via OpenAI: {str(e)}"}}'
             logger.info("[Screenshot] Falling back to Gemini vision...")
             provider = "gemini"
-            vision_model = settings.GEMINI_MODEL or "gemini-3.6-flash"
+            vision_model = settings.GEMINI_MODEL or "gemini-2.0-flash"
+            client = gemini_client
 
     # ── Gemini Vision ──────────────────────────────────────────────────────────
     if provider == "gemini":
-        if not genai_client:
-            logger.warning("[Screenshot] Gemini Client not configured for vision analysis.")
-            return '{"question":"Screenshot received","answer":"Add GEMINI_API_KEY in backend/.env to enable Gemini vision analysis."}'
         try:
             import asyncio
             loop = asyncio.get_event_loop()
@@ -114,7 +118,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
             )
             response = await loop.run_in_executor(
                 None,
-                lambda: genai_client.models.generate_content(
+                lambda: client.models.generate_content(
                     model=vision_model,
                     contents=[
                         types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
@@ -134,6 +138,6 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
             return content
         except Exception as e:
             logger.error(f"[Screenshot] Gemini Vision error: {e}")
-            return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot: {str(e)}"}}'
+            return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via Gemini: {str(e)}"}}'
 
     return '{"question":"Screenshot Question","answer":"No vision provider matched."}'
