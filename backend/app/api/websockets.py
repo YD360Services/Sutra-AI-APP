@@ -220,8 +220,11 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                 async def browser_to_speechmatics():
                     try:
                         while True:
-                            audio_chunk = await client_ws.receive_bytes()
-                            await sm_ws.send(audio_chunk)
+                            msg = await client_ws.receive()
+                            if "bytes" in msg and msg["bytes"]:
+                                await sm_ws.send(msg["bytes"])
+                            elif "text" in msg and msg["text"]:
+                                pass
                     except WebSocketDisconnect:
                         pass
                     except Exception as e:
@@ -289,8 +292,16 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
             async def browser_to_deepgram():
                 try:
                     while True:
-                        audio_chunk = await client_ws.receive_bytes()
-                        await dg_ws.send(audio_chunk)
+                        msg = await client_ws.receive()
+                        if "bytes" in msg and msg["bytes"]:
+                            await dg_ws.send(msg["bytes"])
+                        elif "text" in msg and msg["text"]:
+                            try:
+                                data = json.loads(msg["text"])
+                                if data.get("type") == "KeepAlive":
+                                    await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+                            except Exception:
+                                pass
                 except WebSocketDisconnect:
                     pass
                 except Exception as e:
