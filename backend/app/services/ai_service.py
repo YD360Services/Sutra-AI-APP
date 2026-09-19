@@ -200,7 +200,9 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if "qwen" in ml:
             return "qwen/qwen3.8-27b"
 
-        # ── 5. OpenAI 5-Series & Mini ──
+        # ── 5. OpenAI 6-Series & 5-Series (Astra / Luna) ──
+        if any(x in ml for x in ["astra", "gpt-6", "gpt6", "luna", "5.6-luna", "gpt5.6-luna"]):
+            return "gpt-5.6-luna"
         if any(x in ml for x in ["5.4", "5.5", "5.6", "5-mini", "5.4-mini", "5.5-mini"]):
             return "gpt-5.4-mini"
         if "4o-mini" in ml:

@@ -31,7 +31,7 @@ def _pick_vision_model(preferred_model: str = None):
 
     # If OpenAI client is available
     if openai_client:
-        if preferred_model and any(k in model_lower for k in ["5.6", "4o", "heavy", "pro"]):
+        if preferred_model and any(k in model_lower for k in ["astra", "luna", "6", "5.6", "4o", "heavy", "pro"]):
             vision_model = "gpt-4o"
         else:
             vision_model = "gpt-4o-mini"
