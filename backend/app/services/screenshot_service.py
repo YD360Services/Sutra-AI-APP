@@ -1,4 +1,4 @@
-﻿from google import genai
+from google import genai
 from google.genai import types
 from app.core.config import settings
 from app.services.ai_service import (
@@ -16,7 +16,7 @@ def _pick_vision_model(preferred_model: str = None):
     """
     Pick the best vision-capable model.
     Priority:
-      1. If Gemini was requested or Gemini client is available -> use Gemini (fast, native multimodal)
+      1. If Gemini was requested or Gemini client is available -> use gemini-3.6-flash
       2. If OpenAI client is available -> use gpt-4o or gpt-4o-mini
       3. Otherwise raise ValueError with setup instructions.
     """
@@ -24,10 +24,14 @@ def _pick_vision_model(preferred_model: str = None):
     gemini_client = get_gemini_client()
     openai_client = get_openai_client()
 
+    # Determine reliable Gemini vision model identifier
+    gemini_model = "gemini-3.6-flash"
+    if settings.GEMINI_MODEL and not any(old in settings.GEMINI_MODEL for old in ["1.5", "2.0", "2.5"]):
+        gemini_model = settings.GEMINI_MODEL
+
     # If the user explicitly requested a Gemini model, honour it
     if "gemini" in model_lower and gemini_client:
-        vision_model = settings.GEMINI_MODEL or "gemini-2.0-flash"
-        return ("gemini", vision_model, gemini_client)
+        return ("gemini", gemini_model, gemini_client)
 
     # If OpenAI client is available
     if openai_client:
@@ -39,12 +43,11 @@ def _pick_vision_model(preferred_model: str = None):
 
     # Fallback to Gemini if available
     if gemini_client:
-        vision_model = settings.GEMINI_MODEL or "gemini-2.0-flash"
-        return ("gemini", vision_model, gemini_client)
+        return ("gemini", gemini_model, gemini_client)
 
     raise ValueError(
         "No vision-capable API key configured. "
-        "Add GEMINI_API_KEY or OPENAI_API_KEY to backend/.env"
+        "Add GEMINI_API_KEY or OPENAI_API_KEY to your environment variables."
     )
 
 
@@ -55,7 +58,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
         provider, vision_model, client = _pick_vision_model(model)
     except ValueError as e:
         logger.error(f"[Screenshot] No vision model available: {e}")
-        return f'{{"question":"Screenshot Question","answer":"No vision-capable API key configured. Add GEMINI_API_KEY or OPENAI_API_KEY to backend/.env"}}'
+        return f'{{"question":"Screenshot Question","answer":"No vision-capable API key configured. Please add GEMINI_API_KEY or OPENAI_API_KEY to your backend environment on Render."}}'
 
     logger.info(f"[Screenshot] Using {provider} / {vision_model} (requested: {model!r})")
 
@@ -99,7 +102,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                 return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via OpenAI: {str(e)}"}}'
             logger.info("[Screenshot] Falling back to Gemini vision...")
             provider = "gemini"
-            vision_model = settings.GEMINI_MODEL or "gemini-2.0-flash"
+            vision_model = "gemini-3.6-flash"
             client = gemini_client
 
     # ── Gemini Vision ──────────────────────────────────────────────────────────
