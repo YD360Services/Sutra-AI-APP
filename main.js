@@ -1216,7 +1216,10 @@ function createWindow() {
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
         }
-        if (m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
+        if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('luna') || m.includes('5.6-luna')) {
+          return 'gpt-5.6-luna';
+        }
+        if (m.includes('sol') || m.includes('5.6-sol') || m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
           return 'gpt-5.4-mini';
         }
         if (m.includes('4o-mini')) {
@@ -1296,8 +1299,11 @@ function createWindow() {
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
         }
-        if (m.includes('5.6') || m.includes('4o')) {
+        if (m.includes('astra') || m.includes('luna') || m.includes('6') || m.includes('5.6') || m.includes('4o')) {
           return 'gpt-4o';
+        }
+        if (m.includes('sol')) {
+          return 'gpt-4o-mini';
         }
         if (m.includes('gpt') || m.includes('5.5') || m.includes('mini')) {
           return 'gpt-4o-mini';

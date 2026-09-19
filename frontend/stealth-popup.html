@@ -138,7 +138,9 @@
       <label style="display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 6px; letter-spacing: 0.05em;">🧠 AI Model</label>
       <select id="model" style="width: 100%; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; color: #fff; font-family: inherit; font-size: 12px; outline: none; transition: all 0.2s; cursor: pointer;">
         <optgroup label="── OpenAI ──" style="color: #94a3b8;">
-          <option value="gpt-5.5" selected>GPT 5.5</option>
+          <option value="gpt-6-astra" selected>GPT 6 Astra</option>
+          <option value="gpt-5.6">GPT 5.6 Sol</option>
+          <option value="gpt-5.5">GPT 5.5</option>
           <option value="gpt-5.5-mini">GPT 5.5 Mini</option>
           <option value="gptoss">OpenAI o3-mini (GPTOSS)</option>
         </optgroup>
@@ -235,7 +237,7 @@ document.getElementById('launchBtn').addEventListener('click', async function() 
     role: document.getElementById('role').value.trim() || 'Software Engineer',
     jd: document.getElementById('jd').value.trim(),
     resume: document.getElementById('resume').value.trim(),
-    model: document.getElementById('model').value || 'gpt-5.5'
+    model: document.getElementById('model').value || 'gpt-6-astra'
   };
 
   // If opened inside Electron natively, use IPC
