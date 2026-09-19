@@ -46,7 +46,7 @@ async def create_transcript_block(
     block = await repo.create(
         session_id=session_uuid,
         speaker=payload.speaker,
-        content=payload.content,
+        content=payload.get_content(),
         source=payload.source
     )
     await db.commit()
