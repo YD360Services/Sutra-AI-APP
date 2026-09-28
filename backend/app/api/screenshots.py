@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 import os
+import re
 from datetime import datetime
 
 from app.db.database import get_db
@@ -136,7 +137,7 @@ async def upload_screenshot(
     )
 
     # 3. Parse Response
-    question = "Screenshot Question"
+    question = "Question from Screenshot"
     answer = raw_response
 
     try:
@@ -157,8 +158,18 @@ async def upload_screenshot(
         
         # Use strict=False to allow literal newlines and control characters inside JSON strings
         data = json.loads(cleaned, strict=False)
-        question = data.get("question", "Screenshot Question").strip() or "Screenshot Question"
+        parsed_q = data.get("question", "").strip()
         answer = data.get("answer", raw_response).strip()
+        
+        if parsed_q and parsed_q.lower() != "screenshot question":
+            question = parsed_q
+        else:
+            # Fallback heuristic: extract question/title from answer if available
+            match = re.search(r'(?:^|\n)(?:#+|\*\*|Q:|Question:)\s*([^\n\r]+)', answer)
+            if match and match.group(1).strip():
+                question = match.group(1).strip().strip('*').strip(':').strip()
+            else:
+                question = "Question from Screenshot"
     except Exception as e:
         logger.warning(f"Failed to parse vision response as JSON: {e}. Raw response: {raw_response}")
 

@@ -4576,7 +4576,7 @@ async function solveFromScreenshot() {
   if (activeTab !== 'ai') openPanel('ai');
 
   // Add new entry to history for horizontal carousel
-  const newEntry = { question: '[Screen Capture]', answer: 'Taking screenshot...', totalTimeSec: '' };
+  const newEntry = { question: 'Analyzing screen question...', answer: 'Taking screenshot...', totalTimeSec: '' };
   answerHistory.push(newEntry);
   currentAnswerIndex = answerHistory.length - 1;
   updateAnswerNav();
@@ -4587,20 +4587,9 @@ async function solveFromScreenshot() {
     newEntry.answer = 'Analyzing with vision AI...';
     renderActiveAnswer();
 
-    const prompt = `Analyze the provided screenshot of the screen. Find the question, coding problem, or conceptual statement visible on the screen.
+    let answer = '';
+    let detectedQuestion = '';
 
-Rules:
-1. If the screenshot shows a coding problem or request to write code:
-   - CRITICAL: You MUST write the code solution in the EXACT programming language shown or implied in the screenshot's code editor, starter code, or description (e.g., if you see Java syntax, classes, or imports, you MUST write the solution in Java. If you see C++, write it in C++. If you see JS, write it in JS). Do NOT default to Python unless the screenshot explicitly requests Python.
-   - At the very top, write a single line summarizing the basic question in 1 sentence. Start the line with "// Question: " (or appropriate comment syntax for the language).
-   - Followed by a blank line.
-   - Then write the clean, fully functional, optimal code solution in that detected language.
-   - The code solution MUST NOT contain any comments (no inline comments, no block comments, no docstrings) or markdown code block formatting (like \`\`\`).
-2. If the screenshot shows a conceptual, theoretical, or verbal question (such as explaining OOP, architecture, system design, or definitions):
-   - Do NOT output any code blocks or code syntax.
-   - Provide a natural, conversational explanation in plain English paragraphs, as if speaking to an interviewer. Keep it concise.`;
-
-    let answer;
     if (backendUrl) {
       const preferredModel = document.getElementById('setup-model-select').value;
       const res = await window.electronAPI.solveScreenshotBackend({
@@ -4609,11 +4598,49 @@ Rules:
         model: preferredModel
       });
       if (res.error) throw new Error(res.error);
-      answer = res.answer;
+      answer = res.answer || '';
+      detectedQuestion = (res.question || '').trim();
     } else {
-      answer = await window.electronAPI.queryGemini(prompt, base64Image);
+      const prompt = `Analyze the provided screenshot of the screen. Find the question, coding problem, or conceptual statement visible on the screen.
+
+JSON OUTPUT FORMAT:
+Your ENTIRE response MUST be valid JSON with exactly two keys: "question" and "answer".
+{
+  "question": "<exact problem title or 1-sentence clean summary of the question in the screenshot>",
+  "answer": "<complete, functional, optimal code solution or conversational explanation>"
+}
+
+Rules:
+1. If the screenshot shows a coding problem or request to write code:
+   - CRITICAL: You MUST write the code solution in the EXACT programming language shown or implied in the screenshot's code editor, starter code, or description (e.g., if you see Java syntax, classes, or imports, you MUST write the solution in Java. If you see C++, write it in C++. If you see JS, write it in JS). Do NOT default to Python unless the screenshot explicitly requests Python.
+   - The code solution MUST NOT contain any comments (no inline comments, no block comments, no docstrings) or markdown code block formatting (like \`\`\`).
+2. If the screenshot shows a conceptual, theoretical, or verbal question:
+   - Do NOT output any code blocks or code syntax.
+   - Provide a natural, conversational explanation in plain English paragraphs, as if speaking to an interviewer. Keep it concise.`;
+
+      const rawAnswer = await window.electronAPI.queryGemini(prompt, base64Image);
+      try {
+        let clean = rawAnswer.trim();
+        if (clean.startsWith('```json')) clean = clean.slice(7);
+        if (clean.startsWith('```')) clean = clean.slice(3);
+        if (clean.endsWith('```')) clean = clean.slice(0, -3);
+        const parsed = JSON.parse(clean.trim());
+        detectedQuestion = (parsed.question || '').trim();
+        answer = parsed.answer || rawAnswer;
+      } catch (_) {
+        answer = rawAnswer;
+      }
     }
 
+    // Fallback extraction: if detectedQuestion is generic or missing, extract from answer content
+    if (!detectedQuestion || detectedQuestion.toLowerCase() === 'screenshot question' || detectedQuestion.toLowerCase() === 'question from screen') {
+      const qMatch = answer.match(/(?:\/\/|#|\*\*|Q:)\s*(?:Question|Problem|Title)?[:\s]*([^\n\r]+)/i);
+      if (qMatch && qMatch[1].trim()) {
+        detectedQuestion = qMatch[1].trim().replace(/^[:\-\s]+/, '');
+      }
+    }
+
+    newEntry.question = detectedQuestion || 'Question from Screenshot';
     newEntry.answer = answer;
     const _screenshotMs = Date.now() - _screenshotStart;
     const _screenshotSec = (_screenshotMs / 1000).toFixed(1);
@@ -4622,6 +4649,7 @@ Rules:
     renderActiveAnswer();
   } catch (err) {
     console.error('[Solve Screen Error]', err);
+    newEntry.question = 'Screenshot Capture Error';
     newEntry.answer = `// Error: ${err.message}`;
     renderActiveAnswer();
   } finally {
