@@ -185,8 +185,14 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
     # Track this active socket connection in Redis
     await redis_cache.track_websocket(session_id, client_id, register=True)
 
-    # FIX #5: Drive Speechmatics vs Deepgram via env/config — set USE_SPEECHMATICS=false in .env to force Deepgram.
-    use_speechmatics = settings.USE_SPEECHMATICS
+    # Client can force provider via query parameter ?provider=deepgram or ?provider=speechmatics
+    requested_provider = (client_ws.query_params.get('provider') or client_ws.query_params.get('engine') or '').lower()
+    if requested_provider == 'deepgram':
+        use_speechmatics = False
+    elif requested_provider in ('speechmatics', 'sm'):
+        use_speechmatics = True
+    else:
+        use_speechmatics = settings.USE_SPEECHMATICS
     
     if use_speechmatics:
         sm_url = "wss://eu.rt.speechmatics.com/v2"

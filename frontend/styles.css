@@ -343,7 +343,6 @@ body.resizing, body.resizing * {
 .ctrl-btn.close[data-label]::after,
 .ctrl-btn:last-child[data-label]::after,
 #settings-close-btn[data-tooltip]::after,
-#dev-stealth-toggle-btn[data-tooltip]::after,
 [data-tooltip-pos="right"]::after {
   left: auto !important;
   right: 0 !important;
@@ -1359,7 +1358,6 @@ a,
 
 [data-tooltip-pos="right"]:hover::after,
 #settings-close-btn[data-tooltip]:hover::after,
-#dev-stealth-toggle-btn[data-tooltip]:hover::after,
 #quit-app-btn[data-tooltip]:hover::after,
 #recent-view-quit-btn[data-tooltip]:hover::after {
   left: auto !important;

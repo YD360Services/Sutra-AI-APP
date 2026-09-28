@@ -714,13 +714,12 @@ function createWindow() {
     }
   });
 
-  // Handle content protection toggle (Dev Stealth Mode ON/OFF)
+  // Content protection is permanently enforced (Dev Stealth Mode removed)
   ipcMain.on('set-content-protection', (event, enable) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed() && typeof win.setContentProtection === 'function') {
-      const shouldProtect = Boolean(enable);
-      win.setContentProtection(shouldProtect);
-      console.log(`[Stealth Mode] Content protection toggled to: ${shouldProtect}`);
+      win.setContentProtection(true);
+      console.log('[Stealth Mode] Content protection enforced: true');
     }
   });
 
@@ -897,20 +896,12 @@ function createWindow() {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width, height } = primaryDisplay.size;
 
-      // Temporarily disable content protection so desktopCapturer
-      // can capture what's on screen (other apps, coding problems etc.)
-      // The stealth bar itself is already excluded from screen capture
-      // by virtue of the OS-level protection on all other frames.
-      mainWindow.setContentProtection(false);
-      await wait(150); // brief settle time
-
+      // Maintain OS-level content protection on mainWindow so it is never exposed
+      // to meeting software (Zoom, Teams, Meet) or local captures.
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
         thumbnailSize: { width: Math.round(width), height: Math.round(height) }
       });
-
-      // Re-enable content protection immediately after capture
-      mainWindow.setContentProtection(true);
 
       if (sources.length === 0) {
         throw new Error('No screen sources found');

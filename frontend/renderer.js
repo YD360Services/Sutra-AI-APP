@@ -35,8 +35,6 @@ const opacityPlus = document.getElementById('opacity-plus');
 const fontSizeInput = document.getElementById('font-size-input');
 const fontSizeMinus = document.getElementById('font-size-minus');
 const fontSizePlus = document.getElementById('font-size-plus');
-const devStealthToggleBtn = document.getElementById('dev-stealth-toggle-btn');
-const stealthModeLabel = document.getElementById('stealth-mode-label');
 const openShortcutsBtn = document.getElementById('open-shortcuts-btn');
 const shortcutsBackBtn = document.getElementById('shortcuts-back-btn');
 const shortcutsSubpopup = document.getElementById('shortcuts-subpopup');
@@ -3221,19 +3219,13 @@ function updateClickThrough(clientX, clientY) {
     if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
       window.electronAPI.setIgnoreMouseEvents(false);
     }
-    if (!isMouseInsideWindow) {
-      isMouseInsideWindow = true;
-      updateWindowSize();
-    }
+    isMouseInsideWindow = true;
   } else {
     // Pass clicks through transparent gaps to bottom applications
     if (window.electronAPI && window.electronAPI.setIgnoreMouseEvents) {
       window.electronAPI.setIgnoreMouseEvents(true, { forward: true });
     }
-    if (isMouseInsideWindow) {
-      isMouseInsideWindow = false;
-      updateWindowSize();
-    }
+    isMouseInsideWindow = false;
   }
 
   const appCont = document.querySelector('.app-container');
@@ -6373,35 +6365,6 @@ function setupRecorder(btnId, actionKey) {
 }
 
 // ── Settings Popup Feature Handlers ──────────────────────────────────────────
-
-// Dev Stealth Mode Toggle
-let isDevStealthOn = true;
-
-if (devStealthToggleBtn) {
-  devStealthToggleBtn.addEventListener('click', () => {
-    isDevStealthOn = !isDevStealthOn;
-    if (window.electronAPI && window.electronAPI.setContentProtection) {
-      window.electronAPI.setContentProtection(isDevStealthOn);
-    }
-    if (isDevStealthOn) {
-      devStealthToggleBtn.textContent = 'ON';
-      devStealthToggleBtn.style.background = 'rgba(20, 184, 166, 0.15)';
-      devStealthToggleBtn.style.color = '#2dd4bf';
-      if (stealthModeLabel) {
-        stealthModeLabel.textContent = 'ON (Protected)';
-        stealthModeLabel.style.color = '#2dd4bf';
-      }
-    } else {
-      devStealthToggleBtn.textContent = 'OFF';
-      devStealthToggleBtn.style.background = 'rgba(239, 68, 68, 0.15)';
-      devStealthToggleBtn.style.color = '#fca5a5';
-      if (stealthModeLabel) {
-        stealthModeLabel.textContent = 'OFF (Visible)';
-        stealthModeLabel.style.color = '#fca5a5';
-      }
-    }
-  });
-}
 
 // Shortcuts Sub-Popup Navigation
 const settingsPopupEl = document.getElementById('settings-popup');
