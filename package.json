@@ -69,7 +69,10 @@
       "uninstallDisplayName": "RM",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "differentialPackage": false,
+      "include": "installer.nsh"
     },
     "portable": {
       "artifactName": "${productName} Portable ${version}.${ext}"
@@ -125,6 +128,7 @@
       "preload.js",
       "server.js",
       "launch.js",
+      "updater.js",
       "frontend/**/*",
       "icon.ico",
       ".env",
