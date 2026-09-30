@@ -25,7 +25,7 @@ def _pick_vision_model(preferred_model: str = None):
     openai_client = get_openai_client()
 
     # Determine reliable Gemini vision model identifier
-    gemini_model = "gemini-3.6-flash"
+    gemini_model = "gemini-3.8-flash-lite-tts"
     if settings.GEMINI_MODEL and not any(old in settings.GEMINI_MODEL for old in ["1.5", "2.0", "2.5"]):
         gemini_model = settings.GEMINI_MODEL
 
@@ -82,7 +82,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Answer the question visible in this screenshot."},
+                            {"type": "text", "text": "Extract the exact question/problem visible in this screenshot into \"question\", and answer it fully in \"answer\"."},
                             {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
                         ],
                     },
@@ -125,7 +125,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                     model=vision_model,
                     contents=[
                         types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                        "Answer the question visible in this screenshot.",
+                        "Extract the exact question/problem visible in this screenshot into \"question\", and answer it fully in \"answer\".",
                     ],
                     config=types.GenerateContentConfig(
                         system_instruction=system_prompt,

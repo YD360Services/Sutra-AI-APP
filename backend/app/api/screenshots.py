@@ -81,10 +81,14 @@ UNIVERSAL 360-DEGREE EXHAUSTIVE ANALYSIS MANDATES:
    - For coding/algorithms, detect the EXACT programming language shown or implied (Java, C++, C, Python, Verilog/VHDL, JS, SQL, Rust, Go) and write the complete, optimal, bug-free code solution.
    - Highlight correct options for MCQs.
 
+CRITICAL MANDATE FOR "question" FIELD:
+- You MUST extract, transcribe, or clearly summarize the EXACT title, problem statement, or question visible in the screenshot (e.g. "LeetCode 206: Reverse Linked List", "Explain the working of 8051 Microcontroller Timer 0", "Calculate the subnet mask for 192.168.1.0/26", "What is the output of the following Java snippet?").
+- NEVER use generic placeholders like "Screenshot Question", "Question from Screenshot", "Screen Captured", or "No question found". Transcribe the actual question prompt visible on screen.
+
 JSON OUTPUT FORMAT:
 Your ENTIRE response MUST be valid JSON with exactly two keys: "question" and "answer".
 {
-  "question": "<1-sentence clean summary of the problem in the screenshot>",
+  "question": "<exact problem title or verbatim transcription of the question visible in the screenshot>",
   "answer": "<complete, exhaustive 360-degree technical solution covering Full Forms, Working Principle, Pin Diagram/Specs, Flow Sequence, Predicted Next Steps, and Exact Answer/Code>"
 }
 """.strip()
@@ -161,15 +165,25 @@ async def upload_screenshot(
         parsed_q = data.get("question", "").strip()
         answer = data.get("answer", raw_response).strip()
         
-        if parsed_q and parsed_q.lower() != "screenshot question":
+        generic_markers = {
+            "screenshot question", "question from screenshot", "screen capture question",
+            "screen captured", "screenshot captured", "question from screen", "screen question"
+        }
+        if parsed_q and parsed_q.lower() not in generic_markers:
             question = parsed_q
         else:
             # Fallback heuristic: extract question/title from answer if available
-            match = re.search(r'(?:^|\n)(?:#+|\*\*|Q:|Question:)\s*([^\n\r]+)', answer)
+            match = re.search(r'(?:^|\n)(?:#+|\*\*|Q:|Question:|Problem:)\s*([^\n\r]+)', answer)
             if match and match.group(1).strip():
-                question = match.group(1).strip().strip('*').strip(':').strip()
+                question = match.group(1).strip().strip('*').strip(':').strip().strip('#').strip()
+            elif parsed_q:
+                question = parsed_q
             else:
-                question = "Question from Screenshot"
+                first_line = answer.strip().split('\n')[0].strip().strip('#').strip('*').strip()
+                if len(first_line) > 5 and len(first_line) < 120 and not first_line.startswith(('def ', 'class ', 'import ', 'public ', '#include', '//', '/*')):
+                    question = first_line
+                else:
+                    question = "Question from Screenshot"
     except Exception as e:
         logger.warning(f"Failed to parse vision response as JSON: {e}. Raw response: {raw_response}")
 

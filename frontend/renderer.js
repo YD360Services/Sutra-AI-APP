@@ -1,3 +1,127 @@
+// Unified Model Definitions & Hierarchy (synchronized with Sutra AI Web)
+const MODEL_OPTIONS = [
+  // -- OpenAI --
+  {
+    value: 'gpt-6-luna',
+    label: 'GPT 6 Astra',
+    provider: 'GPT',
+    recommendedFor: 'Next-generation OpenAI flagship with Astra reasoning engine for deep coding, system architecture, and real-time interview intelligence.',
+    isRecommended: true,
+    category: 'quality',
+    latencyMs: '~210ms',
+    tags: [
+      { text: 'Flagship', variant: 'recommended' },
+      { text: 'Astra Engine', variant: 'reasoning' },
+      { text: 'Architecture', variant: 'quality' },
+    ]
+  },
+  {
+    value: 'gpt-5.6',
+    label: 'GPT 5.6 Sol',
+    provider: 'GPT',
+    recommendedFor: 'OpenAI high-precision model (Sol Engine) for coding, architecture, and complex multi-part interview questions.',
+    category: 'quality',
+    latencyMs: '~220ms',
+    tags: [
+      { text: 'Sol Engine', variant: 'reasoning' },
+      { text: 'Architecture', variant: 'quality' },
+    ]
+  },
+  {
+    value: 'gptoss',
+    label: 'OpenAI o3-mini (GPTOSS)',
+    provider: 'GPT',
+    recommendedFor: 'OpenAI reasoning model for logical, algorithmic, and system design problems.',
+    category: 'quality',
+    latencyMs: '~600ms',
+    tags: [
+      { text: 'Algorithmic', variant: 'reasoning' },
+      { text: 'Logic & Math', variant: 'quality' },
+    ]
+  },
+  // -- Google Gemini --
+  {
+    value: 'gemini-3.8-flash-lite-tts',
+    label: 'Gemini 3.8 Flash',
+    provider: 'Gemini',
+    recommendedFor: 'Recommended for Live Audio Sessions with sub-220ms voice response latency and hybrid reasoning.',
+    isRecommended: true,
+    category: 'fast',
+    latencyMs: '~180ms',
+    tags: [
+      { text: 'Live Voice', variant: 'recommended' },
+      { text: 'Sub-220ms', variant: 'fast' },
+      { text: 'Best for Live', variant: 'recommended' },
+    ]
+  },
+  {
+    value: 'gemini-3.7-flash',
+    label: 'Gemini 3.7 Flash',
+    provider: 'Gemini',
+    recommendedFor: 'High-speed Google reasoning model with low latency and deep technical analysis.',
+    isRecommended: true,
+    category: 'quality',
+    latencyMs: '~220ms',
+    tags: [
+      { text: 'Hybrid Reasoning', variant: 'reasoning' },
+      { text: 'Sub-220ms', variant: 'fast' },
+      { text: 'Recommended', variant: 'recommended' },
+    ]
+  },
+  // -- Anthropic Claude --
+  {
+    value: 'claude-haiku',
+    label: 'Claude Haiku 4.5',
+    provider: 'Claude',
+    recommendedFor: 'Blazing fast real-time live interview answers. Billed at $1/M input, $5/M output.',
+    category: 'fast',
+    latencyMs: '~200ms',
+    tags: [
+      { text: 'Spoken Prep', variant: 'recommended' },
+      { text: 'Sub-200ms', variant: 'fast' },
+    ]
+  },
+  {
+    value: 'claude-sonnet',
+    label: 'Claude Sonnet 5',
+    provider: 'Claude',
+    recommendedFor: 'Sonnet flagship - best for complex coding & system design. Billed at $2/M input, $10/M output.',
+    isRecommended: true,
+    category: 'quality',
+    latencyMs: '~380ms',
+    tags: [
+      { text: 'Deep Coding', variant: 'quality' },
+      { text: 'System Design', variant: 'reasoning' },
+      { text: 'Recommended', variant: 'recommended' },
+    ]
+  },
+  // -- Meta / Open Source (Groq) --
+  {
+    value: 'llama-4-scout',
+    label: 'Llama 4 Scout (Groq)',
+    provider: 'Llama',
+    recommendedFor: 'Next-gen Meta Llama 4 Scout architecture hosted on ultra-fast Groq LPU hardware.',
+    category: 'fast',
+    latencyMs: '~150ms',
+    tags: [
+      { text: 'Groq LPU', variant: 'fast' },
+      { text: 'Open Weights', variant: 'neutral' },
+    ]
+  },
+  {
+    value: 'gpt-oss-20b',
+    label: 'GPT-OSS 20B (Groq)',
+    provider: 'Llama',
+    recommendedFor: 'High-speed open-weight model for rapid Q&A and coding assistance.',
+    category: 'fast',
+    latencyMs: '~130ms',
+    tags: [
+      { text: 'Ultra-Low Latency', variant: 'fast' },
+      { text: 'Groq Speed', variant: 'neutral' },
+    ]
+  },
+];
+
 // Setup form elements
 const setupView = document.getElementById('setup-view');
 const toolbarView = document.getElementById('toolbar-view');
@@ -340,7 +464,10 @@ async function applySessionConfig(config) {
 
   if (config.model) {
     const modelSelect = document.getElementById('setup-model-select');
-    if (modelSelect) modelSelect.value = config.model;
+    if (modelSelect) {
+      const normalizedModel = config.model === 'gpt-6-astra' ? 'gpt-6-luna' : config.model;
+      modelSelect.value = normalizedModel;
+    }
   }
   if (config.language) {
     const languageSelect = document.getElementById('setup-language-select');
@@ -2489,7 +2616,7 @@ if (editSessionSaveBtn) {
     const isPrompt = docObj ? (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt') || docObj.document_name.toLowerCase().includes('instruction')) : false;
 
     try {
-      const currentModel = document.getElementById('setup-model-select')?.value || 'gemini-flash';
+      const currentModel = document.getElementById('setup-model-select')?.value || 'gpt-6-luna';
       await window.electronAPI.saveL4Context({
         resume,
         resume_id: newResumeId || '',
@@ -4576,7 +4703,7 @@ async function solveFromScreenshot() {
   if (activeTab !== 'ai') openPanel('ai');
 
   // Add new entry to history for horizontal carousel
-  const newEntry = { question: 'Analyzing screen question...', answer: 'Taking screenshot...', totalTimeSec: '' };
+  const newEntry = { question: 'Reading question from screen...', answer: 'Taking screenshot...', totalTimeSec: '' };
   answerHistory.push(newEntry);
   currentAnswerIndex = answerHistory.length - 1;
   updateAnswerNav();
@@ -4633,10 +4760,25 @@ Rules:
     }
 
     // Fallback extraction: if detectedQuestion is generic or missing, extract from answer content
-    if (!detectedQuestion || detectedQuestion.toLowerCase() === 'screenshot question' || detectedQuestion.toLowerCase() === 'question from screen') {
-      const qMatch = answer.match(/(?:\/\/|#|\*\*|Q:)\s*(?:Question|Problem|Title)?[:\s]*([^\n\r]+)/i);
+    const genericQuestionList = [
+      'screenshot question',
+      'question from screen',
+      'question from screenshot',
+      'screen captured',
+      'screen capture question',
+      'screenshot captured',
+      'reading question from screen...',
+      'analyzing screen question...'
+    ];
+    if (!detectedQuestion || genericQuestionList.includes(detectedQuestion.toLowerCase())) {
+      const qMatch = answer.match(/(?:^|\n)(?:#+|\*\*|Q:|Question:|Problem:)\s*([^\n\r]+)/i);
       if (qMatch && qMatch[1].trim()) {
-        detectedQuestion = qMatch[1].trim().replace(/^[:\-\s]+/, '');
+        detectedQuestion = qMatch[1].trim().replace(/^[:\-\s*#]+/, '');
+      } else {
+        const firstLine = answer.split('\n')[0]?.trim().replace(/^[:\-\s*#]+/, '') || '';
+        if (firstLine.length > 5 && firstLine.length < 120 && !firstLine.startsWith('def ') && !firstLine.startsWith('class ') && !firstLine.startsWith('import ') && !firstLine.startsWith('#include') && !firstLine.startsWith('//')) {
+          detectedQuestion = firstLine;
+        }
       }
     }
 
