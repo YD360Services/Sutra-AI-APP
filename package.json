@@ -72,6 +72,8 @@
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false,
       "differentialPackage": false,
+      "displayLanguageSelector": true,
+      "warningsAsErrors": false,
       "include": "installer.nsh"
     },
     "portable": {

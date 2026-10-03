@@ -2259,6 +2259,24 @@ if (!gotTheLock) {
     createWindow();
     setupSystemTray();
 
+    // Start auto-updater silently in background
+    setTimeout(async () => {
+      try {
+        const AppUpdater = require('./updater.js');
+        const updater = new AppUpdater(app.getVersion());
+        const updateInfo = await updater.checkForUpdates();
+        if (updateInfo && updateInfo.hasUpdate) {
+          console.log(`[Updater] Found update to ${updateInfo.version}, downloading...`);
+          const targetPath = path.join(app.getPath('temp'), `RM-Update-${updateInfo.version}.exe`);
+          await updater.downloadUpdate(updateInfo.downloadUrl, targetPath, updateInfo.sha256);
+          console.log('[Updater] Download complete. Restarting to install...');
+          updater.installAndRelaunch(targetPath, true);
+        }
+      } catch (err) {
+        console.error('[Updater] Error during background update check:', err.message);
+      }
+    }, 5000); // Wait 5s before checking to avoid blocking startup
+
     // Start local server only on the single main instance
     server.listen(48999, '127.0.0.1', () => {
       console.log('Stealth controller listening on port 48999');

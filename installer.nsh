@@ -37,10 +37,14 @@
   ${EndIf}
 
   ; If legacy uninstaller exists, trigger silent uninstall of old version entry before new install
-  ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Roundmate AI" "UninstallString"
+  ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Roundmate AI" "QuietUninstallString"
   ${If} $1 != ""
-  ${AndIf} ${FileExists} "$1"
-    ExecWait '$1 /S _?=$0'
+    ExecWait '$1'
+  ${Else}
+    ReadRegStr $1 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Roundmate AI" "UninstallString"
+    ${If} $1 != ""
+      ExecWait '$1 /S _?=$INSTDIR'
+    ${EndIf}
   ${EndIf}
 !macroend
 
