@@ -530,6 +530,49 @@ SYSTEM MANDATE & INSTRUCTIONS:
             stored_introduction = resume_obj.introduction
             logger.info("Found stored introduction for question: " + latest_question)
 
+    # 8. Incorporate client-sent QA history & full transcript (essential for stateless / zero-Redis mode)
+    qa_history_entries = []
+    if getattr(payload, 'qa_history', None) and isinstance(payload.qa_history, list):
+        for item in payload.qa_history:
+            if isinstance(item, dict) and item.get('question'):
+                q_txt = str(item.get('question', '')).strip()
+                a_txt = str(item.get('answer', '')).strip()
+                if a_txt:
+                    a_snippet = a_txt[:300] + '...' if len(a_txt) > 300 else a_txt
+                    qa_history_entries.append(f"Q: {q_txt}\nA: {a_snippet}")
+                elif q_txt:
+                    qa_history_entries.append(f"Q: {q_txt}")
+
+    if qa_history_entries and context_prompt:
+        formatted_qa = "\n\n".join(qa_history_entries)
+        if "RECENT INTERVIEW Q&A:\nNone." in context_prompt:
+            context_prompt = context_prompt.replace(
+                "RECENT INTERVIEW Q&A:\nNone.",
+                f"RECENT INTERVIEW Q&A (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}"
+            )
+        elif "RECENT SESSION Q&A HISTORY:\nNone." in context_prompt:
+            context_prompt = context_prompt.replace(
+                "RECENT SESSION Q&A HISTORY:\nNone.",
+                f"RECENT SESSION Q&A HISTORY (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}"
+            )
+        elif "RECENT INTERVIEW Q&A:" in context_prompt:
+            context_prompt = context_prompt.replace(
+                "RECENT INTERVIEW Q&A:",
+                f"RECENT INTERVIEW Q&A (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}\n\n[PRIOR DB Q&A]:"
+            )
+        elif "RECENT SESSION Q&A HISTORY:" in context_prompt:
+            context_prompt = context_prompt.replace(
+                "RECENT SESSION Q&A HISTORY:",
+                f"RECENT SESSION Q&A HISTORY (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}\n\n[PRIOR DB Q&A]:"
+            )
+
+    if raw_transcript and raw_transcript.strip() and context_prompt:
+        transcript_block = f"FULL CONVERSATION TRANSCRIPT (CHRONOLOGICAL):\n{raw_transcript.strip()}\n\n"
+        if "LATEST QUESTION TO ANSWER:" in context_prompt:
+            context_prompt = context_prompt.replace("LATEST QUESTION TO ANSWER:", f"{transcript_block}LATEST QUESTION TO ANSWER:")
+        elif "QUESTION TO ANSWER:" in context_prompt:
+            context_prompt = context_prompt.replace("QUESTION TO ANSWER:", f"{transcript_block}QUESTION TO ANSWER:")
+
     return _AnswerContext(
         session=session,
         session_uuid=session_uuid,

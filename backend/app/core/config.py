@@ -23,12 +23,12 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
-    USE_SPEECHMATICS: bool = True
+    USE_SPEECHMATICS: bool = False
     
     # Standard Production Real Model Identifiers
-    GEMINI_MODEL: str = "gemini-3.6-flash"
+    GEMINI_MODEL: str = "gemini-3.8-flash-lite-tts"
     DEEPGRAM_MODEL: str = "nova-2"
-    OPENAI_MODEL: str = "gpt-5.4-mini"
+    OPENAI_MODEL: str = "gpt-5.6-luna"
     GROQ_MODEL: str = "openai/gpt-oss-120b"
     ANTHROPIC_MODEL: str = "claude-haiku-4-5-20251001"
     

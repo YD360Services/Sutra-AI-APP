@@ -654,13 +654,12 @@ function createWindow() {
     }
   });
 
-  // Handle content protection toggle (Dev Stealth Mode ON/OFF)
+  // Content protection is permanently enforced (Dev Stealth Mode removed)
   ipcMain.on('set-content-protection', (event, enable) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed() && typeof win.setContentProtection === 'function') {
-      const shouldProtect = Boolean(enable);
-      win.setContentProtection(shouldProtect);
-      console.log(`[Stealth Mode] Content protection toggled to: ${shouldProtect}`);
+      win.setContentProtection(true);
+      console.log('[Stealth Mode] Content protection enforced: true');
     }
   });
 
@@ -837,20 +836,12 @@ function createWindow() {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width, height } = primaryDisplay.size;
 
-      // Temporarily disable content protection so desktopCapturer
-      // can capture what's on screen (other apps, coding problems etc.)
-      // The stealth bar itself is already excluded from screen capture
-      // by virtue of the OS-level protection on all other frames.
-      mainWindow.setContentProtection(false);
-      await wait(150); // brief settle time
-
+      // Maintain OS-level content protection on mainWindow so it is never exposed
+      // to meeting software (Zoom, Teams, Meet) or local captures.
       const sources = await desktopCapturer.getSources({
         types: ['screen'],
         thumbnailSize: { width: Math.round(width), height: Math.round(height) }
       });
-
-      // Re-enable content protection immediately after capture
-      mainWindow.setContentProtection(true);
 
       if (sources.length === 0) {
         throw new Error('No screen sources found');
@@ -1136,26 +1127,34 @@ function createWindow() {
       }
 
       const normalizeModelIdentifier = (modelStr) => {
-        if (!modelStr) return 'gemini-3.6-flash';
+        if (!modelStr) return 'gemini-3.8-flash-lite-tts';
         const m = modelStr.toLowerCase().trim();
-        if (m.includes('3.7') || m.includes('lite') || m.includes('flash-lite')) {
-          return 'gemini-3.5-flash-lite';
+        // 1. Google Gemini Normalizer
+        if (m.includes('3.8') || m.includes('lite-tts') || m.includes('flash-lite-tts')) {
+          return 'gemini-3.8-flash-lite-tts';
+        }
+        if (m.includes('3.7')) {
+          return 'gemini-3.7-flash';
         }
         if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.1') || m.includes('pro') || m.includes('2')) {
           return 'gemini-3.6-flash';
         }
+        // 2. Anthropic Claude Normalizer
         if (m.includes('sonnet')) {
           return 'claude-sonnet-4-5-20250929';
         }
         if (m.includes('haiku') || m.includes('claude')) {
           return 'claude-haiku-4-5-20251001';
         }
+        // 3. Meta / Groq Normalizer
         if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
           return 'openai/gpt-oss-120b';
         }
+        // 4. OpenAI Reasoning
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
         }
+        // 5. OpenAI 6-Series & 5-Series (Astra / Luna)
         if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('luna') || m.includes('5.6-luna')) {
           return 'gpt-5.6-luna';
         }
@@ -1222,31 +1221,48 @@ function createWindow() {
       }
 
       const normalizeModelIdentifier = (modelStr) => {
-        if (!modelStr) return 'gemini-3.6-flash';
+        if (!modelStr) return 'gemini-3.8-flash-lite-tts';
         const m = modelStr.toLowerCase().trim();
-        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.7') || m.includes('3.1') || m.includes('2')) {
+        // 1. Google Gemini Normalizer
+        if (m.includes('3.8') || m.includes('lite-tts') || m.includes('flash-lite-tts')) {
+          return 'gemini-3.8-flash-lite-tts';
+        }
+        if (m.includes('3.7')) {
+          return 'gemini-3.7-flash';
+        }
+        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.1') || m.includes('pro') || m.includes('2')) {
           return 'gemini-3.6-flash';
         }
+        // 2. Anthropic Claude Normalizer
         if (m.includes('sonnet')) {
           return 'claude-sonnet-4-5-20250929';
         }
         if (m.includes('haiku') || m.includes('claude')) {
           return 'claude-haiku-4-5-20251001';
         }
+        // 3. Meta / Groq Normalizer
         if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
           return 'openai/gpt-oss-120b';
         }
+        // 4. OpenAI Reasoning
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
         }
-        if (m.includes('astra') || m.includes('luna') || m.includes('6') || m.includes('5.6') || m.includes('4o')) {
+        // 5. OpenAI 6-Series & 5-Series (Astra / Luna)
+        if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('luna') || m.includes('5.6-luna')) {
+          return 'gpt-5.6-luna';
+        }
+        if (m.includes('sol') || m.includes('5.6-sol') || m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
+          return 'gpt-5.4-mini';
+        }
+        if (m.includes('4o-mini')) {
+          return 'gpt-4o-mini';
+        }
+        if (m.includes('4o')) {
           return 'gpt-4o';
         }
-        if (m.includes('sol')) {
-          return 'gpt-4o-mini';
-        }
-        if (m.includes('gpt') || m.includes('5.5') || m.includes('mini')) {
-          return 'gpt-4o-mini';
+        if (m.includes('gpt') || m.includes('mini')) {
+          return 'gpt-5.4-mini';
         }
         return modelStr;
       };
@@ -2121,10 +2137,8 @@ if (!app.isPackaged) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Ensure single instance
+// Ensure single instance (already verified via initial instance lock)
 const additionalData = { myKey: 'stealth-toolbar' };
-const gotTheLock = app.requestSingleInstanceLock(additionalData);
-
 if (!gotTheLock) {
   app.quit();
 } else {

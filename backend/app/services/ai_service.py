@@ -179,8 +179,10 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         ml = m.lower().replace(" ", "-")
 
         # ── 1. Google Gemini Normalizer ──
-        if "3.7" in ml or "lite" in ml or "flash-lite" in ml:
-            return "gemini-3.5-flash-lite"
+        if "3.8" in ml or "lite-tts" in ml or "flash-lite-tts" in ml:
+            return "gemini-3.8-flash-lite-tts"
+        if "3.7" in ml:
+            return "gemini-3.7-flash"
         if "gemini" in ml or "flash" in ml or "3.6" in ml or "3.1" in ml or "pro" in ml or "2" in ml:
             return "gemini-3.6-flash"
 
@@ -225,7 +227,7 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
     # 2. Fallbacks based on task types if model is not set
     if is_live_answer:
         if settings.GEMINI_API_KEY and not is_gemini_disabled():
-            return "gemini-3.6-flash"
+            return "gemini-3.8-flash-lite-tts"
         elif settings.GROQ_API_KEY:
             return settings.GROQ_MODEL or "openai/gpt-oss-120b"
         elif settings.OPENAI_API_KEY:
@@ -241,7 +243,7 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         return "gemini-3.6-flash"
     else:
         if settings.GEMINI_API_KEY and not is_gemini_disabled():
-            return "gemini-3.6-flash"
+            return "gemini-3.8-flash-lite-tts"
         elif settings.GROQ_API_KEY:
             return settings.GROQ_MODEL or "openai/gpt-oss-120b"
         elif settings.OPENAI_API_KEY:
