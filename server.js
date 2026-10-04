@@ -6,16 +6,16 @@ const { spawn } = require('child_process');
 const PORT = 2999;
 const HOST = '127.0.0.1';
 
-// Track if stealth is currently running to prevent double-launches
+// Trck if stealth is currently running to prevent double-launches
 let stealthProcess = null;
 let isStealthRunning = false;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
-  '.css':  'text/css',
-  '.js':   'text/javascript',
-  '.png':  'image/png',
-  '.ico':  'image/x-icon',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
 };
 
 function launchStealth() {
