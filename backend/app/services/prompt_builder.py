@@ -73,9 +73,9 @@ FORMAT_ENFORCERS = {
         "CRITICAL FORMAT OVERRIDE: Provide a 1-sentence opening spoken script followed by 3 concise bullet points."
     ),
     "paragraphs": (
-        "CRITICAL FORMAT OVERRIDE: Write answer strictly in plain, natural narrative PARAGRAPHS. "
-        "Do NOT use bullet points, asterisks, or numbered lists. No headers, no markdown formatting. "
-        "Just talk naturally as a confident candidate."
+        "CRITICAL FORMAT OVERRIDE: Speak strictly in plain, normal, natural conversational English. "
+        "Use simple everyday words, no complex or fancy buzzwords. "
+        "If the answer includes any code, SQL query, or architecture diagram, ALWAYS wrap it inside triple backticks (e.g. ```sql ... ``` or ```text ... ```) in a separate box."
     ),
     "structured_summary": (
         "CRITICAL FORMAT OVERRIDE: Organize answer using bold section headers and structured key takeaways."
@@ -93,9 +93,9 @@ LENGTH_ENFORCERS = {
 
 # 4. TONE ENFORCERS
 TONE_ENFORCERS = {
-    "formal": "TONE REQUIREMENT: Adopt a formal, executive, and polished professional tone.",
-    "conversational": "TONE REQUIREMENT: Adopt a conversational, natural, and engaging spoken tone.",
-    "confident_technical": "TONE REQUIREMENT: Adopt an authoritative tone using precise technical engineering terminology."
+    "formal": "TONE REQUIREMENT: Speak clearly and professionally in plain, normal English without fancy buzzwords.",
+    "conversational": "TONE REQUIREMENT: Adopt a conversational, simple, and natural spoken tone using everyday normal English (no complex or robotic words).",
+    "confident_technical": "TONE REQUIREMENT: Adopt a confident, clear tone. Explain technical ideas using simple, direct words rather than confusing jargon."
 }
 
 SYSTEM_PROMPT_BASE = """[CONTEXT BLOCK]
