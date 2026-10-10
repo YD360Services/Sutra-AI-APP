@@ -5,12 +5,12 @@ app.name = 'RM';
 const path = require('path');
 const fs = require('fs');
 
-// Ensure development mode shares identical userData path with installed production app
+// Ensure development moode shares identical userData path with installed production app
 if (!app.isPackaged) {
   try {
     app.setPath('userData', path.join(app.getPath('appData'), 'RM'));
     console.log('[Dev Mode] userData forced to:', app.getPath('userData'));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 const https = require('https');
@@ -403,7 +403,7 @@ function loadSessionConfig() {
   if (targetPath) {
     try {
       const config = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
-      try { fs.unlinkSync(targetPath); } catch (_) {}
+      try { fs.unlinkSync(targetPath); } catch (_) { }
       return config;
     } catch (e) {
       console.error('Failed to read stealth_session_config.json:', e.message);
@@ -2022,7 +2022,7 @@ function parseDeepLinkUrl(urlStr) {
           }
         };
         fs.writeFileSync(accountPath, JSON.stringify(accountData, null, 2), 'utf8');
-      } catch (_) {}
+      } catch (_) { }
     }
 
     if (Object.keys(config).length > 0) {
@@ -2062,7 +2062,7 @@ function applyDeepLinkConfig(deepLinkUrl) {
       const userPath = path.join(app.getPath('userData'), 'stealth_user.json');
       fs.writeFileSync(userPath, JSON.stringify(creds, null, 2), 'utf8');
       console.log('[DeepLink] Saved stealth_user.json from deep link:', creds.email);
-    } catch (_) {}
+    } catch (_) { }
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('sync-credentials', creds);
@@ -2121,7 +2121,7 @@ if (process.platform === 'win32') {
     exec(regCmd, (err) => {
       if (!err) console.log('[Protocol] Registry FriendlyAppName configured as RM');
     });
-  } catch (_) {}
+  } catch (_) { }
 }
 
 
