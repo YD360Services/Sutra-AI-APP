@@ -306,7 +306,7 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                         elif "text" in msg and msg["text"]:
                             try:
                                 data = json.loads(msg["text"])
-                                if data.get("type") == "KeepAlive":
+                                if isinstance(data, dict) and data.get("type") == "KeepAlive":
                                     await dg_ws.send(json.dumps({"type": "KeepAlive"}))
                             except Exception:
                                 pass
@@ -325,74 +325,104 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     except Exception:
                         continue
 
-                    # Handle Deepgram UtteranceEnd event (fired when utterance_end_ms silence detected)
-                    # This is the most reliable "speaker stopped talking" signal
-                    if data.get("type") == "UtteranceEnd":
-                        logger.debug(f"[Deepgram] Session {session_id} - UtteranceEnd event received")
-                        try:
-                            await client_ws.send_json({
-                                "type": "utterance_end",
-                            })
-                        except Exception:
-                            pass
+                    try:
+                        # Handle case where payload is a list or contains a list of events
+                        if not isinstance(data, dict):
+                            if isinstance(data, list) and data and isinstance(data[0], dict):
+                                data = data[0]
+                            else:
+                                continue
+
+                        msg_type = data.get("type")
+
+                        # Handle Deepgram UtteranceEnd event (fired when utterance_end_ms silence detected)
+                        # This is the most reliable "speaker stopped talking" signal
+                        if msg_type == "UtteranceEnd":
+                            logger.debug(f"[Deepgram] Session {session_id} - UtteranceEnd event received")
+                            try:
+                                await client_ws.send_json({
+                                    "type": "utterance_end",
+                                })
+                            except Exception:
+                                pass
+                            continue
+
+                        # Ignore non-transcript Deepgram lifecycle and VAD events
+                        # (e.g. SpeechStarted has channel: [0, 0] which is a list of channel indices, not a channel dict)
+                        if msg_type in ("SpeechStarted", "Metadata", "CloseStream", "Flushed"):
+                            logger.debug(f"[Deepgram] Session {session_id} - {msg_type} event received")
+                            continue
+
+                        # Safely extract channel dict (handles single-channel dict, multi-channel list, and non-dict cases)
+                        channel_data = data.get("channel")
+                        if not isinstance(channel_data, dict):
+                            channels_list = data.get("channels")
+                            if isinstance(channels_list, list) and channels_list and isinstance(channels_list[0], dict):
+                                channel_data = channels_list[0]
+                            elif isinstance(channel_data, list) and channel_data and isinstance(channel_data[0], dict):
+                                channel_data = channel_data[0]
+                            else:
+                                # Channel is non-dictionary or missing
+                                continue
+
+                        alternatives = channel_data.get("alternatives", [])
+                        if not isinstance(alternatives, list) or not alternatives or not isinstance(alternatives[0], dict):
+                            continue
+
+                        transcript = str(alternatives[0].get("transcript", "")).strip()
+                        if not transcript:
+                            continue
+
+                        # Properly distinguish the two Deepgram finality signals:
+                        # is_final: This segment/endpoint is finalized (can happen multiple times per sentence)
+                        # speech_final: The speaker has actually stopped talking (true end of turn)
+                        dg_is_final = bool(data.get("is_final"))
+                        dg_speech_final = bool(data.get("speech_final"))
+                        # Combined: treat as "final" for display purposes only if segment is finalized
+                        is_final = dg_is_final
+                        # speech_final is the definitive "speaker done" signal
+                        speech_final = dg_speech_final
+
+                        logger.info(
+                            f"[Deepgram] Session {session_id} - Transcript: '{transcript}', "
+                            f"is_final={dg_is_final}, speech_final={dg_speech_final}"
+                        )
+
+                        # Accumulate utterance parts for Redis (only finalized segments)
+                        if dg_is_final:
+                            current_utterance_parts.append(transcript)
+
+                        # Only commit to Redis when the speaker truly stops talking (speech_final)
+                        # This prevents the same sentence being appended 3-4 times
+                        if dg_speech_final and current_utterance_parts:
+                            # Join all finalized segments that formed this utterance
+                            complete_utterance = " ".join(current_utterance_parts).strip()
+                            current = await redis_cache.get_transcript(session_id) or ""
+                            updated = f"{current} {complete_utterance}".strip()
+                            await redis_cache.set_transcript(session_id, updated)
+                            current_utterance_parts.clear()
+
+                            # Compute real pause duration from inter-transcript gap
+                            now_ts = time.time()
+                            last_ts = _last_transcript_time.get(session_id, now_ts)
+                            actual_pause = now_ts - last_ts
+                            _last_transcript_time[session_id] = now_ts
+
+                            # Run pipeline on the CURRENT utterance so prediction and intent reflect this question
+                            asyncio.create_task(run_background_pipeline(session_id, complete_utterance, client_ws, actual_pause))
+                        elif dg_is_final and not dg_speech_final:
+                            # For non-speech_final is_final segments, still update timestamp
+                            _last_transcript_time[session_id] = time.time()
+
+                        await client_ws.send_json({
+                            "type": "transcript",
+                            "text": transcript,
+                            "is_final": is_final,
+                            "speech_final": speech_final,
+                        })
+                    except Exception as frame_err:
+                        logger.warning(f"[Deepgram] Session {session_id} - error processing message: {frame_err}")
                         continue
-
-                    transcript = (
-                        data.get("channel", {})
-                        .get("alternatives", [{}])[0]
-                        .get("transcript", "")
-                        .strip()
-                    )
-                    if not transcript:
-                        continue
-
-                    # Properly distinguish the two Deepgram finality signals:
-                    # is_final: This segment/endpoint is finalized (can happen multiple times per sentence)
-                    # speech_final: The speaker has actually stopped talking (true end of turn)
-                    dg_is_final = bool(data.get("is_final"))
-                    dg_speech_final = bool(data.get("speech_final"))
-                    # Combined: treat as "final" for display purposes only if segment is finalized
-                    is_final = dg_is_final
-                    # speech_final is the definitive "speaker done" signal
-                    speech_final = dg_speech_final
-
-                    logger.info(
-                        f"[Deepgram] Session {session_id} - Transcript: '{transcript}', "
-                        f"is_final={dg_is_final}, speech_final={dg_speech_final}"
-                    )
-
-                    # Accumulate utterance parts for Redis (only finalized segments)
-                    if dg_is_final:
-                        current_utterance_parts.append(transcript)
-
-                    # Only commit to Redis when the speaker truly stops talking (speech_final)
-                    # This prevents the same sentence being appended 3-4 times
-                    if dg_speech_final and current_utterance_parts:
-                        # Join all finalized segments that formed this utterance
-                        complete_utterance = " ".join(current_utterance_parts).strip()
-                        current = await redis_cache.get_transcript(session_id) or ""
-                        updated = f"{current} {complete_utterance}".strip()
-                        await redis_cache.set_transcript(session_id, updated)
-                        current_utterance_parts.clear()
-
-                        # Compute real pause duration from inter-transcript gap
-                        now_ts = time.time()
-                        last_ts = _last_transcript_time.get(session_id, now_ts)
-                        actual_pause = now_ts - last_ts
-                        _last_transcript_time[session_id] = now_ts
-
-                        # Run pipeline on the CURRENT utterance so prediction and intent reflect this question
-                        asyncio.create_task(run_background_pipeline(session_id, complete_utterance, client_ws, actual_pause))
-                    elif dg_is_final and not dg_speech_final:
-                        # For non-speech_final is_final segments, still update timestamp
-                        _last_transcript_time[session_id] = time.time()
-
-                    await client_ws.send_json({
-                        "type": "transcript",
-                        "text": transcript,
-                        "is_final": is_final,
-                        "speech_final": speech_final,
-                    })
 
             await asyncio.gather(browser_to_deepgram(), deepgram_to_browser())
 
