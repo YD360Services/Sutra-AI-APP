@@ -11,6 +11,8 @@ class DeepgramService:
             f"&interim_results=true"
             f"&punctuate=true"
             f"&endpointing=300"
+            f"&utterance_end_ms=1500"
+            f"&vad_events=true"
         )
 
     @staticmethod

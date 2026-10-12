@@ -258,26 +258,28 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                                 continue
 
                             is_final = (msg_type == "AddTranscript")
+                            # In Speechmatics, AddTranscript is always a complete finalized segment
+                            speech_final = is_final
                             logger.info(f"[Speechmatics] Session {session_id} - Transcript: '{transcript}', is_final={is_final}")
 
-                            current = await redis_cache.get_transcript(session_id) or ""
-                            updated = f"{current} {transcript}".strip()
-
                             if is_final:
+                                current = await redis_cache.get_transcript(session_id) or ""
+                                updated = f"{current} {transcript}".strip()
                                 await redis_cache.set_transcript(session_id, updated)
 
-                            # FIX #4: Compute real pause duration from inter-transcript gap
-                            now_ts = time.time()
-                            last_ts = _last_transcript_time.get(session_id, now_ts)
-                            actual_pause = now_ts - last_ts if is_final else 0.0
-                            _last_transcript_time[session_id] = now_ts
+                                # Compute real pause duration from inter-transcript gap
+                                now_ts = time.time()
+                                last_ts = _last_transcript_time.get(session_id, now_ts)
+                                actual_pause = now_ts - last_ts
+                                _last_transcript_time[session_id] = now_ts
 
-                            asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
+                                asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
 
                             await client_ws.send_json({
                                 "type": "transcript",
                                 "text": transcript,
                                 "is_final": is_final,
+                                "speech_final": speech_final,
                             })
 
                 await asyncio.gather(browser_to_speechmatics(), speechmatics_to_browser())
@@ -314,10 +316,25 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     logger.debug(f"Browser connection closed or error: {e}")
 
             async def deepgram_to_browser():
+                # Track the accumulated text for the current utterance to avoid Redis duplication
+                current_utterance_parts: list = []
+
                 async for raw in dg_ws:
                     try:
                         data = json.loads(raw)
                     except Exception:
+                        continue
+
+                    # Handle Deepgram UtteranceEnd event (fired when utterance_end_ms silence detected)
+                    # This is the most reliable "speaker stopped talking" signal
+                    if data.get("type") == "UtteranceEnd":
+                        logger.debug(f"[Deepgram] Session {session_id} - UtteranceEnd event received")
+                        try:
+                            await client_ws.send_json({
+                                "type": "utterance_end",
+                            })
+                        except Exception:
+                            pass
                         continue
 
                     transcript = (
@@ -329,28 +346,53 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     if not transcript:
                         continue
 
-                    is_final = bool(data.get("is_final") or data.get("speech_final"))
-                    logger.info(f"[Deepgram] Session {session_id} - Transcript: '{transcript}', is_final={is_final}")
+                    # Properly distinguish the two Deepgram finality signals:
+                    # is_final: This segment/endpoint is finalized (can happen multiple times per sentence)
+                    # speech_final: The speaker has actually stopped talking (true end of turn)
+                    dg_is_final = bool(data.get("is_final"))
+                    dg_speech_final = bool(data.get("speech_final"))
+                    # Combined: treat as "final" for display purposes only if segment is finalized
+                    is_final = dg_is_final
+                    # speech_final is the definitive "speaker done" signal
+                    speech_final = dg_speech_final
 
-                    current = await redis_cache.get_transcript(session_id) or ""
-                    updated = f"{current} {transcript}".strip()
+                    logger.info(
+                        f"[Deepgram] Session {session_id} - Transcript: '{transcript}', "
+                        f"is_final={dg_is_final}, speech_final={dg_speech_final}"
+                    )
 
-                    if is_final:
+                    # Accumulate utterance parts for Redis (only finalized segments)
+                    if dg_is_final:
+                        current_utterance_parts.append(transcript)
+
+                    # Only commit to Redis when the speaker truly stops talking (speech_final)
+                    # This prevents the same sentence being appended 3-4 times
+                    if dg_speech_final and current_utterance_parts:
+                        # Use only the last (most complete) finalized segment as it contains
+                        # the full text of the utterance
+                        complete_utterance = current_utterance_parts[-1]
+                        current = await redis_cache.get_transcript(session_id) or ""
+                        updated = f"{current} {complete_utterance}".strip()
                         await redis_cache.set_transcript(session_id, updated)
+                        current_utterance_parts.clear()
 
-                    # FIX #4: Compute real pause duration from inter-transcript gap
-                    now_ts = time.time()
-                    last_ts = _last_transcript_time.get(session_id, now_ts)
-                    actual_pause = now_ts - last_ts if is_final else 0.0
-                    _last_transcript_time[session_id] = now_ts
+                        # Compute real pause duration from inter-transcript gap
+                        now_ts = time.time()
+                        last_ts = _last_transcript_time.get(session_id, now_ts)
+                        actual_pause = now_ts - last_ts
+                        _last_transcript_time[session_id] = now_ts
 
-                    # Run intent prediction & context retrieval pipeline asynchronously without blocking
-                    asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
+                        # Run pipeline only on speech_final to avoid thrashing
+                        asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
+                    elif dg_is_final and not dg_speech_final:
+                        # For non-speech_final is_final segments, still update timestamp
+                        _last_transcript_time[session_id] = time.time()
 
                     await client_ws.send_json({
                         "type": "transcript",
                         "text": transcript,
                         "is_final": is_final,
+                        "speech_final": speech_final,
                     })
 
             await asyncio.gather(browser_to_deepgram(), deepgram_to_browser())
