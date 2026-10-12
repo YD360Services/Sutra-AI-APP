@@ -9,6 +9,7 @@ email-validator
 google-genai
 pydantic-settings
 sqlalchemy>=2.0.0
+greenlet
 asyncpg
 alembic
 python-jose[cryptography]
