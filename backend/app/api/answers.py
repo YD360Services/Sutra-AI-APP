@@ -84,9 +84,13 @@ STRICT CANDIDATE GROUNDING:
 - Sound like a real, confident human candidate.
 - Never say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "As an AI", "Here is the answer".
 
+MULTI-PART QUESTIONS MANDATE:
+- If the interviewer asks a multi-part question (e.g. asking for development areas AND what you did to improve them, or what made you apply AND why you want to work here):
+  You MUST answer EVERY single part of the question with clear, thorough coverage. Never answer only one clause and drop the other.
+
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer in simple English. Put any code/query/diagram inside triple-backtick markdown blocks. Use bold headings like **Heading:** followed by explanation.>"}}
+{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<your answer in simple English addressing all parts of the question. Put any code/query/diagram inside triple-backtick markdown blocks. Use bold headings like **Heading:** followed by explanation.>"}}
 """.strip()
 
 
@@ -125,9 +129,13 @@ FACTS:
 Only use what's in the resume and context provided. Never invent companies, roles, or achievements.
 If something isn't in context, handle it naturally: "That's not something I've encountered yet, but how I'd approach it is..."
 
+MULTI-PART QUESTIONS MANDATE:
+- If the HR interviewer asks a multi-part question (e.g. what made you apply AND why you want to work here, or your strengths AND weaknesses):
+  You MUST address EVERY part of the question with dedicated bold heading points. Never ignore or drop any part.
+
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{"question": "<the interviewer's question, cleaned up>", "answer": "<your answer as bullet points — EACH bullet MUST start with **Heading:** followed by explanation. Use \\n- to separate bullets. No numbered lists."}}
+{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<your answer as bullet points — EACH bullet MUST start with **Heading:** followed by explanation. Use \\n- to separate bullets. No numbered lists.>"}}
 """.strip()
 
 
@@ -156,9 +164,13 @@ ANSWER STRUCTURE:
 3. 2-3 brief bullet points explaining the core approach and trade-offs.
 4. Time Complexity and Space Complexity stated simply (e.g. O(N) time, O(1) space).
 
+MULTI-PART QUESTIONS MANDATE:
+- If the interviewer asks a question with multiple parts or constraints:
+  Answer EVERY part and requirement completely. Never omit any sub-question.
+
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{"question": "<cleaned interviewer question>", "answer": "<intuition in simple English, followed by the complete code block wrapped in triple backticks with comments, followed by approach bullets and complexity>"}}
+{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<intuition in simple English, followed by the complete code block wrapped in triple backticks with comments, followed by approach bullets and complexity>"}}
 """.strip()
 
 
@@ -210,49 +222,55 @@ Return ONLY valid JSON.
 """.strip()
 
 def extract_question_from_transcript(transcript: str) -> str:
-    """Extract the most recent meaningful question from a raw transcript."""
+    """Extract the most recent meaningful question from a raw transcript, preserving multi-part questions."""
     import re
     if not transcript or len(transcript.strip()) < 5:
         return transcript
     
     clean_t = transcript.strip()
-    # If the new segment since the last answer is relatively short, return the whole thing
-    if len(clean_t) < 250:
+    # Strip trailing conversational filler / acknowledgments (e.g. "Okay.", "Right.", "Got it.")
+    clean_t = re.sub(r'(?i)(?<=[.?!])\s+(?:okay|ok|yeah|yep|sure|right|got it|cool|fine|all right)[.?!]?\s*$', '', clean_t).strip()
+
+    # If the transcript is relatively short (under 400 chars), return the whole segment
+    if len(clean_t) < 400:
         return clean_t
 
     # Split on sentence-ending punctuation
     sentences = re.split(r'(?<=[.?!])\s+', clean_t)
-    sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 8]
+    sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 5]
     if not sentences:
         return clean_t
-    # Score each sentence by question-likelihood
+
+    # Filter out trailing filler sentences from end of list
+    filler_re = re.compile(r'^(?:okay|ok|yeah|yep|sure|right|got it|cool|fine|all right)[.?!]?$', re.IGNORECASE)
+    while sentences and filler_re.match(sentences[-1]):
+        sentences.pop()
+
+    if not sentences:
+        return clean_t
+
     question_words = [
         'what', 'how', 'why', 'when', 'where', 'which', 'who',
         'can you', 'could you', 'tell me', 'explain', 'describe',
-        'walk me', 'have you', 'do you', 'did you', 'are you',
+        'walk me', 'have you', 'do you', 'did you', 'are you', 'would you',
         'polish', 'improve', 'optimize', 'rewrite', 'please',
         'design', 'implement', 'build', 'write', 'create'
     ]
-    best_sentence = None
-    best_score = -1
-    for s in reversed(sentences):
+
+    # Collect question sentences working backwards from the end
+    question_sentences = []
+    for s in reversed(sentences[-5:]):
         s_lower = s.lower()
-        score = 0
-        if s.endswith('?'):
-            score += 5
-        for qw in question_words:
-            if qw in s_lower:
-                score += 2
-                break
-        # Prefer longer sentences (more likely to be an actual question)
-        score += min(len(s.split()), 20) * 0.1
-        if score > best_score:
-            best_score = score
-            best_sentence = s
-    # Fall back to last 2 sentences if nothing stood out
-    if best_score < 1:
-        best_sentence = ' '.join(sentences[-2:]) if len(sentences) >= 2 else sentences[-1]
-    return best_sentence
+        is_q = s.endswith('?') or any(qw in s_lower for qw in question_words)
+        if is_q or (question_sentences and len(question_sentences) < 3):
+            question_sentences.insert(0, s)
+        elif question_sentences:
+            break
+
+    if question_sentences:
+        return ' '.join(question_sentences)
+
+    return ' '.join(sentences[-2:]) if len(sentences) >= 2 else sentences[-1]
 
 
 def get_system_design_prompt() -> str:
@@ -292,9 +310,13 @@ MANDATORY VISUAL ARCHITECTURE DIAGRAM (CODE BLOCK FORMAT):
    - Immediately below the visual architecture diagram code block, provide a comprehensive, step-by-step breakdown using bold headings (**Component:** explanation).
    - Detail the data flow, storage layer, caching strategy, load balancing, async queues, scalability, fault tolerance, and trade-offs.
 
+MULTI-PART QUESTIONS MANDATE:
+- If the interviewer asks a question with multiple requirements, components, or sub-questions:
+  Address EVERY requirement and component in both the diagram and technical explanation.
+
 OUTPUT FORMAT:
 Return ONLY valid JSON with exactly two keys.
-{{"question": "<the interviewer's question, cleaned up>", "answer": "<architecture diagram code block followed by detailed bulleted breakdown with bold headings>"}}
+{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<architecture diagram code block followed by detailed bulleted breakdown with bold headings>"}}
 """.strip()
 
 
@@ -659,7 +681,12 @@ async def generate_answer(
         if start_idx != -1 and end_idx != -1:
             cleaned = cleaned[start_idx:end_idx + 1]
         data = json.loads(cleaned, strict=False)
-        question = data.get("question", ctx.latest_question).strip() or ctx.latest_question
+        ai_question = (data.get("question") or "").strip()
+        # Preserve full question: never allow an LLM-shortened fragment to overwrite verbatim question
+        if not ctx.latest_question or len(ctx.latest_question.strip()) < 10:
+            question = ai_question or ctx.latest_question or "Interview Question"
+        else:
+            question = ctx.latest_question
         answer   = data.get("answer",   raw_response).strip()
     except Exception as e:
         logger.warning(f"Failed to parse Gemini response as JSON: {e}. Raw: {raw_response}")
@@ -784,7 +811,12 @@ async def generate_answer_stream(
                 if start_idx != -1 and end_idx != -1:
                     cleaned = cleaned[start_idx:end_idx + 1]
                 data = json.loads(cleaned, strict=False)
-                question = data.get("question", ctx.latest_question).strip() or ctx.latest_question
+                ai_question = (data.get("question") or "").strip()
+                # Preserve full question: never allow an LLM-shortened fragment to overwrite verbatim question
+                if not ctx.latest_question or len(ctx.latest_question.strip()) < 10:
+                    question = ai_question or ctx.latest_question or "Interview Question"
+                else:
+                    question = ctx.latest_question
                 answer   = data.get("answer", full_response).strip()
             except Exception as e:
                 logger.warning(f"Failed to parse stream response as JSON: {e}. Raw: {full_response}")
