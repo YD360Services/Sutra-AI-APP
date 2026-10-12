@@ -368,9 +368,8 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     # Only commit to Redis when the speaker truly stops talking (speech_final)
                     # This prevents the same sentence being appended 3-4 times
                     if dg_speech_final and current_utterance_parts:
-                        # Use only the last (most complete) finalized segment as it contains
-                        # the full text of the utterance
-                        complete_utterance = current_utterance_parts[-1]
+                        # Join all finalized segments that formed this utterance
+                        complete_utterance = " ".join(current_utterance_parts).strip()
                         current = await redis_cache.get_transcript(session_id) or ""
                         updated = f"{current} {complete_utterance}".strip()
                         await redis_cache.set_transcript(session_id, updated)
@@ -382,8 +381,8 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                         actual_pause = now_ts - last_ts
                         _last_transcript_time[session_id] = now_ts
 
-                        # Run pipeline only on speech_final to avoid thrashing
-                        asyncio.create_task(run_background_pipeline(session_id, updated, client_ws, actual_pause))
+                        # Run pipeline on the CURRENT utterance so prediction and intent reflect this question
+                        asyncio.create_task(run_background_pipeline(session_id, complete_utterance, client_ws, actual_pause))
                     elif dg_is_final and not dg_speech_final:
                         # For non-speech_final is_final segments, still update timestamp
                         _last_transcript_time[session_id] = time.time()
