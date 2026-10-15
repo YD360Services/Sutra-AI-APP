@@ -1,7 +1,9 @@
 import sqlite3
 
 def main():
-    conn = sqlite3.connect('copilotx.db')
+    import os
+    db_file = 'roundmate.db' if os.path.exists('roundmate.db') else 'copilotx.db'
+    conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
     tables = cursor.fetchall()

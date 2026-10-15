@@ -12,7 +12,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 
-logger = logging.getLogger("copilotx.ai_service")
+logger = logging.getLogger("roundmate.ai_service")
 
 print("=" * 90)
 print("LOADED UPDATED ai_service.py")

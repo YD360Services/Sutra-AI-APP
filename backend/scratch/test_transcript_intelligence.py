@@ -1,5 +1,6 @@
+import os
 import sys
-sys.path.insert(0, r"c:\Users\omkar\Downloads\copilotx-with-mock-interview\copilotx-live-demo-product\backend")
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import asyncio
 import time

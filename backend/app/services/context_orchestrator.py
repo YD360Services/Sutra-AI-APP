@@ -10,7 +10,7 @@ from app.db.repositories import ResumeRepository, JDRepository, KnowledgeReposit
 from app.cache.redis import redis_cache
 from app.services.candidate_memory import CandidateMemoryStore, CandidateMemoryItem, candidate_memory_store
 
-logger = logging.getLogger("copilotx.context_orchestrator")
+logger = logging.getLogger("roundmate.context_orchestrator")
 
 def rank_and_truncate_text(text: str, keywords: List[str], max_items: int) -> List[str]:
     if not text or text == "None loaded.":

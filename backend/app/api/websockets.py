@@ -15,7 +15,7 @@ from app.services.prompt_builder import prompt_builder
 from app.db.database import get_db
 
 router = APIRouter()
-logger = logging.getLogger("copilotx.websockets")
+logger = logging.getLogger("roundmate.websockets")
 
 # Dictionary to hold the task reference per session to allow cancellation of obsolete tasks
 _active_analysis_tasks: dict = {}

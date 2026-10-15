@@ -26,7 +26,7 @@ from app.api.admins import router as admins_router
 async def lifespan(app: FastAPI):
     # Startup actions
     setup_logging()
-    logger.info("Initializing CopilotX backend services...")
+    logger.info("Initializing Roundmate AI backend services...")
     
     # Connect to Redis
     await redis_cache.connect()
@@ -118,7 +118,7 @@ app.include_router(admins_router, prefix=settings.API_V1_STR, tags=["Admins"])
 @app.get("/")
 async def root():
     return {
-        "message": "Welcome to the CopilotX Modular Realtime API",
+        "message": "Welcome to the Roundmate AI Modular Realtime API",
         "health_check": "/health",
         "documentation": "/docs"
     }

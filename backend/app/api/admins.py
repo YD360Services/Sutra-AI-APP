@@ -12,7 +12,7 @@ from app.db.models import AdminEmail, User, Session
 import logging
 
 router = APIRouter()
-logger = logging.getLogger("copilotx.admins")
+logger = logging.getLogger("roundmate.admins")
 
 class AdminEmailCreate(BaseModel):
     email: EmailStr

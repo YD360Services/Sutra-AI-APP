@@ -17,7 +17,7 @@ from app.services.ai_service import call_gemini, call_llm, stream_llm
 from app.cache.redis import redis_cache
 
 router = APIRouter()
-logger = logging.getLogger("copilotx.answers")
+logger = logging.getLogger("roundmate.answers")
 
 ENABLE_PROMPT_LOGGING = os.getenv("ENABLE_PROMPT_LOGGING", "false").lower() in ("true", "1")
 

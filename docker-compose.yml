@@ -2,12 +2,12 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: copilotx-db
+    container_name: roundmate-db
     restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: copilotx
+      POSTGRES_DB: roundmate
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: copilotx-backend
+    container_name: roundmate-backend
     restart: always
     ports:
       - "8000:8000"
@@ -26,7 +26,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@copilotx-db:5432/copilotx
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@roundmate-db:5432/roundmate
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
 
 volumes:

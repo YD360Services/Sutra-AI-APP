@@ -46,7 +46,7 @@ async def list_sessions(
 
 async def generate_session_summary_if_needed(session_id: uuid.UUID, db: AsyncSession, repo: SessionRepository) -> Optional[str]:
     import logging
-    logger = logging.getLogger("copilotx.sessions")
+    logger = logging.getLogger("roundmate.sessions")
     try:
         from app.cache.redis import redis_cache
         from app.db.repositories import TranscriptRepository, QARepository

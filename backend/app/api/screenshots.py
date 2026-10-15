@@ -15,7 +15,7 @@ from app.cache.redis import redis_cache
 
 
 router = APIRouter()
-logger = logging.getLogger("copilotx.screenshots")
+logger = logging.getLogger("roundmate.screenshots")
 
 def _log_prompt_to_file(question: str, system_prompt: str, user_prompt: str, prompt_type: str, source_type: str):
     """Write the exact system + user prompt sent to the LLM into logs/prompt_debug/."""

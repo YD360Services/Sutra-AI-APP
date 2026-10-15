@@ -5,7 +5,7 @@ from typing import Optional
 import json
 import logging
 
-logger = logging.getLogger("copilotx.context_service")
+logger = logging.getLogger("roundmate.context_service")
 
 from app.db.repositories import SessionRepository, ResumeRepository, JDRepository, KnowledgeRepository, QARepository
 from app.db.models import JobDescription, Resume, KnowledgeDocument

@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger("copilotx.candidate_memory")
+logger = logging.getLogger("roundmate.candidate_memory")
 
 class CandidateMemoryItem(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))

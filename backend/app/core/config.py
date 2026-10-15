@@ -5,7 +5,7 @@ import os
 
 class Settings(BaseSettings):
     # App Settings
-    PROJECT_NAME: str = "CopilotX Backend"
+    PROJECT_NAME: str = "Roundmate AI Backend"
     API_V1_STR: str = "/api"
     
     # Security

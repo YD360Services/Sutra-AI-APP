@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
-logger = logging.getLogger("copilotx.database")
+logger = logging.getLogger("roundmate.database")
 
 class Base(DeclarativeBase):
     pass
@@ -96,7 +96,7 @@ async def verify_and_initialize_db():
     except Exception as e:
         if not settings.DATABASE_URL.startswith("sqlite"):
             logger.warning(f"Primary database connection failed: {e}. Falling back to SQLite...")
-            fallback_url = "sqlite+aiosqlite:///./copilotx.db"
+            fallback_url = "sqlite+aiosqlite:///./roundmate.db"
             setup_database_session(fallback_url)
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)

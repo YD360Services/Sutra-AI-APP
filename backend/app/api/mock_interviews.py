@@ -10,7 +10,7 @@ from app.services.ai_service import call_llm
 from app.core.config import settings
 
 router = APIRouter()
-logger = logging.getLogger("copilotx.mock_interviews")
+logger = logging.getLogger("roundmate.mock_interviews")
 
 class TTSRequest(BaseModel):
     text: str

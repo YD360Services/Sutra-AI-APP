@@ -4,7 +4,7 @@ import logging
 from typing import List, Set, Dict, Any, Tuple
 from enum import Enum
 
-logger = logging.getLogger("copilotx.transcript_intelligence")
+logger = logging.getLogger("roundmate.transcript_intelligence")
 
 class SessionState(str, Enum):
     WAITING = "WAITING"

@@ -5,7 +5,7 @@ from typing import List, Optional
 import uuid
 import io
 
-logger = logging.getLogger("copilotx.resumes")
+logger = logging.getLogger("roundmate.resumes")
 
 try:
     import pypdf

@@ -12,7 +12,7 @@ from app.db.repositories import UserRepository
 from app.cache.redis import redis_cache
 
 router = APIRouter()
-logger = logging.getLogger("copilotx.auth")
+logger = logging.getLogger("roundmate.auth")
 
 class GoogleAuthRequest(BaseModel):
     firebase_uid: str
@@ -481,7 +481,7 @@ BACKEND_OAUTH_CALLBACK = _get_env(
     "http://localhost:8000/api/auth/google/callback"
 )
 FRONTEND_BASE = _get_env("FRONTEND_URL", "http://localhost:5173")
-_SIGNING_KEY  = _get_env("JWT_SECRET", "sutra-oauth-signing-secret")
+_SIGNING_KEY  = _get_env("JWT_SECRET", "roundmate-oauth-signing-secret")
 
 
 def _sign_payload(payload: dict) -> str:
@@ -664,7 +664,7 @@ async def google_oauth_callback(
         signed = _sign_payload(payload)
 
         return RedirectResponse(
-            url=f"{frontend_url}{redirect_path}?sutra_auth_token={signed}",
+            url=f"{frontend_url}{redirect_path}?roundmate_auth_token={signed}&sutra_auth_token={signed}",
             status_code=302,
         )
 
@@ -676,7 +676,7 @@ async def google_oauth_callback(
 @router.get("/auth/google/verify-token")
 async def verify_oauth_token(token: str):
     """
-    Frontend calls this to verify a sutra_auth_token received in the URL.
+    Frontend calls this to verify a roundmate_auth_token received in the URL.
     Returns the user payload if valid, 401 if not.
     """
     payload = _verify_token(token)

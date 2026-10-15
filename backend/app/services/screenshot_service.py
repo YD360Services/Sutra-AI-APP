@@ -10,7 +10,7 @@ from app.services.ai_service import (
 import logging
 import base64
 
-logger = logging.getLogger("copilotx.screenshot_service")
+logger = logging.getLogger("roundmate.screenshot_service")
 
 def _pick_vision_model(preferred_model: str = None):
     """

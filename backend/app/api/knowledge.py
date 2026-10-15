@@ -33,7 +33,7 @@ async def create_knowledge(
             await redis_cache.set_cached_item(f"knowledge:{doc.id}", payload.content)
     except Exception as cache_err:
         import logging
-        logger = logging.getLogger("copilotx.knowledge")
+        logger = logging.getLogger("roundmate.knowledge")
         logger.warning(f"Failed to cache uploaded knowledge document: {cache_err}")
 
     return doc
@@ -118,7 +118,7 @@ async def upload_knowledge_file(
             await redis_cache.set_cached_item(f"knowledge:{doc.id}", doc_json)
     except Exception as cache_err:
         import logging
-        logger = logging.getLogger("copilotx.knowledge")
+        logger = logging.getLogger("roundmate.knowledge")
         logger.warning(f"Failed to cache uploaded knowledge document: {cache_err}")
 
     return doc

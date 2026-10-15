@@ -13,4 +13,4 @@ def setup_logging():
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("websockets").setLevel(logging.INFO)
 
-logger = logging.getLogger("copilotx")
+logger = logging.getLogger("roundmate")
