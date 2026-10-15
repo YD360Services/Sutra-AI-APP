@@ -663,8 +663,9 @@ async def google_oauth_callback(
         }
         signed = _sign_payload(payload)
 
+        sep = "&" if "?" in redirect_path else "?"
         return RedirectResponse(
-            url=f"{frontend_url}{redirect_path}?roundmate_auth_token={signed}&sutra_auth_token={signed}",
+            url=f"{frontend_url}{redirect_path}{sep}roundmate_auth_token={signed}&sutra_auth_token={signed}",
             status_code=302,
         )
 
