@@ -21,6 +21,8 @@ from app.api.websockets import router as websockets_router
 from app.api.auth import router as auth_router
 from app.api.mock_interviews import router as mock_interviews_router
 from app.api.admins import router as admins_router
+from app.api.notifications import router as notifications_router
+from app.api.tickets import router as tickets_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -114,6 +116,8 @@ app.include_router(jds_router, prefix=settings.API_V1_STR, tags=["Job Descriptio
 app.include_router(mock_interviews_router, prefix=settings.API_V1_STR, tags=["Mock Interview"])
 app.include_router(auth_router, prefix=settings.API_V1_STR, tags=["Authentication"])
 app.include_router(admins_router, prefix=settings.API_V1_STR, tags=["Admins"])
+app.include_router(notifications_router, prefix=settings.API_V1_STR, tags=["Notifications"])
+app.include_router(tickets_router, prefix=settings.API_V1_STR, tags=["Support Tickets"])
 
 @app.get("/")
 async def root():

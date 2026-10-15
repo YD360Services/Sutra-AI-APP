@@ -193,3 +193,36 @@ class AdminEmail(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    user_email: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    type: Mapped[str] = mapped_column(String(50), default="info")
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    read: Mapped[bool] = mapped_column(Boolean, default=False)
+    duration: Mapped[int] = mapped_column(Integer, default=4500)
+    target_screen: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    target_tab: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+
+    id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    user_email: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    user_name: Mapped[str] = mapped_column(String(255), default="Anonymous")
+    user_photo: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(100), default="General")
+    status: Mapped[str] = mapped_column(String(50), default="Open")
+    priority: Mapped[str] = mapped_column(String(50), default="Medium")
+    created_time: Mapped[str] = mapped_column(String(100), default="Recently")
+    messages_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

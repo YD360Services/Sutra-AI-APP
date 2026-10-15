@@ -2137,8 +2137,10 @@ if (!app.isPackaged) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Ensure single instance (already verified via initial instance lock)
+// Ensure single instance lock across OS
 const additionalData = { myKey: 'stealth-toolbar' };
+const gotTheLock = app.requestSingleInstanceLock(additionalData);
+
 if (!gotTheLock) {
   app.quit();
 } else {
