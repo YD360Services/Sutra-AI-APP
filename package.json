@@ -112,17 +112,26 @@
       ],
       "category": "Development",
       "maintainer": "RoundMate AI <support@roundmateai.com>",
-      "icon": "icon.ico",
+      "icon": "icon.png",
+      "artifactName": "${productName}-${version}.${ext}",
+      "desktop": {
+        "StartupWMClass": "RM"
+      },
       "mimeTypes": [
         "x-scheme-handler/roundmate",
         "x-scheme-handler/sutra"
       ]
     },
     "deb": {
+      "artifactName": "${name}_${version}_amd64.${ext}",
+      "synopsis": "Sutra AI (RoundMate AI) - AI Copilot for Technical Interviews",
       "depends": [
         "libnotify4",
         "libxtst6",
-        "libnss3"
+        "libnss3",
+        "libasound2",
+        "libatk-bridge2.0-0",
+        "libgtk-3-0"
       ]
     },
     "files": [
