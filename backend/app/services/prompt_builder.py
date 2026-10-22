@@ -7,57 +7,88 @@ from app.cache.redis import redis_cache
 
 logger = logging.getLogger("roundmate.prompt_builder")
 
-# 1. SPECIALIZED PROMPTS FOR EACH QUESTION TYPE
+# 1. UNIVERSAL ANSWER FORMAT (SHARED BASELINE FOR INTERVIEW ANSWERS)
+UNIVERSAL_ANSWER_FORMAT = """CRITICAL ANSWER FORMATTING RULES — APPLY TO EVERY INTERVIEW ANSWER:
+1. STRUCTURE:
+   - Start directly with the answer. Never add a greeting, preamble, or unnecessary introduction.
+   - Use concise bullet points for explanations.
+   - Every bullet MUST begin with a meaningful bold side heading.
+   - Required format: - **Heading:** Explanation in natural English.
+   - Use actual Markdown bold syntax for every side heading.
+   - Separate bullets using newline characters.
+2. WRITING STYLE:
+   - Speak in the first person when discussing personal experience ("I", "my experience", "I've built").
+   - Use simple, natural, conversational English.
+   - Keep each bullet focused on one main idea.
+   - Prefer 2–4 sentences per bullet, depending on complexity.
+   - Avoid long paragraphs, repetition, and unnecessary buzzwords.
+   - Sound confident and knowledgeable without exaggerating experience.
+3. ANSWER DEPTH:
+   - Answer the exact question before adding supporting details.
+   - Explain what, why, and how when relevant.
+   - Include practical examples, technical reasoning, and trade-offs.
+   - Address every part of a multi-part question.
+   - Never invent personal achievements, metrics, or experience.
+   - If personal experience is unknown, explain the approach honestly.
+4. ADAPTIVE FORMATTING:
+   - General technical questions: Definition, Working, Example, Benefits or Trade-offs, using only relevant headings.
+   - Project questions: Problem, My Approach, Implementation, Challenges, and Result, when applicable.
+   - Behavioral questions: Situation, Task, Action, and Result (STAR with bold labels).
+   - HR questions: Motivation, Strengths, Improvement Areas, or other relevant headings.
+   - Coding & Screenshot questions: Follow specific code block / JSON schema requirements without unnecessary conversational bullets.
+"""
+
+# 2. SPECIALIZED PROMPTS FOR EACH QUESTION TYPE
 QUESTION_TYPE_PROMPTS = {
     "behavioral": (
         "QUESTION TYPE: Behavioral\n"
-        "RESPONSE FRAMEWORK (STAR Method):\n"
-        "- Situation: Set the scene and context in 1 sentence.\n"
-        "- Task: Describe your exact responsibility.\n"
-        "- Action: Explain the key engineering/leadership steps YOU took.\n"
-        "- Result: State the quantified business impact or positive takeaway."
+        "RESPONSE FRAMEWORK (STAR Method with Bold Headings):\n"
+        "- **Situation:** The problem or context (1 sentence setting the scene).\n"
+        "- **Task:** My exact responsibility.\n"
+        "- **Action:** The engineering and leadership steps I personally executed.\n"
+        "- **Result:** The outcome, using verified metrics and positive impact where available."
     ),
     "coding": (
         "QUESTION TYPE: Coding (LeetCode-style)\n"
         "RESPONSE FRAMEWORK:\n"
         "1. Algorithmic Intuition: Explain the core idea in 1 sentence.\n"
         "2. Optimal Approach: Describe data structure choices (e.g. Hash Map, Two Pointers, Dynamic Programming).\n"
-        "3. Implementation: Provide clean, idiomatic code snippet.\n"
+        "3. Implementation: Provide clean, idiomatic code snippet wrapped in triple-backtick markdown blocks.\n"
         "4. Complexity: Explicitly state Time Complexity O(...) and Space Complexity O(...)."
     ),
     "experience_check": (
         "QUESTION TYPE: Experience Check\n"
         "RESPONSE FRAMEWORK:\n"
         "- Focus on background verification, relevant past project accomplishments, and sync directly with the Job Description (JD) requirements.\n"
-        "- Frame real experience around the exact technologies requested by the interviewer."
+        "- Frame real experience around the exact technologies requested by the interviewer using bold side headings."
     ),
     "how_do_you": (
         "QUESTION TYPE: How-do-you / Engineering Process\n"
         "RESPONSE FRAMEWORK:\n"
-        "- Provide a step-by-step practical engineering methodology.\n"
+        "- Provide a step-by-step practical engineering methodology with bold side headings (- **Step/Phase:** details).\n"
         "- Explain real-world trade-offs, edge cases, and production safety precautions."
     ),
     "situational": (
         "QUESTION TYPE: Situational / Scenario\n"
         "RESPONSE FRAMEWORK:\n"
-        "- Assess the hypothetical scenario and identify key risks/constraints.\n"
-        "- Present 2 potential approaches and state your decision framework.\n"
-        "- Justify your optimal choice based on scalability, maintainability, and team velocity."
+        "- **Context & Risks:** Assess the hypothetical scenario and identify key risks/constraints.\n"
+        "- **Evaluated Approaches:** Present 2 potential approaches and state your decision framework.\n"
+        "- **Optimal Choice:** Justify your choice based on scalability, maintainability, and team velocity."
     ),
     "system_design": (
         "QUESTION TYPE: System Design\n"
         "RESPONSE FRAMEWORK:\n"
-        "1. Clarify Requirements & Constraints (Scale, Throughput, Latency).\n"
-        "2. High-Level Architecture (Load Balancer, API Gateway, Services, Storage).\n"
-        "3. Data Flow & Storage Choice (Relational vs NoSQL vs Cache).\n"
-        "4. Bottlenecks & Mitigation (Scaling, Partitioning, Message Queues, Fault Tolerance)."
+        "- **Requirements & Scale:** Clarify Scale, Throughput, and Latency constraints.\n"
+        "- **High-Level Architecture:** Outline Load Balancer, API Gateway, Services, Storage.\n"
+        "- **Data Flow & Storage:** Relational vs NoSQL vs Cache choice and rationale.\n"
+        "- **Bottlenecks & Mitigation:** Scaling, Partitioning, Message Queues, Fault Tolerance."
     ),
     "technical_knowledge": (
         "QUESTION TYPE: Technical Knowledge\n"
         "RESPONSE FRAMEWORK:\n"
         "- Provide a clear 1-sentence technical definition.\n"
         "- Detail underlying execution mechanics (how it works under the hood).\n"
-        "- State core pros, cons, and real-world production use cases."
+        "- State core pros, cons, and real-world production use cases using concise bold side headings."
     ),
     "tell_me_about_yourself": (
         "QUESTION TYPE: Tell Me About Yourself / Elevator Pitch\n"
@@ -67,13 +98,16 @@ QUESTION_TYPE_PROMPTS = {
     )
 }
 
-# 2. FORMAT ENFORCERS (HIGHEST PRIORITY OVERRIDES)
+# 3. FORMAT ENFORCERS (HIGHEST PRIORITY OVERRIDES)
 FORMAT_ENFORCERS = {
+    "headed_bullets": (
+        "CRITICAL FORMAT OVERRIDE: Answer using concise bullet points where every bullet begins with a bold side heading (- **Heading:** explanation). Speak in natural first-person conversational English."
+    ),
     "script_bullets": (
-        "CRITICAL FORMAT OVERRIDE: Provide a 1-sentence opening spoken script followed by 3 concise bullet points."
+        "CRITICAL FORMAT OVERRIDE: Provide a 1-sentence opening spoken script followed by concise bullet points with bold side headings."
     ),
     "paragraphs": (
-        "CRITICAL FORMAT OVERRIDE: Speak strictly in plain, normal, natural conversational English. "
+        "CRITICAL FORMAT OVERRIDE: Speak strictly in plain, normal, natural conversational English paragraphs. "
         "Use simple everyday words, no complex or fancy buzzwords. "
         "If the answer includes any code, SQL query, or architecture diagram, ALWAYS wrap it inside triple backticks (e.g. ```sql ... ``` or ```text ... ```) in a separate box."
     ),
@@ -82,7 +116,7 @@ FORMAT_ENFORCERS = {
     )
 }
 
-# 3. LENGTH ENFORCERS
+# 4. LENGTH ENFORCERS
 LENGTH_ENFORCERS = {
     "short": "LENGTH REQUIREMENT: Keep answer short and concise (50-100 words / ~30-45 seconds spoken).",
     "concise": "LENGTH REQUIREMENT: Keep answer short and concise (50-100 words / ~30-45 seconds spoken).",
@@ -91,7 +125,7 @@ LENGTH_ENFORCERS = {
     "in_depth": "LENGTH REQUIREMENT: Provide an in-depth response (300-400 words / ~3 minutes spoken)."
 }
 
-# 4. TONE ENFORCERS
+# 5. TONE ENFORCERS
 TONE_ENFORCERS = {
     "formal": "TONE REQUIREMENT: Speak clearly and professionally in plain, normal English without fancy buzzwords.",
     "conversational": "TONE REQUIREMENT: Adopt a conversational, simple, and natural spoken tone using everyday normal English (no complex or robotic words).",
@@ -123,6 +157,29 @@ class PromptBuilder:
     def __init__(self):
         pass
 
+    def build_final_prompt(
+        self,
+        system_prompt: str,
+        question_type_prompt: str = "",
+        format_prompt: str = "",
+        length_prompt: str = "",
+        tone_prompt: str = "",
+    ) -> str:
+        """Helper to assemble modular prompts with universal answer formatting."""
+        sections = [
+            system_prompt,
+            question_type_prompt,
+            format_prompt,
+            length_prompt,
+            tone_prompt,
+            UNIVERSAL_ANSWER_FORMAT,
+        ]
+        return "\n\n".join(
+            section.strip()
+            for section in sections
+            if section and section.strip()
+        )
+
     def build_system_prompt(self, context: Dict[str, Any], user_preferences: Optional[Dict[str, Any]] = None) -> str:
         base_p = SYSTEM_PROMPT_BASE.format(
             resume_context=context.get("resume_context", "None loaded."),
@@ -134,6 +191,7 @@ class PromptBuilder:
         overrides = []
 
         # Process User Preferences (Question Type, Format, Length, Tone)
+        is_coding = False
         if user_preferences:
             q_type = str(user_preferences.get("question_type", "")).lower().replace(" ", "_").replace("-", "_")
             fmt = str(user_preferences.get("format", "")).lower().replace(" ", "_").replace("+", "_")
@@ -143,8 +201,11 @@ class PromptBuilder:
             # Apply Question Type Framework
             if q_type in QUESTION_TYPE_PROMPTS:
                 overrides.append(QUESTION_TYPE_PROMPTS[q_type])
+                if q_type == "coding":
+                    is_coding = True
             elif "code" in q_type or "leetcode" in q_type:
                 overrides.append(QUESTION_TYPE_PROMPTS["coding"])
+                is_coding = True
             elif "system" in q_type or "design" in q_type:
                 overrides.append(QUESTION_TYPE_PROMPTS["system_design"])
 
@@ -153,8 +214,8 @@ class PromptBuilder:
                 overrides.append(FORMAT_ENFORCERS[fmt])
             elif "para" in fmt:
                 overrides.append(FORMAT_ENFORCERS["paragraphs"])
-            elif "bullet" in fmt or "script" in fmt:
-                overrides.append(FORMAT_ENFORCERS["script_bullets"])
+            elif "bullet" in fmt or "script" in fmt or "head" in fmt:
+                overrides.append(FORMAT_ENFORCERS["headed_bullets"])
 
             # Apply Length & Tone
             if length in LENGTH_ENFORCERS:
@@ -162,11 +223,15 @@ class PromptBuilder:
             if tone in TONE_ENFORCERS:
                 overrides.append(TONE_ENFORCERS[tone])
 
-        # If no custom format override was provided, default to natural paragraphs
+        # If no custom format override was provided, default to headed bullets
         if not any("CRITICAL FORMAT OVERRIDE" in ov for ov in overrides):
-            overrides.append(FORMAT_ENFORCERS["paragraphs"])
+            overrides.append(FORMAT_ENFORCERS["headed_bullets"])
         if not any("LENGTH REQUIREMENT" in ov for ov in overrides):
             overrides.append(LENGTH_ENFORCERS["balanced"])
+
+        # Inject universal formatting rules for standard conversational/technical interview questions
+        if not is_coding and not any("paragraphs" in ov for ov in overrides):
+            overrides.append(UNIVERSAL_ANSWER_FORMAT.strip())
 
         # Append Override Block at the VERY END for maximum LLM attention weight
         override_block = "\n\n[CRITICAL USER PREFERENCE OVERRIDE - HIGHEST PRIORITY]\n" + "\n".join(f"• {rule}" for rule in overrides) + "\n\nNOTE: The rules in this override block MANDATORY taking precedence over any general system defaults above."
@@ -186,8 +251,10 @@ class PromptBuilder:
             fmt = str(user_preferences.get("format", "")).lower()
             if "para" in fmt:
                 prompt += "REMINDER: Write in plain, natural English paragraphs — no bullet points, no asterisks, no numbered lists."
-            elif "bullet" in fmt or "script" in fmt:
-                prompt += "REMINDER: Provide a 1-sentence opening script followed by concise bullet points."
+            elif "bullet" in fmt or "script" in fmt or "head" in fmt:
+                prompt += "REMINDER: Provide concise bullet points where every bullet begins with a bold side heading (- **Heading:** explanation)."
+        else:
+            prompt += "REMINDER: Provide concise bullet points where every bullet begins with a bold side heading (- **Heading:** explanation)."
 
         return prompt
 
