@@ -114,9 +114,6 @@
       "maintainer": "RoundMate AI <support@roundmateai.com>",
       "icon": "icon.png",
       "artifactName": "${productName}-${version}.${ext}",
-      "desktop": {
-        "StartupWMClass": "RM"
-      },
       "mimeTypes": [
         "x-scheme-handler/roundmate",
         "x-scheme-handler/sutra"
