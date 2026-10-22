@@ -100,6 +100,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUserAccount: () => ipcRenderer.invoke('get-user-account'),
   updateUserTokens: (tokens) => ipcRenderer.invoke('update-user-tokens', tokens),
   onAccountSynced: (cb) => ipcRenderer.on('account-synced', (_, data) => cb(data)),
+  onForceLogout: (cb) => ipcRenderer.on('force-logout', () => cb()),
 
   // ── Deep Link Session Handler ─────────────────────────────────────
   // Fires when the app is opened via roundmate://start-session?... or sutra://start-session?... deep link

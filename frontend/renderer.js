@@ -5776,6 +5776,14 @@ if (window.electronAPI && window.electronAPI.onSyncCredentials) {
   });
 }
 
+// Listen for forced logout signals from web app via port 48999
+if (window.electronAPI && window.electronAPI.onForceLogout) {
+  window.electronAPI.onForceLogout(() => {
+    console.log('[Stealth Sync] Forced logout signal received from web app. Logging out desktop.');
+    logoutLocalUser();
+  });
+}
+
 if (manualSyncBtn) {
   manualSyncBtn.addEventListener('click', triggerBrowserSync);
 }

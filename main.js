@@ -1867,6 +1867,17 @@ const server = http.createServer((req, res) => {
       res.writeHead(405);
       res.end();
     }
+  } else if (parsedUrl.pathname === '/logout') {
+    console.log('[Stealth Server] Received logout signal on port 48999 from web app');
+    if (mainWindow) {
+      mainWindow.webContents.send('force-logout');
+    }
+    try {
+      const accountPath = path.join(app.getPath('userData'), 'stealth_account.json');
+      if (fs.existsSync(accountPath)) fs.unlinkSync(accountPath);
+    } catch (_) {}
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Logged out desktop app' }));
   } else if (parsedUrl.pathname === '/launch') {
     if (req.method === 'POST') {
       let body = '';

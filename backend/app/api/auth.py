@@ -187,6 +187,48 @@ async def check_existing_session(
     }
 
 
+class LogoutRequest(BaseModel):
+    user_id: Optional[str] = None
+    firebase_uid: Optional[str] = None
+    email: Optional[str] = None
+
+@router.post("/auth/logout")
+async def logout(
+    payload: LogoutRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Explicitly logs out the user across all devices by clearing active session tokens.
+    """
+    user_repo = UserRepository(db)
+    user = None
+    if payload.user_id:
+        try:
+            user = await user_repo.get_by_id(uuid.UUID(payload.user_id))
+        except Exception:
+            pass
+    if not user and payload.firebase_uid:
+        try:
+            user_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}")
+            user = await user_repo.get_by_id(user_id)
+        except Exception:
+            pass
+    if not user and payload.email:
+        user = await user_repo.get_by_email(payload.email)
+
+    if user:
+        user.active_session_token = None
+        await db.commit()
+        user_key = f"active_login:{str(user.id)}"
+        device_key = f"active_login_device:{str(user.id)}"
+        await redis_cache.delete_cached_item(user_key)
+        await redis_cache.delete_cached_item(device_key)
+        logger.info(f"User {user.email} logged out successfully. Active session revoked.")
+        return {"success": True, "message": "Logged out successfully"}
+        
+    return {"success": False, "message": "User identifier required"}
+
+
 class ForceLogoutRequest(BaseModel):
     user_id: Optional[str] = None
     firebase_uid: Optional[str] = None
@@ -238,7 +280,7 @@ async def check_session(
     payload: CheckSessionRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    admin_whitelist = ["omkarshendre999@gmail.com", "admin@roundmate.ai", "kirankumar82054@gmail.com", "omkarvenkat09@gmail.com", "y.bhanuchandar360@gmail.com"]
+    admin_whitelist = ["omkarshendre999@gmail.com", "admin@roundmate.ai", "kirankumar82054@gmail.com", "omkarvenkat09@gmail.com", "y.bhanuchandar360@gmail.com", "grimmof01@gmail.com"]
     target_email = (payload.email or "").lower().strip()
     if target_email in admin_whitelist or target_email.startswith("admin@"):
         return {"valid": True, "has_session": True}
@@ -266,10 +308,8 @@ async def check_session(
         return {"valid": True, "has_session": True}
 
     if not user.active_session_token:
-        user.active_session_token = payload.login_token
-        user.last_active_at = datetime.utcnow()
-        await db.commit()
-        return {"valid": True, "has_session": True}
+        # User has no active token (e.g. logged out from web), reject client session
+        return {"valid": False, "has_session": False, "message": "Session has been logged out"}
 
     is_valid = not payload.login_token or user.active_session_token == payload.login_token
     if is_valid:
