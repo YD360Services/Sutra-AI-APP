@@ -5100,23 +5100,35 @@ function formatRecentQA(recentQA = []) {
     .join('\n\n');
 }
 
-function buildPrompt({ latestQuestion, recentQA, rollingSummary, userContext, transcriptWindow }) {
+function buildPrompt({ latestQuestion, recentQA, rollingSummary, userContext, transcriptWindow, structured = true }) {
   const parts = [];
 
-  parts.push(
-    `You are a real person sitting in a technical interview today. You are the candidate, not an AI.
-Your only job is to answer the interviewer's question the way a real, experienced engineer would naturally say it out loud.
+  const answerStyle = structured
+    ? `
+- Answer using concise bullet points.
+- Every bullet MUST begin with a meaningful bold side heading (e.g. - **Heading:** Explanation in natural English).
+- Use natural, first-person conversational English ("I", "my experience", "I've built").
+- Start directly with the answer without greetings, fillers, or robotic preambles.
+- Use 2–5 bullets for a standard interview question.
+- Keep each bullet concise (2–4 sentences) and easy to speak aloud.
+- Address every part of a multi-part question.
+- Do not invent personal experience, achievements, or metrics.`
+    : `
+- Answer in one or two natural conversational paragraphs.
+- Do not use bullets, numbered lists, or bold headings.
+- Keep the answer concise and easy to speak aloud.`;
 
-HOW TO ANSWER:
-- Speak in one or two fluid, conversational paragraphs.
-- NEVER use numbered lists (like 1., 2., 3.), bullet points, dashes, or numbered steps.
-- NEVER use bold text, asterisks (**), or any markdown headings.
-- Talk the way a confident engineer talks in a real conversation.
-- Use casual contractions: I've, I'd, I'm, that's, it's, we've, didn't, don't.
-- Start directly with the point. Do NOT warm up with filler.
-- Keep the response short and clean — under 150 words.
+  parts.push(
+    `You are helping a candidate prepare and respond to live interview questions. You are the candidate, not an AI.
+
+ANSWER STYLE:
+${answerStyle}
+
+CRITICAL RULES:
 - Do NOT say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "Here's the answer", "As an AI".
-- Sound like a real person talking, not a document being read.`
+- Do not claim experiences or achievements not provided in context.
+- Sound like a real person talking out loud in an interview, not a document being read.
+- If code, SQL, or diagrams are needed, wrap them inside triple backticks with the language tag.`
   );
 
   if (userContext) {
@@ -5144,7 +5156,7 @@ HOW TO ANSWER:
   }
 
   parts.push(`\n[QUESTION TO ANSWER]\n${latestQuestion}`);
-  parts.push(`\nAnswer (plain spoken English only, no formatting):`);
+  parts.push(`\nAnswer:`);
 
   return parts.join('\n');
 }
@@ -5438,7 +5450,7 @@ function renderAnswerToDOM(container, text, questionText = '') {
       const lines = segment.content.split('\n');
       lines.forEach(line => {
         const trimmed = line.trim();
-        if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+        if (trimmed.startsWith('- ') || trimmed.startsWith('• ') || trimmed.startsWith('* ')) {
           // Bullet line — render as a styled bullet row
           const bulletRow = document.createElement('div');
           bulletRow.style.display = 'flex';
@@ -5459,8 +5471,8 @@ function renderAnswerToDOM(container, text, questionText = '') {
           bulletContent.style.flex = '1';
           bulletContent.style.lineHeight = '1.6';
 
-          // Strip leading dash/bullet char
-          let content = trimmed.startsWith('- ') ? trimmed.slice(2) : trimmed.slice(2);
+          // Strip leading dash/bullet/asterisk char
+          let content = trimmed.replace(/^[-•*]\s+/, '');
           bulletContent.innerHTML = formatMathAndMarkdown(escapeHTML(content));
 
           bulletRow.appendChild(dot);
@@ -5761,6 +5773,14 @@ if (window.electronAPI && window.electronAPI.onSyncCredentials) {
   window.electronAPI.onSyncCredentials((data) => {
     console.log('[Stealth Sync] Credentials received from browser / deep link:', data);
     applySyncedCredentials(data);
+  });
+}
+
+// Listen for forced logout signals from web app via port 48999
+if (window.electronAPI && window.electronAPI.onForceLogout) {
+  window.electronAPI.onForceLogout(() => {
+    console.log('[Stealth Sync] Forced logout signal received from web app. Logging out desktop.');
+    logoutLocalUser();
   });
 }
 
