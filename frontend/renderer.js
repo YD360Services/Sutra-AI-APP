@@ -434,6 +434,56 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Session type state & exclusive selection helper
+let selectedSessionType = 'Interview+Coding';
+
+function setSessionType(typeStr) {
+  const badges = Array.from(document.querySelectorAll('.type-badge'));
+  if (!badges.length) return;
+
+  // Always reset all badges first so only ONE option is ever active
+  badges.forEach(b => b.classList.remove('active'));
+
+  if (!typeStr || typeof typeStr !== 'string') {
+    badges[0].classList.add('active');
+    selectedSessionType = badges[0].getAttribute('data-type') || 'Interview+Coding';
+    return;
+  }
+
+  const raw = typeStr.trim().toLowerCase();
+
+  // 1. Exact match by data-type
+  let matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase() === raw);
+
+  // 2. Disambiguated semantic matching (mutually exclusive)
+  if (!matchedBadge) {
+    if (raw.includes('hr') || raw.includes('manager') || raw.includes('behavioral')) {
+      matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase().includes('hr'));
+    } else if (raw === 'coding' || raw === 'coding test' || (raw.includes('coding') && !raw.includes('interview'))) {
+      matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase() === 'coding test');
+    } else if (raw.includes('interview')) {
+      matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase().includes('interview'));
+    }
+  }
+
+  // 3. Fallback: single first partial match
+  if (!matchedBadge) {
+    matchedBadge = badges.find(b => {
+      const bType = (b.getAttribute('data-type') || '').toLowerCase();
+      return bType.includes(raw) || raw.includes(bType);
+    });
+  }
+
+  // 4. Default fallback: first badge
+  if (!matchedBadge) {
+    matchedBadge = badges[0];
+  }
+
+  // Strictly activate ONLY the single matched badge
+  matchedBadge.classList.add('active');
+  selectedSessionType = matchedBadge.getAttribute('data-type') || 'Interview+Coding';
+}
+
 // Centralized handler to apply web-entered or deep link session configuration
 async function applySessionConfig(config) {
   if (!config) return;
@@ -449,17 +499,9 @@ async function applySessionConfig(config) {
   if (jd && setupJd) setupJd.value = jd;
 
   if (type) {
-    const targetType = type.toLowerCase();
-    document.querySelectorAll('.type-badge').forEach(b => {
-      b.classList.remove('active');
-      const bType = (b.dataset.type || '').toLowerCase();
-      if (bType.includes(targetType) || targetType.includes(bType) || (targetType.includes('coding') && bType.includes('coding')) || (targetType.includes('hr') && bType.includes('hr'))) {
-        b.classList.add('active');
-      }
-    });
-    if (!document.querySelector('.type-badge.active')) {
-      document.querySelector('.type-badge')?.classList.add('active');
-    }
+    setSessionType(type);
+  } else if (!document.querySelector('.type-badge.active')) {
+    setSessionType('Interview+Coding');
   }
 
   if (config.model) {
@@ -690,16 +732,9 @@ async function loadRecentSessions() {
           const langSelect = document.getElementById('setup-language-select');
           if (langSelect) langSelect.value = s.language;
         }
-        // Match session type badge
-        document.querySelectorAll('.type-badge').forEach(b => {
-          b.classList.remove('active');
-          if ((s.session_name || '').toLowerCase().includes(b.dataset.type.toLowerCase())) {
-            b.classList.add('active');
-          }
-        });
-        if (!document.querySelector('.type-badge.active')) {
-          document.querySelector('.type-badge')?.classList.add('active');
-        }
+        // Match session type badge (strictly one option selected)
+        const sessionTypeMatch = s.session_type || s.type || s.session_name || '';
+        setSessionType(sessionTypeMatch);
 
         // If session has job_description_id, fetch JD content
         if (s.job_description_id) {
@@ -1914,13 +1949,11 @@ setupDocFile.addEventListener('change', async () => {
 
 // Dropdown/Badges session type bindings
 const typeBadges = document.querySelectorAll('.type-badge');
-let selectedSessionType = 'Interview+Coding';
 
 typeBadges.forEach(badge => {
-  badge.addEventListener('click', () => {
-    typeBadges.forEach(b => b.classList.remove('active'));
-    badge.classList.add('active');
-    selectedSessionType = badge.getAttribute('data-type');
+  badge.addEventListener('click', (e) => {
+    e.preventDefault();
+    setSessionType(badge.getAttribute('data-type'));
   });
 });
 
@@ -2001,12 +2034,14 @@ function updateWizardView() {
     setupNextBtn.style.display = 'none';
     startSessionBtn.style.display = 'block';
 
-    // Update Step 3 Token & Subscription Status Box
+    // Update Step 3 Status (No tokens or token costs displayed)
     const tokenStatus = getDesktopUserTokenStatus();
     const tokenIcon = document.getElementById('desktop-token-icon');
     const tokenTitle = document.getElementById('desktop-token-title');
     const tokenSubtitle = document.getElementById('desktop-token-subtitle');
     const planExpiryBadge = document.getElementById('desktop-plan-expiry-badge');
+    const tokenBox = document.getElementById('desktop-token-status-box');
+
     const formatPackExpiryDate = (timestamp) => {
       let d;
       if (!timestamp) {
@@ -2030,57 +2065,30 @@ function updateWizardView() {
       return `Exp: ${formattedDate}`;
     };
 
+    startSessionBtn.style.opacity = '1';
+    startSessionBtn.textContent = 'Start Session & Collapse';
+
     if (tokenStatus.isPro) {
+      if (tokenBox) {
+        tokenBox.style.display = 'flex';
+        tokenBox.style.background = 'rgba(20, 184, 166, 0.08)';
+        tokenBox.style.borderColor = 'rgba(20, 184, 166, 0.25)';
+      }
       if (tokenIcon) tokenIcon.textContent = '';
       const currentPlan = tokenStatus.subscription?.planTitle || 'Unlimited Pro';
       if (tokenTitle) tokenTitle.textContent = currentPlan.includes('Pass') || currentPlan.includes('Active') ? currentPlan : `${currentPlan} Active`;
       if (tokenSubtitle) tokenSubtitle.textContent = 'Unlimited live interview streaming & background memory.';
-      if (tokenBox) {
-        tokenBox.style.background = 'rgba(20, 184, 166, 0.08)';
-        tokenBox.style.borderColor = 'rgba(20, 184, 166, 0.25)';
-      }
       if (planExpiryBadge) {
         planExpiryBadge.textContent = formatPackExpiryDate(tokenStatus.subscription?.expiresAt);
         planExpiryBadge.style.color = '#2dd4bf';
         planExpiryBadge.style.background = 'rgba(45, 212, 191, 0.12)';
         planExpiryBadge.style.borderColor = 'rgba(45, 212, 191, 0.35)';
       }
-      startSessionBtn.style.opacity = '1';
-      startSessionBtn.textContent = 'Start Session & Collapse';
-    } else if (tokenStatus.tokens.balance >= 0.5) {
-      if (tokenIcon) tokenIcon.textContent = '';
-      if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance} Session Token(s) Available`;
-      if (tokenSubtitle) tokenSubtitle.textContent = '0.5 token = 30 minutes of live stealth copilot assistance.';
-      if (tokenBox) {
-        tokenBox.style.background = 'rgba(56, 189, 248, 0.08)';
-        tokenBox.style.borderColor = 'rgba(56, 189, 248, 0.25)';
-      }
-      if (planExpiryBadge) {
-        planExpiryBadge.textContent = tokenStatus.subscription?.expiresAt
-          ? formatPackExpiryDate(tokenStatus.subscription.expiresAt)
-          : `${tokenStatus.tokens.balance} Token${tokenStatus.tokens.balance > 1 ? 's' : ''}`;
-        planExpiryBadge.style.color = '#38bdf8';
-        planExpiryBadge.style.background = 'rgba(56, 189, 248, 0.12)';
-        planExpiryBadge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
-      }
-      startSessionBtn.style.opacity = '1';
-      startSessionBtn.textContent = 'Start Session (Use 0.5 Token)';
     } else {
-      if (tokenIcon) tokenIcon.textContent = '';
-      if (tokenTitle) tokenTitle.textContent = `${tokenStatus.tokens.balance || 0} Session Tokens (Min 0.5 Needed)`;
-      if (tokenSubtitle) tokenSubtitle.textContent = 'At least 0.5 token required for 30 minutes live session.';
+      // Don't show tokens or token costs in Step 3
       if (tokenBox) {
-        tokenBox.style.background = 'rgba(239, 68, 68, 0.08)';
-        tokenBox.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+        tokenBox.style.display = 'none';
       }
-      if (planExpiryBadge) {
-        planExpiryBadge.textContent = `${tokenStatus.tokens.balance || 0} Tokens`;
-        planExpiryBadge.style.color = '#94a3b8';
-        planExpiryBadge.style.background = 'rgba(255, 255, 255, 0.05)';
-        planExpiryBadge.style.borderColor = 'rgba(255, 255, 255, 0.1)';
-      }
-      startSessionBtn.style.opacity = '0.7';
-      startSessionBtn.textContent = 'Min 0.5 Token Required';
     }
   }
 }
