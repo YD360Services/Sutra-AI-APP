@@ -1024,7 +1024,7 @@ function createWindow() {
   // Upload and solve screenshot on the backend via multipart/form-data
   ipcMain.handle('solve-screenshot-backend', async (event, { base64Image, sessionToken, model }) => {
     try {
-      const backendUrl = (env.BACKEND_URL || '').trim();
+      const backendUrl = (env.BACKEND_URL || 'https://round-mate-ai.onrender.com').trim();
       if (!backendUrl) throw new Error('BACKEND_URL not configured');
 
       const url = new URL('/api/screenshot', backendUrl);
@@ -1287,7 +1287,7 @@ function createWindow() {
         model: normalizeModelIdentifier(model)
       };
 
-      const backendUrl = (env.BACKEND_URL || '').trim();
+      const backendUrl = (env.BACKEND_URL || 'https://round-mate-ai.onrender.com').trim();
       if (!backendUrl) throw new Error('BACKEND_URL not configured.');
 
       const url = new URL('/api/answer/stream', backendUrl);
