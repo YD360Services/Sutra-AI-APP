@@ -431,8 +431,8 @@ function createWindow() {
         model: config.model || '',
         language: config.language || '',
         doc_id: config.doc_id || '',
-        auto_start: true,
-        is_web_launch: true
+        auto_start: config.auto_start === true || config.auto_start === 'true',
+        is_web_launch: !!config.is_web_launch
       };
       fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
       console.log('[Stealth Config] Successfully initialized active resume, JD, company, and role context:', contextData);
@@ -1899,8 +1899,8 @@ const server = http.createServer((req, res) => {
             model: config.model || '',
             language: config.language || '',
             doc_id: config.doc_id || '',
-            auto_start: true,
-            is_web_launch: true,
+            auto_start: config.auto_start === true || config.auto_start === 'true',
+            is_web_launch: !!config.is_web_launch,
             tokens_balance: config.tokens_balance,
             is_pro: config.is_pro,
             plan_title: config.plan_title,
@@ -1942,8 +1942,8 @@ const server = http.createServer((req, res) => {
               prompt_id: config.prompt_id,
               auto_answer: config.auto_answer,
               save_transcript: config.save_transcript,
-              auto_start: true,
-              is_web_launch: true
+              auto_start: config.auto_start === true || config.auto_start === 'true',
+              is_web_launch: !!config.is_web_launch
             };
             pendingSessionConfig = mappedConfig;
             mainWindow.webContents.send('deep-link-session', mappedConfig);
@@ -2037,8 +2037,8 @@ function parseDeepLinkUrl(urlStr) {
     }
 
     if (Object.keys(config).length > 0) {
-      config.auto_start = true;
-      config.is_web_launch = true;
+      config.auto_start = config.auto_start === true || config.auto_start === 'true';
+      config.is_web_launch = !!config.is_web_launch;
       return config;
     }
     return null;
@@ -2103,8 +2103,8 @@ function applyDeepLinkConfig(deepLinkUrl) {
       model: config.model || '',
       language: config.language || '',
       doc_id: config.doc_id || '',
-      auto_start: true,
-      is_web_launch: true
+      auto_start: config.auto_start === true || config.auto_start === 'true',
+      is_web_launch: !!config.is_web_launch
     };
     fs.writeFileSync(localPath, JSON.stringify(contextData, null, 2), 'utf8');
   } catch (e) {

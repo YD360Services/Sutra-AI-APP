@@ -171,11 +171,19 @@
           style="display: flex; flex-direction: column; height: 320px; -webkit-app-region: no-drag !important; user-select: text !important; -webkit-user-select: text !important;">
           <div class="setup-form-group">
             <label class="setup-label">Session Type</label>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px;">
-              <button type="button" class="type-badge active interactive" data-type="Interview+Coding"
-                style="outline: none;">Interview+Coding</button>
-              <button type="button" class="type-badge interactive" data-type="Coding Test" style="outline: none;">Coding Test</button>
-              <button type="button" class="type-badge interactive" data-type="HR / Manager Round" style="outline: none;">HR / Manager Round</button>
+            <div class="type-badge-group" role="radiogroup" aria-label="Session Type">
+              <label class="type-badge-label">
+                <input type="radio" name="session_type" class="type-radio" value="Interview+Coding" checked />
+                <span class="type-badge active interactive" data-type="Interview+Coding">Interview+Coding</span>
+              </label>
+              <label class="type-badge-label">
+                <input type="radio" name="session_type" class="type-radio" value="Coding Test" />
+                <span class="type-badge interactive" data-type="Coding Test">Coding Test</span>
+              </label>
+              <label class="type-badge-label">
+                <input type="radio" name="session_type" class="type-radio" value="HR / Manager Round" />
+                <span class="type-badge interactive" data-type="HR / Manager Round">HR / Manager Round</span>
+              </label>
             </div>
           </div>
 
@@ -551,7 +559,7 @@
       <!-- ══════════════ LAYER 1: NAVBAR ══════════════ -->
       <div class="toolbar-wrapper">
         <div class="brand-zone" style="-webkit-app-region: drag;">
-          <img src="Roundmate-logo.svg"
+          <img src="Roundmate-logo-cropped.svg"
             style="width: 22px; height: 22px; object-fit: contain; flex-shrink: 0; border-radius: 5px;"
             alt="RoundMate AI Logo" />
           <!-- session-timer hidden; stop-session-btn now shows the timer -->

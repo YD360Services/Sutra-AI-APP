@@ -434,52 +434,60 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Session type state & exclusive selection helper
+// Session type state & exclusive radio selection controller
 let selectedSessionType = 'Interview+Coding';
 
 function setSessionType(typeStr) {
+  const radios = Array.from(document.querySelectorAll('input[name="session_type"]'));
   const badges = Array.from(document.querySelectorAll('.type-badge'));
-  if (!badges.length) return;
 
-  // Always reset all badges first so only ONE option is ever active
-  badges.forEach(b => b.classList.remove('active'));
+  if (!radios.length && !badges.length) return;
 
-  if (!typeStr || typeof typeStr !== 'string') {
-    badges[0].classList.add('active');
-    selectedSessionType = badges[0].getAttribute('data-type') || 'Interview+Coding';
+  const raw = (typeStr || '').trim().toLowerCase();
+
+  // Primary mechanism: Native Radio Selection Property
+  if (radios.length > 0) {
+    // 1. Exact match by value or data-type
+    let targetRadio = radios.find(r => r.value.toLowerCase() === raw);
+
+    // 2. Disambiguated semantic matching
+    if (!targetRadio && raw) {
+      if (raw.includes('hr') || raw.includes('manager') || raw.includes('behavioral')) {
+        targetRadio = radios.find(r => r.value.toLowerCase().includes('hr'));
+      } else if (raw === 'coding' || raw === 'coding test' || (raw.includes('coding') && !raw.includes('interview'))) {
+        targetRadio = radios.find(r => r.value.toLowerCase() === 'coding test');
+      } else if (raw.includes('interview')) {
+        targetRadio = radios.find(r => r.value.toLowerCase().includes('interview'));
+      }
+    }
+
+    // 3. Fallback partial match
+    if (!targetRadio && raw) {
+      targetRadio = radios.find(r => r.value.toLowerCase().includes(raw) || raw.includes(r.value.toLowerCase()));
+    }
+
+    // 4. Fallback default
+    if (!targetRadio) {
+      targetRadio = radios[0];
+    }
+
+    // Native radio mutual exclusion: checking one radio automatically deselects all others in group
+    targetRadio.checked = true;
+    selectedSessionType = targetRadio.value;
+
+    // Synchronize visual state classes
+    radios.forEach(r => {
+      const badge = r.parentElement?.querySelector('.type-badge') || r.nextElementSibling;
+      if (badge) {
+        badge.classList.toggle('active', r.checked);
+      }
+    });
     return;
   }
 
-  const raw = typeStr.trim().toLowerCase();
-
-  // 1. Exact match by data-type
-  let matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase() === raw);
-
-  // 2. Disambiguated semantic matching (mutually exclusive)
-  if (!matchedBadge) {
-    if (raw.includes('hr') || raw.includes('manager') || raw.includes('behavioral')) {
-      matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase().includes('hr'));
-    } else if (raw === 'coding' || raw === 'coding test' || (raw.includes('coding') && !raw.includes('interview'))) {
-      matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase() === 'coding test');
-    } else if (raw.includes('interview')) {
-      matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase().includes('interview'));
-    }
-  }
-
-  // 3. Fallback: single first partial match
-  if (!matchedBadge) {
-    matchedBadge = badges.find(b => {
-      const bType = (b.getAttribute('data-type') || '').toLowerCase();
-      return bType.includes(raw) || raw.includes(bType);
-    });
-  }
-
-  // 4. Default fallback: first badge
-  if (!matchedBadge) {
-    matchedBadge = badges[0];
-  }
-
-  // Strictly activate ONLY the single matched badge
+  // Fallback for standalone badges if radios are not in DOM
+  badges.forEach(b => b.classList.remove('active'));
+  let matchedBadge = badges.find(b => (b.getAttribute('data-type') || '').toLowerCase() === raw) || badges[0];
   matchedBadge.classList.add('active');
   selectedSessionType = matchedBadge.getAttribute('data-type') || 'Interview+Coding';
 }
@@ -1947,13 +1955,31 @@ setupDocFile.addEventListener('change', async () => {
   }
 });
 
-// Dropdown/Badges session type bindings
+// Dropdown/Badges session type bindings via Native Radio Group
+const sessionTypeRadios = document.querySelectorAll('input[name="session_type"]');
 const typeBadges = document.querySelectorAll('.type-badge');
 
+sessionTypeRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    if (radio.checked) {
+      selectedSessionType = radio.value;
+      sessionTypeRadios.forEach(r => {
+        const badge = r.parentElement?.querySelector('.type-badge') || r.nextElementSibling;
+        if (badge) badge.classList.toggle('active', r.checked);
+      });
+    }
+  });
+});
+
 typeBadges.forEach(badge => {
-  badge.addEventListener('click', (e) => {
-    e.preventDefault();
-    setSessionType(badge.getAttribute('data-type'));
+  badge.addEventListener('click', () => {
+    const radio = badge.parentElement?.querySelector('input[type="radio"]');
+    if (radio) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event('change'));
+    } else {
+      setSessionType(badge.getAttribute('data-type'));
+    }
   });
 });
 
