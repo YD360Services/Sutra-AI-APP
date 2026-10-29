@@ -97,6 +97,7 @@ genai_client = None
 groq_client = None
 openai_client = None
 anthropic_client = None
+xai_client = None
 _gemini_disabled = False
 
 def is_gemini_disabled() -> bool:
@@ -142,6 +143,20 @@ def get_openai_client():
             logger.error(f"Error initializing OpenAI client: {e}")
     return openai_client
 
+def get_xai_client():
+    global xai_client
+    api_key = getattr(settings, "XAI_API_KEY", "") or os.environ.get("XAI_API_KEY") or os.environ.get("GROK_API_KEY")
+    if xai_client is None and api_key:
+        try:
+            xai_client = openai.AsyncOpenAI(
+                api_key=api_key,
+                base_url="https://api.x.ai/v1"
+            )
+            logger.info("xAI (Grok) API Client initialized successfully.")
+        except Exception as e:
+            logger.error(f"Error initializing xAI client: {e}")
+    return xai_client
+
 def get_anthropic_client():
     global anthropic_client
     if anthropic_client is None and settings.ANTHROPIC_API_KEY:
@@ -181,38 +196,53 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         # ── 1. Google Gemini Normalizer ──
         if "3.8" in ml or "lite-tts" in ml or "flash-lite-tts" in ml:
             return "gemini-3.8-flash-lite-tts"
+        if "3.1" in ml or "flash-lite" in ml:
+            return "gemini-3.6-flash"
         if "3.7" in ml:
             return "gemini-3.7-flash"
-        if "gemini" in ml or "flash" in ml or "3.6" in ml or "3.1" in ml or "pro" in ml or "2" in ml:
+        if "gemini" in ml or "flash" in ml or "3.6" in ml or "pro" in ml or "2" in ml:
             return "gemini-3.6-flash"
 
         # ── 2. Anthropic Claude Normalizer ──
-        if "sonnet" in ml:
-            return "claude-sonnet-4-5-20250929"
-        if "claude" in ml or "haiku" in ml:
-            return "claude-haiku-4-5-20251001"
+        if "3.7" in ml or "sonnet" in ml:
+            return "claude-3-7-sonnet-20250219"
+        if "3.5" in ml or "haiku" in ml or "claude" in ml:
+            return "claude-3-5-haiku-20241022"
 
-        # ── 3. OpenAI Reasoning (o3 / gptoss) ──
+        # ── 3. xAI Grok Normalizer ──
+        if "grok-3-mini" in ml or "grok-mini" in ml or ("grok" in ml and "mini" in ml):
+            return "grok-3-mini"
+        if "grok" in ml:
+            return "grok-3"
+
+        # ── 4. OpenAI Reasoning (o3 / gptoss) ──
         if "o3" in ml or ml == "gptoss":
             return "o3-mini"
 
         # ── 4. Meta / Groq Normalizer ──
+        if "70b" in ml or "3.3" in ml:
+            return "llama-3.3-70b-versatile"
+        if "8b" in ml or "instant" in ml:
+            return "llama-3.1-8b-instant"
         if "groq" in ml or "llama" in ml or "scout" in ml or "120b" in ml or "gpt-oss" in ml or "oss-20b" in ml:
-            return "openai/gpt-oss-120b"
+            return "llama-3.3-70b-versatile"
         if "qwen" in ml:
             return "qwen/qwen3.8-27b"
 
-        # ── 5. OpenAI 6-Series & 5-Series (Astra / Luna) ──
-        if any(x in ml for x in ["astra", "gpt-6", "gpt6", "luna", "5.6-luna", "gpt5.6-luna"]):
-            return "gpt-5.6-luna"
-        if any(x in ml for x in ["sol", "5.6-sol", "5.4", "5.5", "5.6", "5-mini", "5.4-mini", "5.5-mini"]):
-            return "gpt-5.4-mini"
-        if "4o-mini" in ml:
+        # ── 5. OpenAI 6-Series & 5-Series (Astra -> Terra Aliasing) ──
+        # Frontend displays as "GPT 6 Astra", backend aliases to gpt-6.1-terra (gpt-4o)
+        if any(x in ml for x in ["astra", "6-astra", "gpt-6-astra", "terra", "6.1-terra", "gpt-6.1-terra"]):
+            return "gpt-4o"
+        # Difficult coding, algorithms and system design
+        if any(x in ml for x in ["sol", "6.1-sol", "gpt-6.1-sol"]):
+            return "gpt-4o"
+        # Simple extraction and classification
+        if any(x in ml for x in ["luna", "6-luna", "gpt-6-luna", "5.6-luna", "4o-mini"]):
             return "gpt-4o-mini"
         if "4o" in ml:
             return "gpt-4o"
         if "mini" in ml or "gpt" in ml:
-            return "gpt-5.4-mini"
+            return "gpt-4o-mini"
 
         # ── 6. Pass through all other model strings unchanged ──
         # This preserves exact model names like gpt-4.1-mini, gpt-4o, gpt-4-turbo, etc.
@@ -267,6 +297,7 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
         or "/" in model_lower
     )
     is_claude = "claude" in model_lower
+    is_grok = "grok" in model_lower
 
     log_file = None
 
@@ -304,30 +335,92 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
     elif is_claude:
         # Anthropic (Claude) Flow — system prompt is a top-level param, NOT inside messages[]
         client = get_anthropic_client()
-        if not client:
-            if throw_on_error:
-                raise ValueError("Anthropic API Key or Client not configured.")
-            logger.warning("Anthropic Client not configured. Using local fallback.")
-            return fallback_answer(prompt)
-        try:
-            log_file = log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
-            response = await client.messages.create(
-                model=model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            content = response.content[0].text or ""
-            if log_file:
-                log_response(log_file, response_text=content)
-            return content
-        except Exception as e:
-            logger.error(f"Anthropic (Claude) API generation error: {e}. Falling back...")
-            if log_file:
-                log_response(log_file, error=str(e))
-            if throw_on_error:
-                raise e
-            return fallback_answer(prompt)
+        if client:
+            try:
+                log_file = log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
+                response = await client.messages.create(
+                    model=model,
+                    max_tokens=4096,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                content = response.content[0].text or ""
+                if log_file:
+                    log_response(log_file, response_text=content)
+                return content
+            except Exception as e:
+                logger.error(f"Anthropic (Claude) API generation error: {e}. Failing over...")
+                if log_file:
+                    log_response(log_file, error=str(e))
+
+        # Failover to OpenAI if Anthropic is unconfigured or failed
+        openai_fallback_client = get_openai_client()
+        if openai_fallback_client:
+            try:
+                fallback_m = "gpt-4o" if "sonnet" in model_lower else "gpt-4o-mini"
+                response_format = {"type": "json_object"} if response_json else None
+                openai_resp = await openai_fallback_client.chat.completions.create(
+                    model=fallback_m,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                return openai_resp.choices[0].message.content or ""
+            except Exception as oe:
+                logger.error(f"Claude failover error: {oe}")
+
+        if throw_on_error:
+            raise ValueError("Anthropic API not available and failover exhausted.")
+        return fallback_answer(prompt)
+
+    elif is_grok:
+        # xAI (Grok) Flow
+        client = get_xai_client()
+        if client:
+            try:
+                response_format = {"type": "json_object"} if response_json else None
+                log_file = log_prompt(provider="xai", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
+                resp = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                content = resp.choices[0].message.content or ""
+                if log_file:
+                    log_response(log_file, response_text=content)
+                return content
+            except Exception as ge:
+                logger.error(f"xAI (Grok) API generation error: {ge}. Failing over...")
+
+        # Failover to OpenAI if xAI unconfigured or failed
+        openai_fallback = get_openai_client()
+        if openai_fallback:
+            try:
+                fallback_m = "gpt-4o" if "mini" not in model_lower else "gpt-4o-mini"
+                response_format = {"type": "json_object"} if response_json else None
+                openai_resp = await openai_fallback.chat.completions.create(
+                    model=fallback_m,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                return openai_resp.choices[0].message.content or ""
+            except Exception as oe:
+                logger.error(f"Grok failover error: {oe}")
+
+        if throw_on_error:
+            raise ValueError("xAI (Grok) API not available and failover exhausted.")
+        return fallback_answer(prompt)
 
     elif "gpt" in model_lower or "o3" in model_lower:
         # OpenAI Flow
@@ -464,6 +557,7 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
         or "/" in model_lower
     )
     is_claude = "claude" in model_lower
+    is_grok = "grok" in model_lower
 
     if is_groq:
         client = get_groq_client()
@@ -493,22 +587,89 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
     elif is_claude:
         # Anthropic (Claude) streaming flow
         client = get_anthropic_client()
-        if not client:
-            yield fallback_answer(prompt)
-            return
-        try:
-            log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
-            async with client.messages.stream(
-                model=model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-            ) as stream:
-                async for text in stream.text_stream:
-                    yield text
-        except Exception as e:
-            logger.error(f"Anthropic (Claude) streaming error: {e}")
-            yield fallback_answer(prompt)
+        if client:
+            try:
+                log_prompt(provider="anthropic", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
+                async with client.messages.stream(
+                    model=model,
+                    max_tokens=4096,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": prompt}],
+                ) as stream:
+                    async for text in stream.text_stream:
+                        yield text
+                return
+            except Exception as e:
+                logger.error(f"Anthropic (Claude) streaming error: {e}. Failing over...")
+
+        # Failover to OpenAI for streaming if Anthropic is unconfigured or failed
+        openai_fallback = get_openai_client()
+        if openai_fallback:
+            try:
+                fallback_m = "gpt-4o" if "sonnet" in model_lower else "gpt-4o-mini"
+                response = await openai_fallback.chat.completions.create(
+                    model=fallback_m,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    stream=True
+                )
+                async for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return
+            except Exception as oe:
+                logger.error(f"Claude streaming failover error: {oe}")
+
+        yield fallback_answer(prompt)
+
+    elif is_grok:
+        # xAI (Grok) Flow
+        client = get_xai_client()
+        if client:
+            try:
+                response_format = {"type": "json_object"} if response_json else None
+                log_file = log_prompt(provider="xai", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
+                resp = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                content = resp.choices[0].message.content or ""
+                if log_file:
+                    log_response(log_file, response_text=content)
+                return content
+            except Exception as ge:
+                logger.error(f"xAI (Grok) API generation error: {ge}. Failing over...")
+
+        # Failover to OpenAI if xAI unconfigured or failed
+        openai_fallback = get_openai_client()
+        if openai_fallback:
+            try:
+                fallback_m = "gpt-4o" if "mini" not in model_lower else "gpt-4o-mini"
+                response_format = {"type": "json_object"} if response_json else None
+                openai_resp = await openai_fallback.chat.completions.create(
+                    model=fallback_m,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                return openai_resp.choices[0].message.content or ""
+            except Exception as oe:
+                logger.error(f"Grok failover error: {oe}")
+
+        if throw_on_error:
+            raise ValueError("xAI (Grok) API not available and failover exhausted.")
+        return fallback_answer(prompt)
 
     elif "gpt" in model_lower or "o3" in model_lower:
         client = get_openai_client()

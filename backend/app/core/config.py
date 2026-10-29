@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-5.6-luna"
     GROQ_MODEL: str = "openai/gpt-oss-120b"
     ANTHROPIC_MODEL: str = "claude-haiku-4-5-20251001"
+    XAI_API_KEY: str = ""
+    XAI_MODEL: str = "grok-3"
     
     # Admin & Security
     INITIAL_ADMIN_EMAILS: str = "kirankumar82054@gmail.com,omkarvenkat09@gmail.com,y.bhanuchandar360@gmail.com,omkarshendre999@gmail.com,admin@roundmate.ai"
@@ -57,6 +59,8 @@ class Settings(BaseSettings):
             self.OPENAI_API_KEY = env.get("OPENAI_API_KEY") or env.get("OPEN_API_KEY") or env.get("OPENAI_KEY") or ""
         if not self.GROQ_API_KEY:
             self.GROQ_API_KEY = env.get("GROQ_API_KEY") or env.get("groq") or env.get("GROQ_KEY") or ""
+        if not getattr(self, "XAI_API_KEY", ""):
+            self.XAI_API_KEY = env.get("XAI_API_KEY") or env.get("GROK_API_KEY") or ""
         if not self.ANTHROPIC_API_KEY:
             self.ANTHROPIC_API_KEY = env.get("ANTHROPIC_API_KEY") or env.get("CLAUDE_API_KEY") or ""
         if not self.SPEECHMATICS_API_KEY or self.SPEECHMATICS_API_KEY == "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI":

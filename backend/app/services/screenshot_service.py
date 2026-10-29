@@ -14,32 +14,43 @@ logger = logging.getLogger("roundmate.screenshot_service")
 
 def _pick_vision_model(preferred_model: str = None):
     """
-    Pick the best vision-capable model.
+    Pick the best vision-capable model for screenshots.
     Priority:
-      1. If Gemini was requested or Gemini client is available -> use gemini-3.6-flash
-      2. If OpenAI client is available -> use gpt-4o or gpt-4o-mini
+      1. If OpenAI client is available and Astra/GPT-6/GPT-5.6/GPT-4o or default is requested -> use gpt-4o (flagship OCR and vision reasoning)
+      2. If Gemini was requested or Gemini client is available -> use dedicated vision model (gemini-2.5-pro / gemini-2.5-flash / gemini-3.7-flash, avoiding TTS voice models)
       3. Otherwise raise ValueError with setup instructions.
     """
     model_lower = (preferred_model or "").lower()
     gemini_client = get_gemini_client()
     openai_client = get_openai_client()
 
-    # Determine reliable Gemini vision model identifier
-    gemini_model = "gemini-3.8-flash-lite-tts"
-    if settings.GEMINI_MODEL and not any(old in settings.GEMINI_MODEL for old in ["1.5", "2.0", "2.5"]):
-        gemini_model = settings.GEMINI_MODEL
+    # Determine dedicated Gemini vision model (avoid TTS voice models for screenshot OCR)
+    gemini_model = "gemini-2.5-pro"
+    if "3.7" in model_lower:
+        gemini_model = "gemini-3.7-flash"
+    elif "flash" in model_lower:
+        gemini_model = "gemini-2.5-flash"
 
-    # If the user explicitly requested a Gemini model, honour it
+    # If OpenAI client is available:
+    # GPT-6 Luna is configured for complete screenshot processing (blazing fast, budget $0.10/$0.50)
+    if openai_client:
+        if "luna" in model_lower:
+            return ("openai", "gpt-4o-mini", openai_client)
+        if any(k in model_lower for k in ["terra", "sol", "astra", "heavy", "pro"]):
+            return ("openai", "gpt-4o", openai_client)
+        if not preferred_model:
+            # Default vision processing uses GPT-6 Luna (gpt-4o-mini)
+            return ("openai", "gpt-4o-mini", openai_client)
+        elif not any(k in model_lower for k in ["gemini", "claude"]):
+            return ("openai", "gpt-4o-mini", openai_client)
+
+    # If the user explicitly requested a Gemini model, honour with dedicated Gemini vision model
     if "gemini" in model_lower and gemini_client:
         return ("gemini", gemini_model, gemini_client)
 
     # If OpenAI client is available
     if openai_client:
-        if preferred_model and any(k in model_lower for k in ["astra", "luna", "6", "5.6", "4o", "heavy", "pro"]):
-            vision_model = "gpt-4o"
-        else:
-            vision_model = "gpt-4o-mini"
-        return ("openai", vision_model, openai_client)
+        return ("openai", "gpt-4o", openai_client)
 
     # Fallback to Gemini if available
     if gemini_client:
@@ -49,8 +60,6 @@ def _pick_vision_model(preferred_model: str = None):
         "No vision-capable API key configured. "
         "Add GEMINI_API_KEY or OPENAI_API_KEY to your environment variables."
     )
-
-
 async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str = None) -> str:
     """Analyze a screenshot image and return a JSON string with 'question' and 'answer' keys."""
 
@@ -102,7 +111,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                 return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via OpenAI: {str(e)}"}}'
             logger.info("[Screenshot] Falling back to Gemini vision...")
             provider = "gemini"
-            vision_model = "gemini-3.6-flash"
+            vision_model = "gemini-2.5-flash"
             client = gemini_client
 
     # ── Gemini Vision ──────────────────────────────────────────────────────────
