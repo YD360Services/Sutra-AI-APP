@@ -141,7 +141,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                 return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via OpenAI: {str(e)}"}}'
             logger.info("[Screenshot] Falling back to Gemini vision...")
             provider = "gemini"
-            vision_model = "gemini-2.5-flash"
+            vision_model = "gemini-3.8-flash"
             client = gemini_client
 
     # ── Gemini Vision ──────────────────────────────────────────────────────────
@@ -169,6 +169,7 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
                     config=types.GenerateContentConfig(
                         system_instruction=system_prompt,
                         temperature=0.3,
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
                         response_mime_type="application/json",
                     ),
                 ),
