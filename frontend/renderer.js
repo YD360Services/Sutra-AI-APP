@@ -1,123 +1,106 @@
 // Unified Model Definitions & Hierarchy (synchronized with Sutra AI Web)
 const MODEL_OPTIONS = [
-  // -- OpenAI --
-  {
-    value: 'gpt-6-luna',
-    label: 'GPT 6 Astra',
-    provider: 'GPT',
-    recommendedFor: 'Next-generation OpenAI flagship with Astra reasoning engine for deep coding, system architecture, and real-time interview intelligence.',
-    isRecommended: true,
-    category: 'quality',
-    latencyMs: '~210ms',
-    tags: [
-      { text: 'Flagship', variant: 'recommended' },
-      { text: 'Astra Engine', variant: 'reasoning' },
-      { text: 'Architecture', variant: 'quality' },
-    ]
-  },
-  {
-    value: 'gpt-5.6',
-    label: 'GPT 5.6 Sol',
-    provider: 'GPT',
-    recommendedFor: 'OpenAI high-precision model (Sol Engine) for coding, architecture, and complex multi-part interview questions.',
-    category: 'quality',
-    latencyMs: '~220ms',
-    tags: [
-      { text: 'Sol Engine', variant: 'reasoning' },
-      { text: 'Architecture', variant: 'quality' },
-    ]
-  },
-  {
-    value: 'gptoss',
-    label: 'OpenAI o3-mini (GPTOSS)',
-    provider: 'GPT',
-    recommendedFor: 'OpenAI reasoning model for logical, algorithmic, and system design problems.',
-    category: 'quality',
-    latencyMs: '~600ms',
-    tags: [
-      { text: 'Algorithmic', variant: 'reasoning' },
-      { text: 'Logic & Math', variant: 'quality' },
-    ]
-  },
   // -- Google Gemini --
   {
-    value: 'gemini-3.8-flash-lite-tts',
+    value: 'gemini-3.8-flash',
     label: 'Gemini 3.8 Flash',
     provider: 'Gemini',
-    recommendedFor: 'Recommended for Live Audio Sessions with sub-220ms voice response latency and hybrid reasoning.',
+    recommendedFor: 'Recommended premier engine: ultra-responsive real-time audio, fast Q&A, and live interview transcription.',
     isRecommended: true,
     category: 'fast',
-    latencyMs: '~180ms',
+    latencyMs: 'Ultra-Fast',
     tags: [
-      { text: 'Live Voice', variant: 'recommended' },
-      { text: 'Sub-220ms', variant: 'fast' },
-      { text: 'Best for Live', variant: 'recommended' },
+      { text: 'Recommended', variant: 'recommended' },
+      { text: 'Live Audio', variant: 'reasoning' },
+      { text: 'Ultra-Fast', variant: 'fast' },
     ]
   },
   {
-    value: 'gemini-3.7-flash',
-    label: 'Gemini 3.7 Flash',
+    value: 'gemini-4-argon',
+    label: 'Gemini 4 Argon',
     provider: 'Gemini',
-    recommendedFor: 'High-speed Google reasoning model with low latency and deep technical analysis.',
+    recommendedFor: 'Multimodal processing, real-time live audio responses, and rapid dialogue analysis.',
+    category: 'fast',
+    latencyMs: 'Ultra-Fast',
+    tags: [
+      { text: 'Multimodal', variant: 'reasoning' },
+      { text: 'Ultra-Fast', variant: 'fast' },
+    ]
+  },
+  // -- OpenAI --
+  {
+    value: 'gpt-6-astra',
+    label: 'GPT 6 Astra',
+    provider: 'GPT',
+    recommendedFor: 'Primary model: screen understanding, system design, and spoken live answers.',
     isRecommended: true,
     category: 'quality',
-    latencyMs: '~220ms',
+    latencyMs: 'Real-Time',
     tags: [
-      { text: 'Hybrid Reasoning', variant: 'reasoning' },
-      { text: 'Sub-220ms', variant: 'fast' },
       { text: 'Recommended', variant: 'recommended' },
+      { text: 'Screen & Voice', variant: 'reasoning' },
+    ]
+  },
+  {
+    value: 'gpt-6.1-sol',
+    label: 'GPT-6.1 Sol',
+    provider: 'GPT',
+    recommendedFor: 'Difficult coding, algorithms, system design, and deep technical architecture.',
+    category: 'quality',
+    latencyMs: 'Deep Reasoning',
+    tags: [
+      { text: 'Deep Coding', variant: 'coding' },
+      { text: 'Algorithms & Architecture', variant: 'reasoning' },
     ]
   },
   // -- Anthropic Claude --
   {
-    value: 'claude-haiku',
-    label: 'Claude Haiku 4.5',
+    value: 'claude-fable-5.1',
+    label: 'Claude Fable 5.1',
     provider: 'Claude',
-    recommendedFor: 'Blazing fast real-time live interview answers. Billed at $1/M input, $5/M output.',
-    category: 'fast',
-    latencyMs: '~200ms',
+    recommendedFor: 'Hybrid deep reasoning, elite software engineering, and structured STAR interview responses.',
+    category: 'quality',
+    latencyMs: 'Deep Reasoning',
     tags: [
-      { text: 'Spoken Prep', variant: 'recommended' },
-      { text: 'Sub-200ms', variant: 'fast' },
+      { text: 'Hybrid Reasoning', variant: 'reasoning' },
+      { text: 'Elite Coding', variant: 'coding' },
     ]
   },
   {
-    value: 'claude-sonnet',
-    label: 'Claude Sonnet 5',
+    value: 'claude-opus-5-5',
+    label: 'Claude Opus 5.5',
     provider: 'Claude',
-    recommendedFor: 'Sonnet flagship - best for complex coding & system design. Billed at $2/M input, $10/M output.',
-    isRecommended: true,
-    category: 'quality',
-    latencyMs: '~380ms',
+    recommendedFor: 'Ultra-fast conversational answers, rapid behavioral questions, and low-latency follow-ups.',
+    category: 'fast',
+    latencyMs: 'Ultra-Fast',
     tags: [
-      { text: 'Deep Coding', variant: 'quality' },
-      { text: 'System Design', variant: 'reasoning' },
-      { text: 'Recommended', variant: 'recommended' },
+      { text: 'Ultra-Fast', variant: 'fast' },
+      { text: 'Conversational', variant: 'fast' },
     ]
   },
   // -- Meta / Open Source (Groq) --
   {
-    value: 'llama-4-scout',
-    label: 'Llama 4 Scout (Groq)',
-    provider: 'Llama',
-    recommendedFor: 'Next-gen Meta Llama 4 Scout architecture hosted on ultra-fast Groq LPU hardware.',
+    value: 'llama-3.1-8b-instant',
+    label: 'Llama 3.1 8B',
+    provider: 'Groq',
+    recommendedFor: 'Flagship open-weights model accelerated on Groq LPU hardware for rapid reasoning.',
     category: 'fast',
-    latencyMs: '~150ms',
+    latencyMs: 'Ultra-Fast LPU',
     tags: [
-      { text: 'Groq LPU', variant: 'fast' },
-      { text: 'Open Weights', variant: 'neutral' },
+      { text: 'Ultra-Fast LPU', variant: 'fast' },
+      { text: 'High Speed', variant: 'fast' },
     ]
   },
   {
-    value: 'gpt-oss-20b',
-    label: 'GPT-OSS 20B (Groq)',
-    provider: 'Llama',
-    recommendedFor: 'High-speed open-weight model for rapid Q&A and coding assistance.',
+    value: 'openai/gpt-oss-20b',
+    label: 'GPT OSS',
+    provider: 'Groq',
+    recommendedFor: 'Open-weight high-speed inference on Groq LPU for rapid Q&A and coding assistance.',
     category: 'fast',
-    latencyMs: '~130ms',
+    latencyMs: 'LPU Speed',
     tags: [
-      { text: 'Ultra-Low Latency', variant: 'fast' },
-      { text: 'Groq Speed', variant: 'neutral' },
+      { text: 'Open Weights', variant: 'neutral' },
+      { text: 'LPU Speed', variant: 'fast' },
     ]
   },
 ];
@@ -515,7 +498,7 @@ async function applySessionConfig(config) {
   if (config.model) {
     const modelSelect = document.getElementById('setup-model-select');
     if (modelSelect) {
-      const normalizedModel = config.model === 'gpt-6-astra' ? 'gpt-6-luna' : config.model;
+      const normalizedModel = config.model || 'gpt-6-astra';
       modelSelect.value = normalizedModel;
     }
   }
@@ -2650,7 +2633,7 @@ if (editSessionSaveBtn) {
     const isPrompt = docObj ? (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt') || docObj.document_name.toLowerCase().includes('instruction')) : false;
 
     try {
-      const currentModel = document.getElementById('setup-model-select')?.value || 'gpt-6-luna';
+      const currentModel = document.getElementById('setup-model-select')?.value || 'gpt-6-astra';
       await window.electronAPI.saveL4Context({
         resume,
         resume_id: newResumeId || '',

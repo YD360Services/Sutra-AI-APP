@@ -1248,21 +1248,18 @@ function createWindow() {
         if (m.includes('o3') || m.includes('gptoss')) {
           return 'o3-mini';
         }
-        // 5. OpenAI 6-Series & 5-Series (Astra / Luna)
-        if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('luna') || m.includes('5.6-luna')) {
-          return 'gpt-5.6-luna';
+        // 5. OpenAI 6-Series & 5-Series (Astra / Luna) -> Real OpenAI API Models
+        if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('sol')) {
+          return 'gpt-4o';
         }
-        if (m.includes('sol') || m.includes('5.6-sol') || m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
-          return 'gpt-5.4-mini';
-        }
-        if (m.includes('4o-mini')) {
+        if (m.includes('luna') || m.includes('5.6') || m.includes('4o-mini') || m.includes('mini') || m.includes('gptoss')) {
           return 'gpt-4o-mini';
         }
         if (m.includes('4o')) {
           return 'gpt-4o';
         }
-        if (m.includes('gpt') || m.includes('mini')) {
-          return 'gpt-5.4-mini';
+        if (m.includes('gpt')) {
+          return 'gpt-4o-mini';
         }
         return modelStr;
       };

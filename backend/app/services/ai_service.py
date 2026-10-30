@@ -194,55 +194,59 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         ml = m.lower().replace(" ", "-")
 
         # ── 1. Google Gemini Normalizer ──
-        if "3.8" in ml or "lite-tts" in ml or "flash-lite-tts" in ml:
-            return "gemini-3.8-flash-lite-tts"
-        if "3.1" in ml or "flash-lite" in ml:
-            return "gemini-3.6-flash"
-        if "3.7" in ml:
-            return "gemini-3.7-flash"
-        if "gemini" in ml or "flash" in ml or "3.6" in ml or "pro" in ml or "2" in ml:
-            return "gemini-3.6-flash"
+        # Gemini 4 Argon (Recommended #2) -> Google: gemini-3.8-flash
+        if "argon" in ml or "4-argon" in ml:
+            return "gemini-3.8-flash"
+        # Gemini 3.8 Flash -> Google: gemini-3.5-flash-lite
+        if "gemini-3.8" in ml or "3.8-flash" in ml or "3.8" in ml or "3.5" in ml or "flash-lite" in ml or "lite-tts" in ml:
+            return "gemini-3.5-flash-lite"
+        if "gemini" in ml:
+            return "gemini-3.8-flash"
 
         # ── 2. Anthropic Claude Normalizer ──
-        if "3.7" in ml or "sonnet" in ml:
-            return "claude-3-7-sonnet-20250219"
-        if "3.5" in ml or "haiku" in ml or "claude" in ml:
-            return "claude-3-5-haiku-20241022"
+        # Claude Fable 5.1 -> Anthropic: claude-sonnet-5-5
+        if "fable" in ml or "fable-5.1" in ml or "fable-5" in ml:
+            return "claude-sonnet-5-5"
+        # claude-opus-5-5 -> Anthropic: claude-haiku-5-5
+        if "opus" in ml or "opus-5" in ml or "opus-5-5" in ml:
+            return "claude-haiku-5-5"
+        if "sonnet" in ml or "3.7" in ml:
+            return "claude-sonnet-5-5"
+        if "claude" in ml or "haiku" in ml or "3.5" in ml:
+            return "claude-haiku-5-5"
 
-        # ── 3. xAI Grok Normalizer ──
-        if "grok-3-mini" in ml or "grok-mini" in ml or ("grok" in ml and "mini" in ml):
-            return "grok-3-mini"
-        if "grok" in ml:
-            return "grok-3"
-
-        # ── 4. OpenAI Reasoning (o3 / gptoss) ──
-        if "o3" in ml or ml == "gptoss":
-            return "o3-mini"
-
-        # ── 4. Meta / Groq Normalizer ──
-        if "70b" in ml or "3.3" in ml:
-            return "llama-3.3-70b-versatile"
-        if "8b" in ml or "instant" in ml:
-            return "llama-3.1-8b-instant"
-        if "groq" in ml or "llama" in ml or "scout" in ml or "120b" in ml or "gpt-oss" in ml or "oss-20b" in ml:
+        # ── 3. Meta / Groq Normalizer ──
+        # GPT OSS (GPT OSS 20B) -> Groq LPU: openai/gpt-oss-120b
+        if "gpt-oss" in ml or "oss-20b" in ml or "oss" in ml:
+            return "openai/gpt-oss-120b"
+        # Llama 3.1 8B -> Groq LPU: llama-3.3-70b-versatile
+        if "8b" in ml or "instant" in ml or "llama" in ml or "groq" in ml or "70b" in ml or "3.3" in ml or "3.1" in ml:
             return "llama-3.3-70b-versatile"
         if "qwen" in ml:
             return "qwen/qwen3.8-27b"
 
-        # ── 5. OpenAI 6-Series & 5-Series (Astra -> Terra Aliasing) ──
-        # Frontend displays as "GPT 6 Astra", backend aliases to gpt-6.1-terra (gpt-4o)
+        # ── 4. OpenAI 6-Series & Sol / Luna ──
+        # GPT 6 Astra (Recommended #1) -> OpenAI: gpt-6.1-terra
         if any(x in ml for x in ["astra", "6-astra", "gpt-6-astra", "terra", "6.1-terra", "gpt-6.1-terra"]):
-            return "gpt-4o"
-        # Difficult coding, algorithms and system design
+            return "gpt-6.1-terra"
+        # 5. GPT-6.1 Sol (gpt-6.1-sol) -> OpenAI: gpt-6-luna
         if any(x in ml for x in ["sol", "6.1-sol", "gpt-6.1-sol"]):
-            return "gpt-4o"
-        # Simple extraction and classification
-        if any(x in ml for x in ["luna", "6-luna", "gpt-6-luna", "5.6-luna", "4o-mini"]):
+            return "gpt-6-luna"
+        # GPT-6 Luna -> OpenAI: gpt-6-luna
+        if any(x in ml for x in ["luna", "6-luna", "gpt-6-luna", "5.6-luna"]):
+            return "gpt-6-luna"
+        if "4o-mini" in ml:
             return "gpt-4o-mini"
         if "4o" in ml:
             return "gpt-4o"
         if "mini" in ml or "gpt" in ml:
-            return "gpt-4o-mini"
+            return "gpt-6-luna"
+
+        # ── 5. xAI Grok Normalizer ──
+        if "grok-3-mini" in ml or "grok-mini" in ml or ("grok" in ml and "mini" in ml):
+            return "grok-3-mini"
+        if "grok" in ml:
+            return "grok-3"
 
         # ── 6. Pass through all other model strings unchanged ──
         # This preserves exact model names like gpt-4.1-mini, gpt-4o, gpt-4-turbo, etc.
@@ -294,9 +298,10 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
         "llama" in model_lower or "mixtral" in model_lower
         or "gemma2" in model_lower or "groq" in model_lower
         or "qwen" in model_lower or "gpt-oss" in model_lower
+        or "oss" in model_lower
         or "/" in model_lower
     )
-    is_claude = "claude" in model_lower
+    is_claude = "claude" in model_lower or "fable" in model_lower or "opus" in model_lower
     is_grok = "grok" in model_lower
 
     log_file = None
@@ -357,7 +362,7 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
         openai_fallback_client = get_openai_client()
         if openai_fallback_client:
             try:
-                fallback_m = "gpt-4o" if "sonnet" in model_lower else "gpt-4o-mini"
+                fallback_m = "gpt-4o" if ("sonnet" in model_lower or "fable" in model_lower) else "gpt-4o-mini"
                 response_format = {"type": "json_object"} if response_json else None
                 openai_resp = await openai_fallback_client.chat.completions.create(
                     model=fallback_m,
@@ -422,8 +427,8 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
             raise ValueError("xAI (Grok) API not available and failover exhausted.")
         return fallback_answer(prompt)
 
-    elif "gpt" in model_lower or "o3" in model_lower:
-        # OpenAI Flow
+    elif "gpt" in model_lower or "o3" in model_lower or "terra" in model_lower or "sol" in model_lower or "luna" in model_lower:
+        # OpenAI Flow — Target model: gpt-6.1-terra / gpt-6.1-sol / gpt-6-luna
         client = get_openai_client()
         if not client:
             if throw_on_error:
@@ -452,7 +457,29 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
                 log_response(log_file, response_text=content)
             return content
         except Exception as e:
-            logger.error(f"OpenAI API generation error: {e}. Falling back...")
+            logger.error(f"OpenAI API generation error for {model}: {e}. Trying fallback...")
+            # If backend model fails on standard public endpoint, fallback to gpt-4o / gpt-4o-mini
+            fallback_m = "gpt-4o-mini" if ("luna" in model_lower or "mini" in model_lower) else "gpt-4o"
+            if model != fallback_m:
+                try:
+                    logger.info(f"Failing over to standard {fallback_m}...")
+                    fb_kwargs = {
+                        "model": fallback_m,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        "temperature": temperature
+                    }
+                    if response_format:
+                        fb_kwargs["response_format"] = response_format
+                    fb_resp = await client.chat.completions.create(**fb_kwargs)
+                    fb_content = fb_resp.choices[0].message.content or ""
+                    if log_file:
+                        log_response(log_file, response_text=fb_content)
+                    return fb_content
+                except Exception as fb_err:
+                    logger.error(f"OpenAI fallback error: {fb_err}")
             if log_file:
                 log_response(log_file, error=str(e))
             if throw_on_error:
@@ -554,9 +581,10 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
         "llama" in model_lower or "mixtral" in model_lower
         or "gemma2" in model_lower or "groq" in model_lower
         or "qwen" in model_lower or "gpt-oss" in model_lower
+        or "oss" in model_lower
         or "/" in model_lower
     )
-    is_claude = "claude" in model_lower
+    is_claude = "claude" in model_lower or "fable" in model_lower or "opus" in model_lower
     is_grok = "grok" in model_lower
 
     if is_groq:
@@ -606,7 +634,7 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
         openai_fallback = get_openai_client()
         if openai_fallback:
             try:
-                fallback_m = "gpt-4o" if "sonnet" in model_lower else "gpt-4o-mini"
+                fallback_m = "gpt-4o" if ("sonnet" in model_lower or "fable" in model_lower) else "gpt-4o-mini"
                 response = await openai_fallback.chat.completions.create(
                     model=fallback_m,
                     messages=[
@@ -644,7 +672,8 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
                 content = resp.choices[0].message.content or ""
                 if log_file:
                     log_response(log_file, response_text=content)
-                return content
+                yield content
+                return
             except Exception as ge:
                 logger.error(f"xAI (Grok) API generation error: {ge}. Failing over...")
 
@@ -660,18 +689,18 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt}
                     ],
-                    temperature=temperature,
+                    temperature=0.3,
                     response_format=response_format
                 )
-                return openai_resp.choices[0].message.content or ""
+                yield openai_resp.choices[0].message.content or ""
+                return
             except Exception as oe:
                 logger.error(f"Grok failover error: {oe}")
 
-        if throw_on_error:
-            raise ValueError("xAI (Grok) API not available and failover exhausted.")
-        return fallback_answer(prompt)
+        yield fallback_answer(prompt)
+        return
 
-    elif "gpt" in model_lower or "o3" in model_lower:
+    elif "gpt" in model_lower or "o3" in model_lower or "terra" in model_lower or "sol" in model_lower or "luna" in model_lower:
         client = get_openai_client()
         if not client:
             yield fallback_answer(prompt)
@@ -698,7 +727,25 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
                 if chunk.choices and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
         except Exception as e:
-            logger.error(f"OpenAI streaming error: {e}")
+            logger.error(f"OpenAI streaming error for model {model}: {e}")
+            if model != "gpt-4o-mini":
+                try:
+                    logger.info("Failing over to gpt-4o-mini...")
+                    response = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.3,
+                        stream=True
+                    )
+                    async for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            yield chunk.choices[0].delta.content
+                    return
+                except Exception as fallback_e:
+                    logger.error(f"OpenAI fallback error: {fallback_e}")
             yield fallback_answer(prompt)
     else:
         # Gemini Flow with seamless Groq/OpenAI streaming failover

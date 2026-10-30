@@ -25,24 +25,29 @@ def _pick_vision_model(preferred_model: str = None):
     openai_client = get_openai_client()
 
     # Determine dedicated Gemini vision model (avoid TTS voice models for screenshot OCR)
-    gemini_model = "gemini-2.5-pro"
-    if "3.7" in model_lower:
-        gemini_model = "gemini-3.7-flash"
+    gemini_model = "gemini-3.8-flash"
+    if "argon" in model_lower or "4-argon" in model_lower:
+        gemini_model = "gemini-3.8-flash"
+    elif "3.5" in model_lower or "3.8" in model_lower or "flash-lite" in model_lower:
+        gemini_model = "gemini-3.5-flash-lite"
     elif "flash" in model_lower:
-        gemini_model = "gemini-2.5-flash"
+        gemini_model = "gemini-3.8-flash"
 
     # If OpenAI client is available:
-    # GPT-6 Luna is configured for complete screenshot processing (blazing fast, budget $0.10/$0.50)
+    # Use backend models directly as target providers for vision
     if openai_client:
         if "luna" in model_lower:
-            return ("openai", "gpt-4o-mini", openai_client)
-        if any(k in model_lower for k in ["terra", "sol", "astra", "heavy", "pro"]):
-            return ("openai", "gpt-4o", openai_client)
+            return ("openai", "gpt-6-luna", openai_client)
+        if any(k in model_lower for k in ["terra", "astra"]):
+            return ("openai", "gpt-6.1-terra", openai_client)
+        if "sol" in model_lower:
+            return ("openai", "gpt-6-luna", openai_client)
+        if any(k in model_lower for k in ["heavy", "pro"]):
+            return ("openai", "gpt-6.1-terra", openai_client)
         if not preferred_model:
-            # Default vision processing uses GPT-6 Luna (gpt-4o-mini)
-            return ("openai", "gpt-4o-mini", openai_client)
+            return ("openai", "gpt-6.1-terra", openai_client)
         elif not any(k in model_lower for k in ["gemini", "claude"]):
-            return ("openai", "gpt-4o-mini", openai_client)
+            return ("openai", "gpt-6-luna", openai_client)
 
     # If the user explicitly requested a Gemini model, honour with dedicated Gemini vision model
     if "gemini" in model_lower and gemini_client:
@@ -105,7 +110,32 @@ async def analyze_screenshot(image_bytes: bytes, system_prompt: str, model: str 
             logger.info(f"[Screenshot] OpenAI response length: {len(content)}")
             return content
         except Exception as e:
-            logger.error(f"[Screenshot] OpenAI Vision error: {e}")
+            logger.error(f"[Screenshot] OpenAI Vision error with {vision_model}: {e}")
+            if vision_model not in ("gpt-4o", "gpt-4o-mini"):
+                try:
+                    logger.info("[Screenshot] Retrying vision with gpt-4o standard fallback...")
+                    fb_response = await client.chat.completions.create(
+                        model="gpt-4o",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": "Extract the exact question/problem visible in this screenshot into \"question\", and answer it fully in \"answer\"."},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                                ],
+                            },
+                        ],
+                        temperature=0.3,
+                        response_format={"type": "json_object"},
+                    )
+                    fb_content = fb_response.choices[0].message.content or ""
+                    if log_file:
+                        log_response(log_file, response_text=fb_content)
+                    return fb_content
+                except Exception as fb_err:
+                    logger.error(f"[Screenshot] OpenAI Vision fallback failed: {fb_err}")
+
             gemini_client = get_gemini_client()
             if not gemini_client:
                 return f'{{"question":"Screenshot Question","answer":"Error analyzing screenshot via OpenAI: {str(e)}"}}'
