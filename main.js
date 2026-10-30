@@ -13,7 +13,48 @@ if (!app.isPackaged) {
   } catch (_) { }
 }
 
+const http = require('http');
 const https = require('https');
+
+// Persistent Keep-Alive Agents: Keeps TLS socket permanently connected to server
+const keepAliveHttpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 120000,
+  keepAliveMsecs: 60000
+});
+
+const keepAliveHttpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+  timeout: 120000,
+  keepAliveMsecs: 60000
+});
+
+function warmBackendConnection() {
+  try {
+    const backendUrl = (env.BACKEND_URL || 'https://round-mate-ai.onrender.com').trim();
+    if (!backendUrl) return;
+    const url = new URL(backendUrl);
+    const useHttps = url.protocol === 'https:';
+    const lib = useHttps ? https : http;
+    const agent = useHttps ? keepAliveHttpsAgent : keepAliveHttpAgent;
+    const req = lib.request({
+      hostname: url.hostname,
+      port: url.port || (useHttps ? 443 : 80),
+      path: '/docs',
+      method: 'HEAD',
+      agent: agent,
+      headers: { 'Connection': 'keep-alive' }
+    }, (res) => {
+      console.log('[Connection Warm] Sockets pre-warmed with keepAlive. Status:', res.statusCode);
+    });
+    req.on('error', () => {});
+    req.end();
+  } catch (_) {}
+}
 const { exec } = require('child_process');
 const WebSocket = require('ws');
 
@@ -914,8 +955,10 @@ function createWindow() {
       hostname: url.hostname,
       port: url.port || (useHttps ? 443 : 80),
       path: url.pathname + url.search,
+      agent: useHttps ? keepAliveHttpsAgent : keepAliveHttpAgent,
       headers: {
         'Content-Type': 'application/json',
+        'Connection': 'keep-alive',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {}),
       },
@@ -1293,8 +1336,10 @@ function createWindow() {
           hostname: url.hostname,
           port: url.port || (useHttps ? 443 : 80),
           path: url.pathname,
+          agent: useHttps ? keepAliveHttpsAgent : keepAliveHttpAgent,
           headers: {
             'Content-Type': 'application/json',
+            'Connection': 'keep-alive',
             'Content-Length': Buffer.byteLength(bodyStr),
             ...(token ? { Authorization: `Bearer ${token}` } : {})
           }
@@ -2263,6 +2308,7 @@ if (!gotTheLock) {
 
     createWindow();
     setupSystemTray();
+    warmBackendConnection();
 
     // Start auto-updater silently in background
     setTimeout(async () => {

@@ -879,7 +879,15 @@ async def generate_answer_stream(
             except Exception as db_err:
                 logger.error(f"Failed to save QA record in streaming endpoint: {db_err}")
 
-    return StreamingResponse(stream_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 @router.get("/sessions/{session_id}/answers", response_model=List[AnswerResponse])
 async def list_session_answers(
