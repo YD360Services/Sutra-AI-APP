@@ -215,13 +215,10 @@ def resolve_model_by_task(model: str = None, system_prompt: str = "") -> str:
         if "claude" in ml or "haiku" in ml or "3.5" in ml:
             return "claude-haiku-5-5"
 
-        # ── 3. Meta / Groq Normalizer ──
+        # ── 3. Groq LPU Normalizer ──
         # GPT OSS (GPT OSS 20B) -> Groq LPU: openai/gpt-oss-120b
         if "gpt-oss" in ml or "oss-20b" in ml or "oss" in ml:
             return "openai/gpt-oss-120b"
-        # Llama 3.1 8B -> Groq LPU: llama-3.3-70b-versatile
-        if "8b" in ml or "instant" in ml or "llama" in ml or "groq" in ml or "70b" in ml or "3.3" in ml or "3.1" in ml:
-            return "llama-3.3-70b-versatile"
         if "qwen" in ml:
             return "qwen/qwen3.8-27b"
 
@@ -308,34 +305,50 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
 
     if is_groq:
         client = get_groq_client()
-        if not client:
-            if throw_on_error:
-                raise ValueError("Groq API Key or Client not configured.")
-            logger.warning("Groq API Client not configured. Using local fallback.")
-            return fallback_answer(prompt)
-        try:
-            response_format = {"type": "json_object"} if response_json else None
-            log_file = log_prompt(provider="groq", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
-            response = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                response_format=response_format
-            )
-            content = response.choices[0].message.content or ""
-            if log_file:
-                log_response(log_file, response_text=content)
-            return content
-        except Exception as e:
-            logger.error(f"Groq API generation error: {e}. Falling back...")
-            if log_file:
-                log_response(log_file, error=str(e))
-            if throw_on_error:
-                raise e
-            return fallback_answer(prompt)
+        if client:
+            try:
+                response_format = {"type": "json_object"} if response_json else None
+                log_file = log_prompt(provider="groq", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=temperature, stream=False)
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                content = response.choices[0].message.content or ""
+                if log_file:
+                    log_response(log_file, response_text=content)
+                return content
+            except Exception as e:
+                logger.error(f"Groq API generation error: {e}. Attempting failover...")
+                if log_file:
+                    log_response(log_file, error=str(e))
+
+        # Failover to OpenAI if Groq is unconfigured or failed
+        openai_fallback = get_openai_client()
+        if openai_fallback:
+            try:
+                fallback_m = "gpt-4o-mini"
+                response_format = {"type": "json_object"} if response_json else None
+                openai_resp = await openai_fallback.chat.completions.create(
+                    model=fallback_m,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    response_format=response_format
+                )
+                return openai_resp.choices[0].message.content or ""
+            except Exception as oe:
+                logger.error(f"Groq failover error: {oe}")
+
+        if throw_on_error:
+            raise ValueError("Groq API not available and failover exhausted.")
+        return fallback_answer(prompt)
 
     elif is_claude:
         # Anthropic (Claude) Flow — system prompt is a top-level param, NOT inside messages[]
@@ -589,28 +602,50 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
 
     if is_groq:
         client = get_groq_client()
-        if not client:
-            yield fallback_answer(prompt)
-            return
-        try:
-            response_format = {"type": "json_object"} if response_json else None
-            log_prompt(provider="groq", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
-            response = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                response_format=response_format,
-                stream=True
-            )
-            async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
-        except Exception as e:
-            logger.error(f"Groq streaming error: {e}")
-            yield fallback_answer(prompt)
+        if client:
+            try:
+                response_format = {"type": "json_object"} if response_json else None
+                log_prompt(provider="groq", model=model, system_prompt=system_prompt, user_prompt=prompt, response_json=response_json, temperature=0.3, stream=True)
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    response_format=response_format,
+                    stream=True
+                )
+                async for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return
+            except Exception as e:
+                logger.error(f"Groq streaming error: {e}. Failing over to OpenAI...")
+
+        # Failover to OpenAI for streaming if Groq is unconfigured or failed
+        openai_fallback = get_openai_client()
+        if openai_fallback:
+            try:
+                fallback_m = "gpt-4o-mini"
+                response = await openai_fallback.chat.completions.create(
+                    model=fallback_m,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    stream=True
+                )
+                async for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        yield chunk.choices[0].delta.content
+                return
+            except Exception as oe:
+                logger.error(f"Groq streaming failover error: {oe}")
+
+        yield fallback_answer(prompt)
+        return
 
     elif is_claude:
         # Anthropic (Claude) streaming flow

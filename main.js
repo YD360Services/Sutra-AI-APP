@@ -1127,49 +1127,45 @@ function createWindow() {
       }
 
       const normalizeModelIdentifier = (modelStr) => {
-        if (!modelStr) return 'gemini-3.8-flash-lite-tts';
+        if (!modelStr) return 'gpt-6-astra';
         const m = modelStr.toLowerCase().trim();
-        // 1. Google Gemini Normalizer
-        if (m.includes('3.8') || m.includes('lite-tts') || m.includes('flash-lite-tts')) {
-          return 'gemini-3.8-flash-lite-tts';
+
+        // 1. Google Gemini
+        if (m === 'gemini-3.8-flash' || (m.includes('3.8') && m.includes('flash')) || m.includes('flash-lite')) {
+          return 'gemini-3.8-flash';
         }
-        if (m.includes('3.7')) {
-          return 'gemini-3.7-flash';
+        if (m === 'gemini-4-argon' || m.includes('argon')) {
+          return 'gemini-4-argon';
         }
-        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.1') || m.includes('pro') || m.includes('2')) {
-          return 'gemini-3.6-flash';
+
+        // 2. OpenAI
+        if (m === 'gpt-6-astra' || m.includes('astra')) {
+          return 'gpt-6-astra';
         }
-        // 2. Anthropic Claude Normalizer
-        if (m.includes('sonnet')) {
-          return 'claude-sonnet-4-5-20250929';
+        if (m === 'gpt-6.1-sol' || m.includes('sol')) {
+          return 'gpt-6.1-sol';
         }
-        if (m.includes('haiku') || m.includes('claude')) {
-          return 'claude-haiku-4-5-20251001';
+
+        // 3. Anthropic Claude
+        if (m === 'claude-fable-5.1' || m.includes('fable')) {
+          return 'claude-fable-5.1';
         }
-        // 3. Meta / Groq Normalizer
-        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
-          return 'openai/gpt-oss-120b';
+        if (m === 'claude-opus-5-5' || m.includes('opus')) {
+          return 'claude-opus-5-5';
         }
-        // 4. OpenAI Reasoning
-        if (m.includes('o3') || m.includes('gptoss')) {
-          return 'o3-mini';
+
+        // 4. Groq LPU
+        if (m === 'openai/gpt-oss-20b' || m.includes('gpt-oss') || m.includes('oss-20b') || m.includes('oss')) {
+          return 'openai/gpt-oss-20b';
         }
-        // 5. OpenAI 6-Series & 5-Series (Astra / Luna)
-        if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('luna') || m.includes('5.6-luna')) {
-          return 'gpt-5.6-luna';
-        }
-        if (m.includes('sol') || m.includes('5.6-sol') || m.includes('5.4') || m.includes('5.5') || m.includes('5.6') || m.includes('5-mini') || m.includes('5.4-mini') || m.includes('5.5-mini')) {
-          return 'gpt-5.4-mini';
-        }
-        if (m.includes('4o-mini')) {
-          return 'gpt-4o-mini';
-        }
-        if (m.includes('4o')) {
-          return 'gpt-4o';
-        }
-        if (m.includes('gpt') || m.includes('mini')) {
-          return 'gpt-5.4-mini';
-        }
+
+        // Legacy fallbacks
+        if (m.includes('gemini')) return 'gemini-3.8-flash';
+        if (m.includes('sonnet') || m.includes('claude')) return 'claude-fable-5.1';
+        if (m.includes('haiku')) return 'claude-opus-5-5';
+        if (m.includes('groq')) return 'openai/gpt-oss-20b';
+        if (m.includes('gpt')) return 'gpt-6-astra';
+
         return modelStr;
       };
 
@@ -1221,46 +1217,45 @@ function createWindow() {
       }
 
       const normalizeModelIdentifier = (modelStr) => {
-        if (!modelStr) return 'gemini-3.8-flash-lite-tts';
+        if (!modelStr) return 'gpt-6-astra';
         const m = modelStr.toLowerCase().trim();
-        // 1. Google Gemini Normalizer
-        if (m.includes('3.8') || m.includes('lite-tts') || m.includes('flash-lite-tts')) {
-          return 'gemini-3.8-flash-lite-tts';
+
+        // 1. Google Gemini
+        if (m === 'gemini-3.8-flash' || (m.includes('3.8') && m.includes('flash')) || m.includes('flash-lite')) {
+          return 'gemini-3.8-flash';
         }
-        if (m.includes('3.7')) {
-          return 'gemini-3.7-flash';
+        if (m === 'gemini-4-argon' || m.includes('argon')) {
+          return 'gemini-4-argon';
         }
-        if (m.includes('gemini') || m.includes('flash') || m.includes('3.6') || m.includes('3.1') || m.includes('pro') || m.includes('2')) {
-          return 'gemini-3.6-flash';
+
+        // 2. OpenAI
+        if (m === 'gpt-6-astra' || m.includes('astra')) {
+          return 'gpt-6-astra';
         }
-        // 2. Anthropic Claude Normalizer
-        if (m.includes('sonnet')) {
-          return 'claude-sonnet-4-5-20250929';
+        if (m === 'gpt-6.1-sol' || m.includes('sol')) {
+          return 'gpt-6.1-sol';
         }
-        if (m.includes('haiku') || m.includes('claude')) {
-          return 'claude-haiku-4-5-20251001';
+
+        // 3. Anthropic Claude
+        if (m === 'claude-fable-5.1' || m.includes('fable')) {
+          return 'claude-fable-5.1';
         }
-        // 3. Meta / Groq Normalizer
-        if (m.includes('llama') || m.includes('groq') || m.includes('scout') || m.includes('20b') || m.includes('oss')) {
-          return 'openai/gpt-oss-120b';
+        if (m === 'claude-opus-5-5' || m.includes('opus')) {
+          return 'claude-opus-5-5';
         }
-        // 4. OpenAI Reasoning
-        if (m.includes('o3') || m.includes('gptoss')) {
-          return 'o3-mini';
+
+        // 4. Groq LPU
+        if (m === 'openai/gpt-oss-20b' || m.includes('gpt-oss') || m.includes('oss-20b') || m.includes('oss')) {
+          return 'openai/gpt-oss-20b';
         }
-        // 5. OpenAI 6-Series & 5-Series (Astra / Luna) -> Real OpenAI API Models
-        if (m.includes('astra') || m.includes('gpt-6') || m.includes('gpt6') || m.includes('sol')) {
-          return 'gpt-4o';
-        }
-        if (m.includes('luna') || m.includes('5.6') || m.includes('4o-mini') || m.includes('mini') || m.includes('gptoss')) {
-          return 'gpt-4o-mini';
-        }
-        if (m.includes('4o')) {
-          return 'gpt-4o';
-        }
-        if (m.includes('gpt')) {
-          return 'gpt-4o-mini';
-        }
+
+        // Legacy fallbacks
+        if (m.includes('gemini')) return 'gemini-3.8-flash';
+        if (m.includes('sonnet') || m.includes('claude')) return 'claude-fable-5.1';
+        if (m.includes('haiku')) return 'claude-opus-5-5';
+        if (m.includes('groq')) return 'openai/gpt-oss-20b';
+        if (m.includes('gpt')) return 'gpt-6-astra';
+
         return modelStr;
       };
 

@@ -1,59 +1,49 @@
 // Unified Model Definitions & Hierarchy (synchronized with Sutra AI Web)
 const MODEL_OPTIONS = [
-  // -- Google Gemini --
-  {
-    value: 'gemini-3.8-flash',
-    label: 'Gemini 3.8 Flash',
-    provider: 'Gemini',
-    recommendedFor: 'Recommended premier engine: ultra-responsive real-time audio, fast Q&A, and live interview transcription.',
-    isRecommended: true,
-    category: 'fast',
-    latencyMs: 'Ultra-Fast',
-    tags: [
-      { text: 'Recommended', variant: 'recommended' },
-      { text: 'Live Audio', variant: 'reasoning' },
-      { text: 'Ultra-Fast', variant: 'fast' },
-    ]
-  },
-  {
-    value: 'gemini-4-argon',
-    label: 'Gemini 4 Argon',
-    provider: 'Gemini',
-    recommendedFor: 'Multimodal processing, real-time live audio responses, and rapid dialogue analysis.',
-    category: 'fast',
-    latencyMs: 'Ultra-Fast',
-    tags: [
-      { text: 'Multimodal', variant: 'reasoning' },
-      { text: 'Ultra-Fast', variant: 'fast' },
-    ]
-  },
-  // -- OpenAI --
+  // 1. GPT 6 Astra (Recommended #1)
   {
     value: 'gpt-6-astra',
     label: 'GPT 6 Astra',
     provider: 'GPT',
-    recommendedFor: 'Primary model: screen understanding, system design, and spoken live answers.',
+    recommendedFor: 'Primary recommended engine: screen understanding, system design, and real-time spoken answers.',
     isRecommended: true,
     category: 'quality',
     latencyMs: 'Real-Time',
     tags: [
-      { text: 'Recommended', variant: 'recommended' },
+      { text: 'Recommended #1', variant: 'recommended' },
       { text: 'Screen & Voice', variant: 'reasoning' },
+      { text: 'Real-Time', variant: 'fast' },
     ]
   },
+  // 2. Gemini 4 Argon (Recommended #2)
   {
-    value: 'gpt-6.1-sol',
-    label: 'GPT-6.1 Sol',
-    provider: 'GPT',
-    recommendedFor: 'Difficult coding, algorithms, system design, and deep technical architecture.',
-    category: 'quality',
-    latencyMs: 'Deep Reasoning',
+    value: 'gemini-4-argon',
+    label: 'Gemini 4 Argon',
+    provider: 'Gemini',
+    recommendedFor: 'Multimodal dialogue analysis, real-time live audio responses, and rapid interview Q&A.',
+    isRecommended: true,
+    category: 'fast',
+    latencyMs: 'Ultra-Fast',
     tags: [
-      { text: 'Deep Coding', variant: 'coding' },
-      { text: 'Algorithms & Architecture', variant: 'reasoning' },
+      { text: 'Recommended #2', variant: 'recommended' },
+      { text: 'Multimodal', variant: 'reasoning' },
+      { text: 'Ultra-Fast', variant: 'fast' },
     ]
   },
-  // -- Anthropic Claude --
+  // 3. Gemini 3.8 Flash
+  {
+    value: 'gemini-3.8-flash',
+    label: 'Gemini 3.8 Flash',
+    provider: 'Gemini',
+    recommendedFor: 'Ultra-responsive real-time audio, fast Q&A, and live interview transcription.',
+    category: 'fast',
+    latencyMs: 'Ultra-Fast',
+    tags: [
+      { text: 'Live Audio', variant: 'reasoning' },
+      { text: 'Ultra-Fast', variant: 'fast' },
+    ]
+  },
+  // 4. Claude Fable 5.1
   {
     value: 'claude-fable-5.1',
     label: 'Claude Fable 5.1',
@@ -66,6 +56,20 @@ const MODEL_OPTIONS = [
       { text: 'Elite Coding', variant: 'coding' },
     ]
   },
+  // 5. GPT-6.1 Sol
+  {
+    value: 'gpt-6.1-sol',
+    label: 'GPT-6.1 Sol',
+    provider: 'GPT',
+    recommendedFor: 'Difficult coding, algorithms, system design, and deep technical architecture.',
+    category: 'quality',
+    latencyMs: 'Deep Reasoning',
+    tags: [
+      { text: 'Deep Coding', variant: 'coding' },
+      { text: 'Algorithms & Architecture', variant: 'reasoning' },
+    ]
+  },
+  // 6. Claude Opus 5.5
   {
     value: 'claude-opus-5-5',
     label: 'Claude Opus 5.5',
@@ -78,19 +82,7 @@ const MODEL_OPTIONS = [
       { text: 'Conversational', variant: 'fast' },
     ]
   },
-  // -- Meta / Open Source (Groq) --
-  {
-    value: 'llama-3.1-8b-instant',
-    label: 'Llama 3.1 8B',
-    provider: 'Groq',
-    recommendedFor: 'Flagship open-weights model accelerated on Groq LPU hardware for rapid reasoning.',
-    category: 'fast',
-    latencyMs: 'Ultra-Fast LPU',
-    tags: [
-      { text: 'Ultra-Fast LPU', variant: 'fast' },
-      { text: 'High Speed', variant: 'fast' },
-    ]
-  },
+  // 7. GPT OSS
   {
     value: 'openai/gpt-oss-20b',
     label: 'GPT OSS',
