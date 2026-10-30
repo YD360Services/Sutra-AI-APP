@@ -1,0 +1,110 @@
+name: Release Roundmate AI (Windows)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    name: Build & Publish Windows Installer
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js from .nvmrc
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+
+      - name: Validate Git Tag vs package.json Version
+        id: validate-version
+        shell: powershell
+        run: |
+          $refName = "${{ github.ref_name }}"
+          Write-Host "Pushed Git Tag: $refName"
+
+          # Strict semantic versioning check: must match ^v\d+\.\d+\.\d+$
+          if ($refName -notmatch '^v\d+\.\d+\.\d+$') {
+            Write-Error "Invalid Git tag format: '$refName'. Release tags must strictly match the semantic version pattern '^v\d+\.\d+\.\d+$' (e.g. 'v1.0.2')."
+            exit 1
+          }
+
+          $tagVersion = $refName -replace '^v', ''
+          if (-not (Test-Path "package.json")) {
+            Write-Error "package.json not found in the repository root."
+            exit 1
+          }
+
+          $pkg = Get-Content -Raw -Path "package.json" | ConvertFrom-Json
+          $pkgVersion = $pkg.version
+
+          Write-Host "Extracted Tag Version: $tagVersion"
+          Write-Host "package.json Version:  $pkgVersion"
+
+          if ($tagVersion -ne $pkgVersion) {
+            Write-Error "Version mismatch: Git tag version ($tagVersion) does not match package.json version ($pkgVersion). Update 'version' in package.json and commit package-lock.json before tagging."
+            exit 1
+          }
+
+          Write-Host "Version validation passed: Git tag $refName strictly matches package.json version $pkgVersion."
+
+      - name: Install Dependencies
+        shell: powershell
+        run: |
+          Write-Host "Installing dependencies using npm ci and package-lock.json..."
+          npm ci
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "npm ci failed with exit code $LASTEXITCODE."
+            exit $LASTEXITCODE
+          }
+
+      - name: Build and Publish Windows Installer
+        id: build-publish
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Write-Host "Executing Windows distribution script and publishing to GitHub Releases via Electron Builder..."
+          npm run dist:win -- --publish always
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Electron Builder build/publish failed with exit code $LASTEXITCODE. Please check the logs above."
+            exit $LASTEXITCODE
+          }
+          Write-Host "Windows installer successfully built and published to GitHub Releases!"
+
+      - name: Verify Generated Installer
+        shell: powershell
+        run: |
+          $installerPath = "dist_bin\Roundmate-AI-Setup.exe"
+          if (-not (Test-Path $installerPath)) {
+            Write-Error "Artifact verification failed: Expected installer '$installerPath' was not found in dist_bin after build!"
+            if (Test-Path "dist_bin") {
+              Write-Host "Contents of dist_bin:"
+              Get-ChildItem -Path "dist_bin" | Select-Object Name, Length
+            }
+            exit 1
+          }
+
+          $item = Get-Item $installerPath
+          if ($item.Length -le 0) {
+            Write-Error "Artifact verification failed: Installer file '$installerPath' exists but is empty (0 bytes)!"
+            exit 1
+          }
+
+          $sizeMb = [math]::Round($item.Length / 1MB, 2)
+          $sha256 = (Get-FileHash -Path $item.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "================ RELEASE ARTIFACT VERIFIED ================" -ForegroundColor Green
+          Write-Host "Installer: $($item.Name)"
+          Write-Host "Path:      $($item.FullName)"
+          Write-Host "Size:      $sizeMb MB ($($item.Length) bytes)"
+          Write-Host "SHA-256:   $sha256"
+          Write-Host "===========================================================" -ForegroundColor Green
