@@ -511,6 +511,7 @@ async def call_llm(prompt: str, system_prompt: str, model: str = None, response_
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=temperature,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),  # Disables 5-7s thinking delay
             )
             if response_json:
                 config.response_mime_type = "application/json"
@@ -835,6 +836,7 @@ async def stream_llm(prompt: str, system_prompt: str, model: str = None, respons
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.3,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),  # Disables 5-7s thinking delay
             )
             if response_json:
                 config.response_mime_type = "application/json"
