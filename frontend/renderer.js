@@ -2625,7 +2625,7 @@ if (editSessionSaveBtn) {
     const isPrompt = docObj ? (docObj.document_type === 'prompt' || docObj.document_name.toLowerCase().includes('prompt') || docObj.document_name.toLowerCase().includes('instruction')) : false;
 
     try {
-      const currentModel = document.getElementById('setup-model-select')?.value || 'gpt-6-astra';
+      const currentModel = document.getElementById('setup-model-select')?.value || 'gemini-3.8-flash';
       await window.electronAPI.saveL4Context({
         resume,
         resume_id: newResumeId || '',
