@@ -159,7 +159,8 @@ async def get_users(
         sess_result = await db.execute(select(Session).where(Session.user_id == u.id))
         user_sessions = sess_result.scalars().all()
         session_count = len(user_sessions)
-        tokens_used = sum((s.duration_seconds or 0) * 15 for s in user_sessions) or (1400 if (u.plan or '').lower() == "pro" else (2500 if (u.plan or '').lower() == "enterprise" else 350))
+        # Derived only from recorded session time; users with no sessions report 0 (no placeholder values).
+        tokens_used = sum((s.duration_seconds or 0) * 15 for s in user_sessions)
         
         output.append({
             "id": str(u.id),
