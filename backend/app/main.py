@@ -61,16 +61,20 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled backend error on {request.method} {request.url.path}: {exc}")
-    origin = request.headers.get("origin") or "*"
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error occurred.", "error": str(exc)},
-        headers={
+    # Details stay in the server log; clients get a generic message.
+    headers = {}
+    origin = request.headers.get("origin")
+    allowed_origins = settings.get_cors_origins()
+    if origin and ("*" in allowed_origins or origin in allowed_origins):
+        headers = {
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
+            "Vary": "Origin",
         }
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error occurred."},
+        headers=headers,
     )
 
 import os
