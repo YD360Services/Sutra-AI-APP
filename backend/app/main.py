@@ -23,6 +23,7 @@ from app.api.mock_interviews import router as mock_interviews_router
 from app.api.admins import router as admins_router
 from app.api.notifications import router as notifications_router
 from app.api.tickets import router as tickets_router
+from app.api.platform_health import router as platform_health_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -122,6 +123,7 @@ app.include_router(auth_router, prefix=settings.API_V1_STR, tags=["Authenticatio
 app.include_router(admins_router, prefix=settings.API_V1_STR, tags=["Admins"])
 app.include_router(notifications_router, prefix=settings.API_V1_STR, tags=["Notifications"])
 app.include_router(tickets_router, prefix=settings.API_V1_STR, tags=["Support Tickets"])
+app.include_router(platform_health_router, prefix=settings.API_V1_STR, tags=["Platform Health"])
 
 @app.get("/")
 async def root():
