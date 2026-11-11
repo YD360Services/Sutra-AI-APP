@@ -4,6 +4,8 @@ from typing import List, Optional
 import uuid
 
 from app.db.database import get_db
+from app.db.models import User
+from app.core.deps import get_current_user_optional
 from app.db.repositories import SessionRepository
 from app.schemas.session import SessionCreate, SessionUpdate, SessionResponse
 from app.core.user_utils import normalize_user_id
@@ -37,11 +39,14 @@ async def start_session(
 @router.get("/sessions", response_model=List[SessionResponse])
 async def list_sessions(
     user_id: Optional[str] = None,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
-    normalized_user_id = normalize_user_id(user_id)
     repo = SessionRepository(db)
-    sessions = await repo.list_by_user(user_id=normalized_user_id)
+    target_uuid = current_user.id if current_user else normalize_user_id(user_id)
+    if not target_uuid:
+        return []
+    sessions = await repo.list_by_user(user_id=target_uuid)
     return sessions
 
 async def generate_session_summary_if_needed(session_id: uuid.UUID, db: AsyncSession, repo: SessionRepository) -> Optional[str]:

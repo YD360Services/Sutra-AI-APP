@@ -2,6 +2,9 @@ from pydantic_settings import BaseSettings
 from typing import List, Union
 import json
 import os
+import logging
+
+logger = logging.getLogger("roundmate.config")
 
 class Settings(BaseSettings):
     # App Settings
@@ -9,12 +12,19 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api"
     
     # Security
-    JWT_SECRET: str = "supersecretkeychangeinproduction1234567890!"
+    JWT_SECRET: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
     
-    # CORS Origins (JSON list or comma separated)
-    CORS_ORIGINS: Union[str, List[str]] = ["*"]
+    # CORS Origins (Explicit domains allowed)
+    CORS_ORIGINS: Union[str, List[str]] = [
+        "https://roundmateai.com",
+        "https://www.roundmateai.com",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ]
     
     # External APIs
     GEMINI_API_KEY: str = ""
@@ -22,8 +32,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GROQ_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
-    SPEECHMATICS_API_KEY: str = "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"
+    SPEECHMATICS_API_KEY: str = ""
     USE_SPEECHMATICS: bool = False
+    
+    # PayU Payment Gateway
+    PAYU_KEY: str = ""
+    PAYU_SALT: str = ""
     
     # Standard Production Real Model Identifiers
     GEMINI_MODEL: str = "gemini-3.8-flash-lite-tts"
@@ -51,6 +65,8 @@ class Settings(BaseSettings):
         
         # Check OS environment variables first
         env = os.environ
+        if not self.JWT_SECRET:
+            self.JWT_SECRET = env.get("JWT_SECRET") or env.get("SECRET_KEY") or "roundmate-jwt-secret-secure-key-2026-production"
         if not self.GEMINI_API_KEY:
             self.GEMINI_API_KEY = env.get("GEMINI_API_KEY") or env.get("GEMINI_KEY") or env.get("GOOGLE_API_KEY") or ""
         if not self.DEEPGRAM_API_KEY:
@@ -63,10 +79,12 @@ class Settings(BaseSettings):
             self.XAI_API_KEY = env.get("XAI_API_KEY") or env.get("GROK_API_KEY") or ""
         if not self.ANTHROPIC_API_KEY:
             self.ANTHROPIC_API_KEY = env.get("ANTHROPIC_API_KEY") or env.get("CLAUDE_API_KEY") or ""
-        if not self.SPEECHMATICS_API_KEY or self.SPEECHMATICS_API_KEY == "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI":
-            sm = env.get("SPEECHMATICS_API_KEY") or env.get("speechmatics_key")
-            if sm:
-                self.SPEECHMATICS_API_KEY = sm
+        if not self.SPEECHMATICS_API_KEY:
+            self.SPEECHMATICS_API_KEY = env.get("SPEECHMATICS_API_KEY") or env.get("speechmatics_key") or ""
+        if not self.PAYU_KEY:
+            self.PAYU_KEY = env.get("PAYU_KEY") or env.get("PAYU_MERCHANT_KEY") or ""
+        if not self.PAYU_SALT:
+            self.PAYU_SALT = env.get("PAYU_SALT") or env.get("PAYU_MERCHANT_SALT") or ""
                 
         # Candidate .env search paths
         paths = [
@@ -92,7 +110,9 @@ class Settings(BaseSettings):
                                     v = parts[1].strip().strip("'\"")
                                     if not v:
                                         continue
-                                    if k in ("GEMINI_API_KEY", "GEMINI_KEY", "GOOGLE_API_KEY") and not self.GEMINI_API_KEY:
+                                    if k in ("JWT_SECRET", "SECRET_KEY") and (not self.JWT_SECRET or self.JWT_SECRET.startswith("roundmate-jwt")):
+                                        self.JWT_SECRET = v
+                                    elif k in ("GEMINI_API_KEY", "GEMINI_KEY", "GOOGLE_API_KEY") and not self.GEMINI_API_KEY:
                                         self.GEMINI_API_KEY = v
                                     elif k in ("DEEPGRAM_API_KEY", "DEEPGRAM_KEY") and not self.DEEPGRAM_API_KEY:
                                         self.DEEPGRAM_API_KEY = v
@@ -102,8 +122,12 @@ class Settings(BaseSettings):
                                         self.GROQ_API_KEY = v
                                     elif k in ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY") and not self.ANTHROPIC_API_KEY:
                                         self.ANTHROPIC_API_KEY = v
-                                    elif k in ("SPEECHMATICS_API_KEY", "speechmatics_key") and (not self.SPEECHMATICS_API_KEY or self.SPEECHMATICS_API_KEY == "8Pi1PZqclJLK3TVXcESDI4qO6I9SC8OI"):
+                                    elif k in ("SPEECHMATICS_API_KEY", "speechmatics_key") and not self.SPEECHMATICS_API_KEY:
                                         self.SPEECHMATICS_API_KEY = v
+                                    elif k in ("PAYU_KEY", "PAYU_MERCHANT_KEY") and not self.PAYU_KEY:
+                                        self.PAYU_KEY = v
+                                    elif k in ("PAYU_SALT", "PAYU_MERCHANT_SALT") and not self.PAYU_SALT:
+                                        self.PAYU_SALT = v
                                     elif k == "DATABASE_URL" and not self.DATABASE_URL:
                                         self.DATABASE_URL = v
                                     elif k == "USE_SPEECHMATICS":

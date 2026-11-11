@@ -40,36 +40,48 @@ async def google_auth(
 ):
     user_repo = UserRepository(db)
     
-    # If a real access token is provided, verify it with Google API
-    if payload.access_token and not payload.is_mock:
-        try:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                res = await client.get(
-                    "https://www.googleapis.com/oauth2/v3/userinfo",
-                    params={"access_token": payload.access_token}
-                )
-                if res.status_code == 200:
-                    info = res.json()
-                    # Securely override values with verified info from Google API
-                    payload.firebase_uid = info.get("sub", payload.firebase_uid)
-                    payload.email = info.get("email", payload.email)
-                    if info.get("name"):
-                        payload.name = info.get("name")
-                else:
-                    logger.error(f"Google Token Verification failed: {res.status_code} - {res.text}")
+    # Require access token and verify with Google API (Critical security enforcement)
+    if not payload.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google access token is required."
+        )
+
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            res = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                params={"access_token": payload.access_token}
+            )
+            if res.status_code == 200:
+                info = res.json()
+                verified_sub = info.get("sub")
+                verified_email = info.get("email")
+                if not verified_sub or not verified_email:
                     raise HTTPException(
                         status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Invalid Google Access Token"
+                        detail="Google token did not contain valid identity info."
                     )
-        except Exception as e:
-            if isinstance(e, HTTPException):
-                raise e
-            logger.error(f"Error validating Google token: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Google Authentication verification failed: {str(e)}"
-            )
+                # Securely enforce values directly from Google's verified response
+                payload.firebase_uid = verified_sub
+                payload.email = verified_email
+                if info.get("name"):
+                    payload.name = info.get("name")
+            else:
+                logger.error(f"Google Token Verification failed: {res.status_code} - {res.text}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired Google Access Token"
+                )
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Error validating Google token: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Google Authentication verification failed: {str(e)}"
+        )
             
     # Generate a deterministic UUID from the Firebase UID
     user_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{payload.firebase_uid}")
@@ -282,7 +294,7 @@ async def check_session(
 ):
     admin_whitelist = ["omkarshendre999@gmail.com", "admin@roundmate.ai", "kirankumar82054@gmail.com", "omkarvenkat09@gmail.com", "y.bhanuchandar360@gmail.com", "grimmof01@gmail.com"]
     target_email = (payload.email or "").lower().strip()
-    if target_email in admin_whitelist or target_email.startswith("admin@"):
+    if target_email in admin_whitelist:
         return {"valid": True, "has_session": True}
 
     user_repo = UserRepository(db)
@@ -304,7 +316,7 @@ async def check_session(
     if not user:
         return {"valid": True, "has_session": False}
 
-    if user.email and (user.email.lower().strip() in admin_whitelist or user.email.lower().strip().startswith("admin@")):
+    if user.email and user.email.lower().strip() in admin_whitelist:
         return {"valid": True, "has_session": True}
 
     if not user.active_session_token:
@@ -603,11 +615,23 @@ async def google_oauth_callback(
         state_data = json.loads(state_str)
         redirect_path = state_data.get("path", "/")
         origin = state_data.get("origin", "").rstrip("/")
-        # Validate origin is one of our known frontends (security check)
-        allowed = {"https://roundmateai.com", "http://localhost:5173", "http://localhost:3000",
-                   "https://www.roundmateai.com"}
-        if origin and (origin in allowed or origin.startswith("http://localhost")):
+        # Validate origin is strictly one of our known frontends (security check)
+        allowed = {
+            "https://roundmateai.com", 
+            "https://www.roundmateai.com",
+            "http://localhost:5173", 
+            "http://localhost:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000"
+        }
+        if origin and origin in allowed:
             frontend_url = origin
+        else:
+            frontend_url = FRONTEND_BASE
+
+        # Validate redirect_path: strictly require starting with single '/' and no open-redirect characters
+        if not redirect_path.startswith("/") or redirect_path.startswith("//") or "@" in redirect_path or "\\" in redirect_path:
+            redirect_path = "/"
     except Exception:
         redirect_path = urllib.parse.unquote(state or "/")
 

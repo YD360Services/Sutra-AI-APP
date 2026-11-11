@@ -1811,17 +1811,24 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 const server = http.createServer((req, res) => {
-  const origin = req.headers['origin'] || '';
-  // Check if origin matches allowed localhost, web domains, or onrender backend
-  const isAllowedOrigin = !origin ||
-    origin.startsWith('http://localhost') ||
-    origin.startsWith('http://127.0.0.1') ||
-    origin.endsWith('.onrender.com') ||
-    ALLOWED_ORIGINS.has(origin);
+  const rawOrigin = req.headers['origin'] || '';
+  const origin = rawOrigin.replace(/\/+$/, '');
+  const parsedUrl = require('url').parse(req.url, true);
+  const sensitivePaths = ['/auth-callback', '/sync-account', '/launch', '/logout'];
+
+  // Security check: require Origin on all browser/cross-site sensitive requests
+  const isAllowedOrigin = origin && ALLOWED_ORIGINS.has(origin);
 
   if (!isAllowedOrigin) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Forbidden: cross-origin request blocked' }));
+    res.end(JSON.stringify({ error: 'Forbidden: unauthorized origin' }));
+    return;
+  }
+
+  // Reject GET requests on state-changing endpoints to prevent <img src="..."> CSRF attacks
+  if (sensitivePaths.includes(parsedUrl.pathname) && req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Method Not Allowed: POST required' }));
     return;
   }
 

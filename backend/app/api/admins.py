@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from app.core.config import settings
+from app.core.deps import require_admin_user
 from app.db.database import get_db
 from app.db.models import AdminEmail, User, Session
 import logging
@@ -39,7 +40,7 @@ async def verify_admin_user(
     return target_email
 
 @router.get("/admins", response_model=List[str])
-async def get_admins(db: AsyncSession = Depends(get_db)):
+async def get_admins(admin: User = Depends(require_admin_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(AdminEmail.email))
     admins = result.scalars().all()
     
@@ -61,6 +62,7 @@ async def get_admins(db: AsyncSession = Depends(get_db)):
 @router.post("/admins", response_model=str)
 async def add_admin(
     payload: AdminEmailCreate,
+    admin: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     target_email = payload.email.lower().strip()
@@ -83,6 +85,7 @@ async def add_admin(
 @router.delete("/admins/{email}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_admin(
     email: str,
+    admin: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     target_email = email.lower().strip()
@@ -123,6 +126,7 @@ async def get_users(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     recent_days: Optional[int] = None,
+    admin: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     query = select(User)
@@ -178,6 +182,7 @@ async def get_users(
 async def update_user_plan(
     user_id: str,
     payload: UserPlanUpdate,
+    admin: User = Depends(require_admin_user),
     db: AsyncSession = Depends(get_db)
 ):
     try:
