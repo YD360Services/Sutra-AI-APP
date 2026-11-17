@@ -180,7 +180,14 @@ async def _process_pipeline(session_id: str, transcript_text: str, client_ws: We
 async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
     await client_ws.accept()
     
-    dg_url = DeepgramService.get_websocket_url()
+    # Extract language from query params (e.g. ?language=hi or ?lang=te)
+    requested_lang = (
+        client_ws.query_params.get('language') or 
+        client_ws.query_params.get('lang') or 
+        'en'
+    ).strip()
+
+    dg_url = DeepgramService.get_websocket_url(language=requested_lang)
     client_id = str(uuid.uuid4())
     # Track this active socket connection in Redis
     await redis_cache.track_websocket(session_id, client_id, register=True)
@@ -209,13 +216,14 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                 logger.info(f"Connected to Speechmatics WebSocket for session {session_id} successfully.")
                 
                 # Send StartRecognition configuration message
+                sm_lang = requested_lang.split("-")[0].lower() if requested_lang else "en"
                 start_msg = {
                     "message": "StartRecognition",
                     "audio_format": {
                         "type": "file"
                     },
                     "transcription_config": {
-                        "language": "en",
+                        "language": sm_lang,
                         "operating_point": "enhanced",
                         "enable_partials": True
                     }
