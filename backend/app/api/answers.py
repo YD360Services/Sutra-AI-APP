@@ -15,6 +15,7 @@ from app.schemas.answer import AnswerRequest, AnswerResponse
 from app.services.context_service import build_session_context
 from app.services.ai_service import call_gemini, call_llm, stream_llm
 from app.cache.redis import redis_cache
+from app.core.rate_limiter import rate_limit
 
 router = APIRouter()
 logger = logging.getLogger("roundmate.answers")
@@ -747,7 +748,7 @@ async def generate_answer(
         }
 
 
-@router.post("/answer/stream")
+@router.post("/answer/stream", dependencies=[Depends(rate_limit(max_requests=120, window_seconds=60, key_prefix="stream"))])
 async def generate_answer_stream(
     payload: AnswerRequest,
     db: AsyncSession = Depends(get_db)
@@ -850,6 +851,42 @@ async def generate_answer_stream(
                         source_type=payload.source_type,
                     )
                     await db_session.commit()
+
+                    # Record AI token usage & estimated cost ledger
+                    try:
+                        p_len = len(ctx.sys_prompt or "") + len(ctx.context_prompt or "")
+                        p_tok = max(1, p_len // 4)
+                        c_tok = max(1, len(answer) // 4)
+                        cost = 0.0
+                        m_low = (resolved_model or "gemini").lower()
+                        if "flash" in m_low: cost = (p_tok * 0.075 + c_tok * 0.30) / 1_000_000
+                        elif "4o-mini" in m_low or "luna" in m_low or "sol" in m_low: cost = (p_tok * 0.15 + c_tok * 0.60) / 1_000_000
+                        elif "opus" in m_low or "haiku" in m_low: cost = (p_tok * 0.25 + c_tok * 1.25) / 1_000_000
+                        elif "fable" in m_low or "sonnet" in m_low: cost = (p_tok * 3.00 + c_tok * 15.00) / 1_000_000
+                        elif "astra" in m_low or "terra" in m_low or "gpt-4o" in m_low: cost = (p_tok * 2.50 + c_tok * 10.00) / 1_000_000
+                        else: cost = (p_tok * 0.10 + c_tok * 0.30) / 1_000_000
+
+                        from app.db.models import AITokenUsage
+                        from app.core.context import get_trace_id, get_user_id
+                        u_id = get_user_id()
+                        t_id = get_trace_id()
+                        token_record = AITokenUsage(
+                            user_id=str(u_id) if u_id else (str(ctx.session.user_id) if ctx.session and ctx.session.user_id else None),
+                            session_id=str(ctx.session_uuid) if ctx.session_uuid else None,
+                            endpoint="/api/answer/stream",
+                            model=resolved_model or "unknown",
+                            provider="gemini" if "gemini" in m_low else ("anthropic" if "claude" in m_low or "fable" in m_low else "openai"),
+                            prompt_tokens=p_tok,
+                            completion_tokens=c_tok,
+                            total_tokens=p_tok + c_tok,
+                            estimated_cost_usd=round(cost, 6),
+                            duration_ms=0,
+                            trace_id=t_id
+                        )
+                        db_session.add(token_record)
+                        await db_session.commit()
+                    except Exception as t_err:
+                        logger.debug(f"Failed to record token usage in stream: {t_err}")
                     try:
                         cached_session = await redis_cache.get_session_state(
                             str(payload.session_id)

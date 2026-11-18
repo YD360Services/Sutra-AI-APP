@@ -58,53 +58,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    logger.exception(f"Unhandled backend error on {request.method} {request.url.path}: {exc}")
-    origin = request.headers.get("origin")
-    allowed_origins = settings.get_cors_origins()
-    
-    headers = {
-        "Access-Control-Allow-Methods": "*",
-        "Access-Control-Allow-Headers": "*",
-    }
-    if origin and ("*" in allowed_origins or origin in allowed_origins):
-        headers["Access-Control-Allow-Origin"] = origin
-        headers["Access-Control-Allow-Credentials"] = "true"
+# Centralized RFC 7807 Standard Error Handlers
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
+from app.core.errors import (
+    APIException,
+    api_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    unhandled_exception_handler,
+)
+from app.core.middleware import EnterpriseGatewayMiddleware
 
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "An internal server error occurred."},
-        headers=headers
-    )
+app.add_exception_handler(APIException, api_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
-import os
-from starlette.middleware.base import BaseHTTPMiddleware
-
-ENABLE_REQUEST_LOGGING = os.getenv("ENABLE_REQUEST_LOGGING", "false").lower() in ("true", "1")
-
-class RequestLoggingMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        # Allow WebSocket handshakes to pass through cleanly without HTTP interception
-        if request.scope.get("type") != "http":
-            return await call_next(request)
-
-        if ENABLE_REQUEST_LOGGING:
-            method = request.method
-            path = request.url.path
-            log_msg = f"Request: {method} {path}"
-            if request.query_params:
-                log_msg += f" ?{request.query_params}"
-            logger.debug(log_msg)
-
-        response = await call_next(request)
-
-        if ENABLE_REQUEST_LOGGING:
-            logger.debug(f"Response: {response.status_code}")
-
-        return response
-
-app.add_middleware(RequestLoggingMiddleware)
+# Enterprise Observability & Gateway Middleware (Trace ID Correlation, Latency Tracking, Tenant Context)
+app.add_middleware(EnterpriseGatewayMiddleware)
 
 # Register legacy websockets directly at root for current frontend compatibility
 app.include_router(websockets_router)

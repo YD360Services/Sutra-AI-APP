@@ -8,6 +8,7 @@ import logging
 
 from app.core.config import settings
 from app.core.security import decode_access_token
+from app.core.context import set_user_id
 from app.db.database import get_db
 from app.db.models import User, AdminEmail
 
@@ -48,6 +49,8 @@ async def get_current_user_optional(
             return None
 
         user = await db.get(User, user_uuid)
+        if user:
+            set_user_id(user.id)
         return user
     except Exception as e:
         logger.warning(f"Failed to authenticate token: {e}")
