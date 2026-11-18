@@ -2890,6 +2890,8 @@ function stopSessionTimer() {
 
 // Start session button event handler with token gatekeeper
 startSessionBtn.addEventListener('click', async () => {
+  // Pre-warm backend API and keep-alive socket immediately as meet starts
+  try { window.electronAPI.warmBackendConnection?.(); } catch (_) { }
   // Token verification gatekeeper (0.5 token required for 30-min live session)
   const tokenStatus = getDesktopUserTokenStatus();
   if (!tokenStatus.isPro && (tokenStatus.tokens.balance < 0.5)) {

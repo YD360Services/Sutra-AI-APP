@@ -68,3 +68,4 @@ class EnterpriseGatewayMiddleware(BaseHTTPMiddleware):
             )
 
         return response
+

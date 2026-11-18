@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Backend mode (hosted SaaS) ─────────────────────────────────────
   getBackendUrl: () => ipcRenderer.invoke('get-backend-url'),
+  warmBackendConnection: () => ipcRenderer.invoke('warm-backend-connection'),
 
   // Create a new session on the backend → returns { session_id, user_id, token }
   createBackendSession: (userId, config) => ipcRenderer.invoke('create-backend-session', userId, config),

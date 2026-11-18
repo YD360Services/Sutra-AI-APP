@@ -33,10 +33,17 @@ const keepAliveHttpAgent = new http.Agent({
   keepAliveMsecs: 60000
 });
 
+let isWarmingConnection = false;
+let lastWarmedConnectionAt = 0;
+
 function warmBackendConnection() {
   try {
+    const now = Date.now();
+    // Throttle warm-up pings to avoid duplicate calls if user quickly restarts session
+    if (isWarmingConnection || (now - lastWarmedConnectionAt < 30000)) return;
     const backendUrl = (env.BACKEND_URL || 'https://round-mate-ai.onrender.com').trim();
     if (!backendUrl) return;
+    isWarmingConnection = true;
     const url = new URL(backendUrl);
     const useHttps = url.protocol === 'https:';
     const lib = useHttps ? https : http;
@@ -44,16 +51,23 @@ function warmBackendConnection() {
     const req = lib.request({
       hostname: url.hostname,
       port: url.port || (useHttps ? 443 : 80),
-      path: '/docs',
-      method: 'HEAD',
+      path: '/healthz',
+      method: 'GET',
       agent: agent,
       headers: { 'Connection': 'keep-alive' }
     }, (res) => {
-      console.log('[Connection Warm] Sockets pre-warmed with keepAlive. Status:', res.statusCode);
+      isWarmingConnection = false;
+      lastWarmedConnectionAt = Date.now();
+      console.log('[Connection Warm] Sockets pre-warmed on meet start with keepAlive. Status:', res.statusCode);
     });
-    req.on('error', () => {});
+    req.on('error', (err) => {
+      isWarmingConnection = false;
+      console.debug('[Connection Warm] Meet pre-warm notice:', err.message);
+    });
     req.end();
-  } catch (_) {}
+  } catch (_) {
+    isWarmingConnection = false;
+  }
 }
 const { exec } = require('child_process');
 const WebSocket = require('ws');
@@ -757,6 +771,7 @@ function createWindow() {
   let audioChunkCount = 0;
 
   ipcMain.on('start-transcription', (event, config = {}) => {
+    warmBackendConnection();
     const language = config.language || 'en';
     const dgKey = env.DEEPGRAM_API_KEY || '3cad982200a3b1b6be970a367c19c5032092d982';
 
@@ -982,8 +997,15 @@ function createWindow() {
     });
   }
 
+  // Explicitly warm connection when meeting starts
+  ipcMain.handle('warm-backend-connection', async () => {
+    warmBackendConnection();
+    return { status: 'warming' };
+  });
+
   // Create a new session on the backend → returns { session_id, token }
   ipcMain.handle('create-backend-session', async (event, userId, config) => {
+    warmBackendConnection();
     try {
       let companyName = config?.company_name || 'Stealth AI';
       let roleName = config?.role_name || 'Software Engineer';
@@ -1796,7 +1818,6 @@ function triggerLaunchToolbar() {
 }
 
 // Start a local HTTP server to listen for launch triggers from the web browser
-const http = require('http');
 
 // Allowed origins for the internal controller (localhost, Render backend, and production web app)
 const ALLOWED_ORIGINS = new Set([
@@ -1844,8 +1865,6 @@ const server = http.createServer((req, res) => {
     res.end();
     return;
   }
-
-  const parsedUrl = require('url').parse(req.url, true);
 
   if (parsedUrl.pathname === '/auth-callback') {
     // Accept credentials via POST body or query params
@@ -2315,7 +2334,7 @@ if (!gotTheLock) {
 
     createWindow();
     setupSystemTray();
-    warmBackendConnection();
+    // Cold call removed from startup — now invoked on meet start
 
     // Start auto-updater silently in background
     setTimeout(async () => {

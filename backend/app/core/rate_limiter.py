@@ -94,3 +94,4 @@ def rate_limit(max_requests: int = 60, window_seconds: int = 60, key_prefix: str
             )
 
     return dependency
+

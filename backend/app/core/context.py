@@ -37,3 +37,4 @@ def get_tenant_id() -> str:
 def set_tenant_id(tenant_id: str):
     """Set the active tenant ID for multi-tenant data isolation."""
     return current_tenant_id.set(tenant_id)
+
