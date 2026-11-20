@@ -710,26 +710,28 @@ async def google_oauth_callback(
         device_type = "web"
 
         try:
-            db_user = await user_repo.get_user_by_firebase_uid(firebase_uid)
+            # Same identity mapping as POST /auth/google: deterministic UUID from the Google sub,
+            # falling back to an existing account with the same email.
+            mapped_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"firebase:{firebase_uid}")
+            db_user = await user_repo.get_by_id(mapped_id) or await user_repo.get_by_email(email)
             if not db_user:
-                db_user = await user_repo.get_user_by_email(email)
-            if db_user:
-                await user_repo.update_user(
-                    db_user.id,
-                    {"name": name, "active_session_token": session_id, "device_type": device_type},
-                )
-            else:
-                db_user = await user_repo.create_user(
-                    firebase_uid=firebase_uid,
+                db_user = await user_repo.create(
+                    id=mapped_id,
                     email=email,
+                    password_hash="firebase_authenticated",
                     name=name,
-                    login_token=session_id,
-                    device_type=device_type,
                 )
-            db_id = str(db_user.id) if db_user else firebase_uid
+            elif name and not db_user.name:
+                db_user.name = name
+            db_user.active_session_token = session_id
+            db_user.active_device_type = device_type
+            db_user.last_active_at = datetime.utcnow()
+            await db.commit()
+            db_id = str(db_user.id)
         except Exception as e:
-            logger.warning(f"DB upsert failed (non-fatal): {e}")
-            db_id = firebase_uid
+            await db.rollback()
+            logger.exception(f"DB upsert failed in OAuth callback: {e}")
+            return RedirectResponse(url=f"{frontend_url}/?auth_error=server_error")
 
         # 4. Build signed token and redirect back to the originating frontend
         payload = {
