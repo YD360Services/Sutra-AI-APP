@@ -1334,14 +1334,16 @@ function createWindow() {
         return modelStr;
       };
 
-      // Format knowledge_content parameter to help the backend query the active database document / prompt
-      let knowledgeContent = '';
-      if (doc_id && doc_id !== '__upload__') {
-        const prefix = (doc_type === 'prompt') ? 'prompt_id' : 'doc_id';
-        knowledgeContent = `${prefix}:${doc_id}|`;
-      } else {
-        knowledgeContent = jd || '';
-      }
+      // Send every selected document / custom prompt as its own "doc_id:<id>|" entry.
+      // doc_id can hold several comma-joined ids (multi-select); the backend reads each
+      // document's stored type to decide whether it's a custom prompt.
+      const selectedIds = String(doc_id || '')
+        .split(',')
+        .map(id => id.trim())
+        .filter(id => id && id !== '__upload__');
+      const knowledgeContent = selectedIds.length
+        ? selectedIds.map(id => `doc_id:${id}|`).join('')
+        : (jd || '');
 
       const newTranscript = (full_transcript && typeof last_offset === 'number') ? full_transcript.slice(last_offset).trim() : (full_transcript || '');
       const payload = {
@@ -1471,7 +1473,8 @@ function createWindow() {
         resume_id: typeof resume_id === 'string' ? resume_id.substring(0, 200) : '',
         job_description: typeof job_description === 'string' ? job_description : '',
         code_context: typeof code_context === 'string' ? code_context.substring(0, MAX_STR) : '',
-        doc_id: typeof doc_id === 'string' ? doc_id.substring(0, 200) : '',
+        // Comma-joined ids from the multi-select (36 chars per UUID) — room for ~50 selections
+        doc_id: typeof doc_id === 'string' ? doc_id.substring(0, 2000) : '',
         doc_type: typeof doc_type === 'string' ? doc_type.substring(0, 50) : '',
         company: typeof company === 'string' ? company.substring(0, MAX_SHORT) : '',
         role: typeof role === 'string' ? role.substring(0, MAX_SHORT) : '',

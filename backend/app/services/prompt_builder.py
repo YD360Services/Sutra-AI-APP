@@ -1,284 +1,232 @@
-import json
+"""
+Single place where live-answer prompts are assembled.
+
+System prompt layers, in order (later layers win on conflict):
+  1. Persona + grounding rules           (always)
+  2. Mode guidance                       (coding / system design / hr / screenshot / introduction)
+  3. Default answer style                (DROPPED entirely when the user has custom prompts)
+  4. The user's custom prompts           (highest priority)
+  5. Output contract                     (JSON vs plain text — transport only)
+
+Everything about the candidate (resume, JD, notes, history, transcript) goes in the
+user message as plain data via build_context_message(). The user message never
+carries instructions, so nothing there can compete with the custom prompts.
+"""
 import logging
+import re
 import time
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from app.cache.redis import redis_cache
 
 logger = logging.getLogger("roundmate.prompt_builder")
 
-# 1. UNIVERSAL ANSWER FORMAT (SHARED BASELINE FOR INTERVIEW ANSWERS)
-UNIVERSAL_ANSWER_FORMAT = """CRITICAL ANSWER FORMATTING RULES — APPLY TO EVERY INTERVIEW ANSWER:
-1. STRUCTURE:
-   - Start directly with the answer. Never add a greeting, preamble, or unnecessary introduction.
-   - Use concise bullet points for explanations.
-   - Every bullet MUST begin with a meaningful bold side heading.
-   - Required format: - **Heading:** Explanation in natural English.
-   - Use actual Markdown bold syntax for every side heading.
-   - Separate bullets using newline characters.
-2. WRITING STYLE:
-   - Speak in the first person when discussing personal experience ("I", "my experience", "I've built").
-   - Use simple, natural, conversational English.
-   - Keep each bullet focused on one main idea.
-   - Prefer 2–4 sentences per bullet, depending on complexity.
-   - Avoid long paragraphs, repetition, and unnecessary buzzwords.
-   - Sound confident and knowledgeable without exaggerating experience.
-3. ANSWER DEPTH:
-   - Answer the exact question before adding supporting details.
-   - Explain what, why, and how when relevant.
-   - Include practical examples, technical reasoning, and trade-offs.
-   - Address every part of a multi-part question.
-   - Never invent personal achievements, metrics, or experience.
-   - If personal experience is unknown, explain the approach honestly.
-4. ADAPTIVE FORMATTING:
-   - General technical questions: Definition, Working, Example, Benefits or Trade-offs, using only relevant headings.
-   - Project questions: Problem, My Approach, Implementation, Challenges, and Result, when applicable.
-   - Behavioral questions: Situation, Task, Action, and Result (STAR with bold labels).
-   - HR questions: Motivation, Strengths, Improvement Areas, or other relevant headings.
-   - Coding & Screenshot questions: Follow specific code block / JSON schema requirements without unnecessary conversational bullets.
-"""
+MODES = ("interview", "hr", "coding", "system_design", "screenshot", "introduction")
 
-# 2. SPECIALIZED PROMPTS FOR EACH QUESTION TYPE
-QUESTION_TYPE_PROMPTS = {
-    "behavioral": (
-        "QUESTION TYPE: Behavioral\n"
-        "RESPONSE FRAMEWORK (STAR Method with Bold Headings):\n"
-        "- **Situation:** The problem or context (1 sentence setting the scene).\n"
-        "- **Task:** My exact responsibility.\n"
-        "- **Action:** The engineering and leadership steps I personally executed.\n"
-        "- **Result:** The outcome, using verified metrics and positive impact where available."
+PERSONA = """You write the words a job candidate will say out loud in a live interview, right now. Write as the candidate, in the first person.
+
+Ground rules:
+- Only claim experience that shows up in the background you're given (resume, notes, prepared answers). If it doesn't cover something, say how you'd approach it rather than inventing a project, employer, or number.
+- Answer the question that was actually asked. If it has several parts, cover every part.
+- Put any code, SQL, shell commands, or diagrams in fenced code blocks with a language tag."""
+
+DEFAULT_STYLE = """How the answer should sound:
+- Like a sharp, relaxed engineer talking across the table: plain words, contractions, mostly short sentences. It should be easy to read aloud on the first try.
+- First sentence is the actual answer. No warm-up, and don't restate the question.
+- Short spoken paragraphs. Only use a short list when the question has several separate parts, and never use bold headings or labels like "Situation:" / "Result:".
+- Be specific. Name the real tool, the real decision, the real trade-off. One concrete detail from the candidate's background beats three general claims.
+- Don't steer the answer toward the job description unless the question is about fit for the role.
+- About 30–60 seconds of speech (roughly 80–150 words) unless the question clearly needs more."""
+
+MODE_GUIDANCE = {
+    "interview": "",
+    "hr": (
+        "This is an HR or behavioral question. Answer from the candidate's own experience, with one real example "
+        "where there is one. For a story, say what was going on, what the candidate did, and how it turned out — "
+        "told as a story, not as labelled sections. For strengths or weaknesses, be specific and honest."
     ),
     "coding": (
-        "QUESTION TYPE: Coding (LeetCode-style)\n"
-        "RESPONSE FRAMEWORK:\n"
-        "1. Algorithmic Intuition: Explain the core idea in 1 sentence.\n"
-        "2. Optimal Approach: Describe data structure choices (e.g. Hash Map, Two Pointers, Dynamic Programming).\n"
-        "3. Implementation: Provide clean, idiomatic code snippet wrapped in triple-backtick markdown blocks.\n"
-        "4. Complexity: Explicitly state Time Complexity O(...) and Space Complexity O(...)."
-    ),
-    "experience_check": (
-        "QUESTION TYPE: Experience Check\n"
-        "RESPONSE FRAMEWORK:\n"
-        "- Focus on background verification, relevant past project accomplishments, and sync directly with the Job Description (JD) requirements.\n"
-        "- Frame real experience around the exact technologies requested by the interviewer using bold side headings."
-    ),
-    "how_do_you": (
-        "QUESTION TYPE: How-do-you / Engineering Process\n"
-        "RESPONSE FRAMEWORK:\n"
-        "- Provide a step-by-step practical engineering methodology with bold side headings (- **Step/Phase:** details).\n"
-        "- Explain real-world trade-offs, edge cases, and production safety precautions."
-    ),
-    "situational": (
-        "QUESTION TYPE: Situational / Scenario\n"
-        "RESPONSE FRAMEWORK:\n"
-        "- **Context & Risks:** Assess the hypothetical scenario and identify key risks/constraints.\n"
-        "- **Evaluated Approaches:** Present 2 potential approaches and state your decision framework.\n"
-        "- **Optimal Choice:** Justify your choice based on scalability, maintainability, and team velocity."
+        "This is a coding or SQL question. Give the idea in a sentence, then the complete working code in a fenced "
+        "block with brief comments, then a couple of sentences on why this approach and its time and space complexity."
     ),
     "system_design": (
-        "QUESTION TYPE: System Design\n"
-        "RESPONSE FRAMEWORK:\n"
-        "- **Requirements & Scale:** Clarify Scale, Throughput, and Latency constraints.\n"
-        "- **High-Level Architecture:** Outline Load Balancer, API Gateway, Services, Storage.\n"
-        "- **Data Flow & Storage:** Relational vs NoSQL vs Cache choice and rationale.\n"
-        "- **Bottlenecks & Mitigation:** Scaling, Partitioning, Message Queues, Fault Tolerance."
+        "This is a system design question. Open with the key requirements or assumptions in a sentence or two, "
+        "draw a simple text diagram in a ```text block, then talk through the main components, how data flows, "
+        "and the trade-offs worth calling out — the way you'd walk a panel through a whiteboard."
     ),
-    "technical_knowledge": (
-        "QUESTION TYPE: Technical Knowledge\n"
-        "RESPONSE FRAMEWORK:\n"
-        "- Provide a clear 1-sentence technical definition.\n"
-        "- Detail underlying execution mechanics (how it works under the hood).\n"
-        "- State core pros, cons, and real-world production use cases using concise bold side headings."
+    "screenshot": (
+        "You're given a screenshot from a technical interview or assessment (code, a diagram, a circuit, a network, "
+        "a math problem, an MCQ, etc.). Work out exactly what is being asked and solve it. Expand acronyms the "
+        "candidate might be asked about, explain how the thing works, show the steps of any calculation, and for "
+        "code use the language shown in the screenshot and give a complete, correct solution. For MCQs, state the "
+        "correct option and why."
     ),
-    "tell_me_about_yourself": (
-        "QUESTION TYPE: Tell Me About Yourself / Elevator Pitch\n"
-        "RESPONSE FRAMEWORK:\n"
-        "- Deliver a high-impact elevator pitch (Present Role -> Past Achievements -> Why this JD/Company).\n"
-        "- Renovate and sync your background directly to highlight the top skills in the Job Description (JD)."
-    )
+    "introduction": (
+        "You'll get the candidate's pre-written self-introduction. Tidy it into something that sounds natural when "
+        "spoken: fix grammar, smooth the flow, cut stiff or generic phrases. Keep every fact (names, dates, "
+        "technologies, employers, achievements) exactly as written — don't add, remove, or tailor anything to the job."
+    ),
 }
 
-# 3. FORMAT ENFORCERS (HIGHEST PRIORITY OVERRIDES)
-FORMAT_ENFORCERS = {
-    "headed_bullets": (
-        "CRITICAL FORMAT OVERRIDE: Answer using concise bullet points where every bullet begins with a bold side heading (- **Heading:** explanation). Speak in natural first-person conversational English."
+CUSTOM_PROMPTS_HEADER = (
+    "The candidate's own instructions. These take priority: follow them over any style, format, length, or "
+    "structure guidance above. The only rule that still applies is not inventing experience."
+)
+
+OUTPUT_CONTRACT = {
+    "json": (
+        'Reply with only a JSON object, no code fence: '
+        '{"question": "<the interviewer\'s full question>", "answer": "<the answer>"}'
     ),
-    "script_bullets": (
-        "CRITICAL FORMAT OVERRIDE: Provide a 1-sentence opening spoken script followed by concise bullet points with bold side headings."
-    ),
-    "paragraphs": (
-        "CRITICAL FORMAT OVERRIDE: Speak strictly in plain, normal, natural conversational English paragraphs. "
-        "Use simple everyday words, no complex or fancy buzzwords. "
-        "If the answer includes any code, SQL query, or architecture diagram, ALWAYS wrap it inside triple backticks (e.g. ```sql ... ``` or ```text ... ```) in a separate box."
-    ),
-    "structured_summary": (
-        "CRITICAL FORMAT OVERRIDE: Organize answer using bold section headers and structured key takeaways."
-    )
+    "text": "Reply with only the answer itself — no preamble, no labels, no JSON.",
 }
 
-# 4. LENGTH ENFORCERS
-LENGTH_ENFORCERS = {
-    "short": "LENGTH REQUIREMENT: Keep answer short and concise (50-100 words / ~30-45 seconds spoken).",
-    "concise": "LENGTH REQUIREMENT: Keep answer short and concise (50-100 words / ~30-45 seconds spoken).",
-    "balanced": "LENGTH REQUIREMENT: Provide a balanced response (150-250 words / ~1-2 minutes spoken).",
-    "detailed": "LENGTH REQUIREMENT: Provide an in-depth response (300-400 words / ~3 minutes spoken).",
-    "in_depth": "LENGTH REQUIREMENT: Provide an in-depth response (300-400 words / ~3 minutes spoken)."
-}
+_EMPTY_VALUES = {"", "none", "none.", "none loaded", "none loaded.", "skipped for coding question."}
 
-# 5. TONE ENFORCERS
-TONE_ENFORCERS = {
-    "formal": "TONE REQUIREMENT: Speak clearly and professionally in plain, normal English without fancy buzzwords.",
-    "conversational": "TONE REQUIREMENT: Adopt a conversational, simple, and natural spoken tone using everyday normal English (no complex or robotic words).",
-    "confident_technical": "TONE REQUIREMENT: Adopt a confident, clear tone. Explain technical ideas using simple, direct words rather than confusing jargon."
-}
 
-SYSTEM_PROMPT_BASE = """[CONTEXT BLOCK]
-Resume Context:
-{resume_context}
+def _is_empty(value: Optional[str]) -> bool:
+    return not value or value.strip().lower() in _EMPTY_VALUES
 
-Job Description Context:
-{jd_context}
 
-Reference Document Chunks:
-{knowledge_context}
+# ── Mode routing ────────────────────────────────────────────────────────────
 
-Previous Conversation Context:
-{previous_context}
+def session_type_from_name(session_name: str) -> str:
+    """The desktop app names sessions "<Company> (<Session Type>)", e.g. "Acme (HR / Manager Round)"."""
+    match = re.search(r"\(([^()]*)\)\s*$", session_name or "")
+    return match.group(1).strip() if match else ""
 
-[SYSTEM MANDATE & INSTRUCTIONS]
-You are an expert candidate answering interview questions in real time.
-CRITICAL MANDATES:
-1. ALWAYS SYNC AND ALIGN YOUR ANSWERS DIRECTLY TO THE JOB DESCRIPTION (JD) AND RESUME CONTEXT ABOVE.
-2. If asked to introduce yourself ("tell me about yourself", "walk me through your resume"), renovate and adapt your self-introduction so that your background directly highlights the key requirements in the Job Description (JD).
-"""
 
+def _category_to_mode(category: str) -> str:
+    c = (category or "").strip().lower()
+    if not c or "interview+coding" in c:
+        return ""  # mixed round: decide per question
+    if "coding" in c or c in {"sql", "dsa"}:
+        return "coding"
+    if c.startswith("hr") or "manager" in c or "behavioral" in c:
+        return "hr"
+    if "design" in c or "architecture" in c:
+        return "system_design"
+    return ""
+
+
+_CODING_PATTERNS = [
+    r"\bwrite\b.{0,40}\b(query|queries|function|program|code|script|method|class|sql|algorithm)\b",
+    r"\bimplement\b.{0,40}\b(function|algorithm|method|class|stack|queue|cache|lru)\b",
+    r"\bleet ?code\b", r"\b(time|space) complexity\b", r"\bbig[- ]o\b",
+    r"\b(delete|remove|find)\b.{0,20}\bduplicates?\b", r"\bnth highest\b", r"\bsecond highest\b",
+    r"\breverse (a|an|the)\b", r"\btwo sum\b", r"\b(linked list|binary tree|binary search)\b",
+    r"\bwhat (is|will be) the output\b", r"\bfix (this|the) (code|query|bug)\b",
+]
+_HR_PATTERNS = [
+    r"\btell me about (yourself|a time)\b", r"\bintroduce yourself\b", r"\bwalk me through your\b",
+    r"\byour (greatest |biggest )?(strengths?|weakness(es)?)\b", r"\bwhy (this|our) (company|role|team)\b",
+    r"\bwhy should we hire\b", r"\bwhy do you want\b", r"\bwhy are you leaving\b", r"\bsalary\b",
+    r"\bcompensation\b", r"\bnotice period\b", r"\bwhere do you see yourself\b", r"\bcareer goals?\b",
+    r"\b(conflict|disagree(ment|d)?) with\b", r"\bdescribe a (situation|time)\b", r"\bbiggest (challenge|mistake|failure)\b",
+]
+_DESIGN_PATTERNS = [
+    r"\bsystem design\b", r"\bdesign (a|an|the)\b", r"\bhow would you (design|architect|build|scale)\b",
+    r"\bhigh[- ]level design\b", r"\blow[- ]level design\b", r"\barchitecture (for|of)\b",
+    r"\brate limiter\b", r"\burl shortener\b", r"\bdistributed system\b",
+]
+
+
+def resolve_mode(question: str, session_type: str = "") -> str:
+    """Pick the answer mode. The session type the user chose wins; otherwise match on the question."""
+    forced = _category_to_mode(session_type)
+    if forced:
+        return forced
+
+    q = (question or "").lower()
+    if any(re.search(p, q) for p in _CODING_PATTERNS):
+        return "coding"
+    if any(re.search(p, q) for p in _DESIGN_PATTERNS):
+        return "system_design"
+    if any(re.search(p, q) for p in _HR_PATTERNS):
+        return "hr"
+    return "interview"
+
+
+# ── Prompt assembly ─────────────────────────────────────────────────────────
+
+def format_custom_prompts(custom_prompts: List[Dict[str, str]]) -> str:
+    blocks = []
+    for p in custom_prompts or []:
+        content = (p.get("content") or "").strip()
+        if not content:
+            continue
+        name = (p.get("name") or "").strip()
+        blocks.append(f"[{name}]\n{content}" if name else content)
+    return "\n\n".join(blocks)
+
+
+def build_system_prompt(
+    mode: str,
+    custom_prompts: Optional[List[Dict[str, str]]] = None,
+    output: str = "text",
+) -> str:
+    if mode not in MODES:
+        mode = "interview"
+    custom_text = format_custom_prompts(custom_prompts or [])
+
+    sections = [PERSONA, MODE_GUIDANCE.get(mode, "")]
+    if not custom_text:
+        sections.append(DEFAULT_STYLE)
+    else:
+        sections.append(f"{CUSTOM_PROMPTS_HEADER}\n\n{custom_text}")
+    sections.append(OUTPUT_CONTRACT["json" if output == "json" else "text"])
+
+    return "\n\n".join(s.strip() for s in sections if s and s.strip())
+
+
+def build_context_message(
+    question: str,
+    role_info: str = "",
+    jd_context: str = "",
+    resume_context: str = "",
+    knowledge_context: str = "",
+    history: str = "",
+    transcript: str = "",
+) -> str:
+    """User message: the candidate's background as plain data, then the question. No instructions."""
+    sections = []
+    if not _is_empty(role_info):
+        sections.append(role_info.strip())
+    for title, body in (
+        ("Job description", jd_context),
+        ("Candidate background (resume)", resume_context),
+        ("Candidate's prepared answers and notes", knowledge_context),
+        ("Already asked earlier in this interview (don't repeat these answers)", history),
+        ("Conversation so far", transcript),
+    ):
+        if not _is_empty(body):
+            sections.append(f"## {title}\n{body.strip()}")
+    sections.append(f"## Question to answer now\n{(question or '').strip()}")
+    return "\n\n".join(sections)
+
+
+def build_introduction_message(introduction: str) -> str:
+    return f"## Pre-written introduction\n{introduction.strip()}"
+
+
+# ── Session state (used by the websocket pipeline / prewarm) ────────────────
 
 class PromptBuilder:
-    def __init__(self):
-        pass
-
-    def build_final_prompt(
-        self,
-        system_prompt: str,
-        question_type_prompt: str = "",
-        format_prompt: str = "",
-        length_prompt: str = "",
-        tone_prompt: str = "",
-    ) -> str:
-        """Helper to assemble modular prompts with universal answer formatting."""
-        sections = [
-            system_prompt,
-            question_type_prompt,
-            format_prompt,
-            length_prompt,
-            tone_prompt,
-            UNIVERSAL_ANSWER_FORMAT,
-        ]
-        return "\n\n".join(
-            section.strip()
-            for section in sections
-            if section and section.strip()
-        )
-
-    def build_system_prompt(self, context: Dict[str, Any], user_preferences: Optional[Dict[str, Any]] = None) -> str:
-        base_p = SYSTEM_PROMPT_BASE.format(
-            resume_context=context.get("resume_context", "None loaded."),
-            jd_context=context.get("jd_context", "None loaded."),
-            knowledge_context=context.get("knowledge_context", "None loaded."),
-            previous_context=context.get("previous_context", "None."),
-        )
-
-        overrides = []
-
-        # Process User Preferences (Question Type, Format, Length, Tone)
-        is_coding = False
-        if user_preferences:
-            q_type = str(user_preferences.get("question_type", "")).lower().replace(" ", "_").replace("-", "_")
-            fmt = str(user_preferences.get("format", "")).lower().replace(" ", "_").replace("+", "_")
-            length = str(user_preferences.get("length", "")).lower()
-            tone = str(user_preferences.get("tone", "")).lower()
-
-            # Apply Question Type Framework
-            if q_type in QUESTION_TYPE_PROMPTS:
-                overrides.append(QUESTION_TYPE_PROMPTS[q_type])
-                if q_type == "coding":
-                    is_coding = True
-            elif "code" in q_type or "leetcode" in q_type:
-                overrides.append(QUESTION_TYPE_PROMPTS["coding"])
-                is_coding = True
-            elif "system" in q_type or "design" in q_type:
-                overrides.append(QUESTION_TYPE_PROMPTS["system_design"])
-
-            # Apply Format Overrides
-            if fmt in FORMAT_ENFORCERS:
-                overrides.append(FORMAT_ENFORCERS[fmt])
-            elif "para" in fmt:
-                overrides.append(FORMAT_ENFORCERS["paragraphs"])
-            elif "bullet" in fmt or "script" in fmt or "head" in fmt:
-                overrides.append(FORMAT_ENFORCERS["headed_bullets"])
-
-            # Apply Length & Tone
-            if length in LENGTH_ENFORCERS:
-                overrides.append(LENGTH_ENFORCERS[length])
-            if tone in TONE_ENFORCERS:
-                overrides.append(TONE_ENFORCERS[tone])
-
-        # If no custom format override was provided, default to headed bullets
-        if not any("CRITICAL FORMAT OVERRIDE" in ov for ov in overrides):
-            overrides.append(FORMAT_ENFORCERS["headed_bullets"])
-        if not any("LENGTH REQUIREMENT" in ov for ov in overrides):
-            overrides.append(LENGTH_ENFORCERS["balanced"])
-
-        # Inject universal formatting rules for standard conversational/technical interview questions
-        if not is_coding and not any("paragraphs" in ov for ov in overrides):
-            overrides.append(UNIVERSAL_ANSWER_FORMAT.strip())
-
-        # Append Override Block at the VERY END for maximum LLM attention weight
-        override_block = "\n\n[CRITICAL USER PREFERENCE OVERRIDE - HIGHEST PRIORITY]\n" + "\n".join(f"• {rule}" for rule in overrides) + "\n\nNOTE: The rules in this override block MANDATORY taking precedence over any general system defaults above."
-
-        return base_p + override_block
-
-    def build_user_prompt(self, prediction: str, latest_transcript: str, user_preferences: Optional[Dict[str, Any]] = None) -> str:
-        q = prediction if prediction else latest_transcript
-        
-        prompt = (
-            f"Interviewer Question: {q}\n\n"
-            "Answer this question the way a real candidate would say it out loud in an interview. "
-            "IMPORTANT: Renovate and sync your self-introduction, background, and answer directly to the Job Description (JD) and resume.\n"
-        )
-
-        if user_preferences:
-            fmt = str(user_preferences.get("format", "")).lower()
-            if "para" in fmt:
-                prompt += "REMINDER: Write in plain, natural English paragraphs — no bullet points, no asterisks, no numbered lists."
-            elif "bullet" in fmt or "script" in fmt or "head" in fmt:
-                prompt += "REMINDER: Provide concise bullet points where every bullet begins with a bold side heading (- **Heading:** explanation)."
-        else:
-            prompt += "REMINDER: Provide concise bullet points where every bullet begins with a bold side heading (- **Heading:** explanation)."
-
-        return prompt
-
     async def update_session_prompt(
-        self, 
-        session_id: str, 
-        analysis: Dict[str, Any], 
-        context: Dict[str, Any], 
+        self,
+        session_id: str,
+        analysis: Dict[str, Any],
+        context: Dict[str, Any],
         latest_transcript: str,
-        user_preferences: Optional[Dict[str, Any]] = None
+        user_preferences: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        
-        system_p = self.build_system_prompt(context, user_preferences)
-        user_p = self.build_user_prompt(analysis.get("prediction", ""), latest_transcript, user_preferences)
-        
-        prepared_prompt = json.dumps({
-            "system_prompt": system_p,
-            "user_prompt": user_p
-        })
-        
-        session_state = await redis_cache.get_session_state(session_id)
-        if not session_state:
-            session_state = {}
-            
+        """Store the latest transcript analysis + context in Redis session state.
+
+        Prompts are no longer pre-assembled here; /answer builds them at request time
+        so that custom prompts are always applied consistently.
+        """
+        session_state = await redis_cache.get_session_state(session_id) or {}
+        session_state.pop("prepared_prompt", None)
         session_state.update({
             "session_id": session_id,
             "state": analysis.get("state", "WAITING"),
@@ -296,13 +244,10 @@ class PromptBuilder:
             "jd_context": context.get("jd_context", "None loaded."),
             "previous_context": context.get("previous_context", "None."),
             "reasoning_focus": context.get("reasoning_focus", "General technical review and validation."),
-            "prepared_prompt": prepared_prompt,
             "user_preferences": user_preferences or {},
-            "last_updated": time.time()
+            "last_updated": time.time(),
         })
-        
         await redis_cache.set_session_state(session_id, session_state)
-            
         return session_state
 
 

@@ -1,4 +1,5 @@
 import re
+import json
 import uuid
 import logging
 from typing import List, Dict, Any, Optional
@@ -101,56 +102,67 @@ class ContextOrchestrator:
                 return active_jd.description
         return ""
 
+    async def _load_knowledge_doc(self, doc_id: str, knowledge_repo) -> Optional[Dict[str, str]]:
+        try:
+            doc_uuid = uuid.UUID(doc_id)
+        except ValueError:
+            return None
+        cache_key = f"knowledge:{doc_uuid}"
+        try:
+            cached_doc = await redis_cache.get_cached_item(cache_key)
+            if cached_doc:
+                try:
+                    data = json.loads(cached_doc)
+                    return {
+                        "name": data.get("name", "Document"),
+                        "type": data.get("type", "document"),
+                        "content": data.get("content", ""),
+                    }
+                except Exception:
+                    return {"name": "Document", "type": "document", "content": cached_doc}
+            db_doc = await knowledge_repo.db.get(KnowledgeDocument, doc_uuid)
+            if not db_doc:
+                return None
+            doc = {"name": db_doc.document_name, "type": db_doc.document_type, "content": db_doc.content}
+            await redis_cache.set_cached_item(cache_key, json.dumps(doc))
+            return doc
+        except Exception as e:
+            logger.warning(f"Error fetching knowledge doc {doc_id}: {e}")
+            return None
+
+    async def get_custom_prompts(self, knowledge_content: Optional[str], db: AsyncSession) -> List[Dict[str, str]]:
+        """Only the custom prompts the user explicitly selected (document_type == "prompt")."""
+        if not knowledge_content or ("doc_id:" not in knowledge_content and "prompt_id:" not in knowledge_content):
+            return []
+        docs = await self.get_session_knowledge_docs(None, knowledge_content, JDRepository(db))
+        return [{"name": d["name"], "content": d["content"]} for d in docs if d.get("type") == "prompt" and d.get("content")]
+
     async def get_session_knowledge_docs(self, user_id: Optional[uuid.UUID], knowledge_content: Optional[str], knowledge_repo: JDRepository) -> List[Dict[str, str]]:
         docs = []
-        # If IDs format was sent
+        # If IDs format was sent: "doc_id:<id>|prompt_id:<id>|..." — the prefix is informational only,
+        # the stored document_type decides whether a doc is a prompt. Older desktop builds join several
+        # ids with commas inside one entry ("prompt_id:a,b|"), so split on commas too.
         if knowledge_content and ("doc_id:" in knowledge_content or "prompt_id:" in knowledge_content):
-            parts = knowledge_content.split("|")
-            for part in parts:
-                if not part.strip():
-                    continue
+            ids: List[str] = []
+            for part in knowledge_content.split("|"):
                 key_val = part.split(":", 1)
                 if len(key_val) == 2:
-                    k, val = key_val[0].strip(), key_val[1].strip()
-                    try:
-                        doc_uuid = uuid.UUID(val)
-                        cache_key = f"knowledge:{doc_uuid}"
-                        cached_doc = await redis_cache.get_cached_item(cache_key)
-                        
-                        import json
-                        if cached_doc:
-                            try:
-                                doc_data = json.loads(cached_doc)
-                                docs.append({
-                                    "name": doc_data.get("name", "Document"),
-                                    "type": doc_data.get("type", "document"),
-                                    "content": doc_data.get("content", "")
-                                })
-                            except Exception:
-                                docs.append({"name": "Document", "type": "document", "content": cached_doc})
-                        else:
-                            db_doc = await knowledge_repo.db.get(KnowledgeDocument, doc_uuid)
-                            if db_doc:
-                                doc_json = json.dumps({
-                                    "name": db_doc.document_name,
-                                    "type": db_doc.document_type,
-                                    "content": db_doc.content
-                                })
-                                await redis_cache.set_cached_item(cache_key, doc_json)
-                                docs.append({
-                                    "name": db_doc.document_name,
-                                    "type": db_doc.document_type,
-                                    "content": db_doc.content
-                                })
-                    except Exception as e:
-                        logger.warning(f"Error fetching knowledge doc in orchestrator: {e}")
+                    ids.extend(v.strip() for v in key_val[1].split(",") if v.strip())
+            for val in dict.fromkeys(ids):  # de-duplicate, keep selection order
+                doc = await self._load_knowledge_doc(val, knowledge_repo)
+                if doc:
+                    docs.append(doc)
         elif knowledge_content:
             docs.append({"name": "Reference Document", "type": "document", "content": knowledge_content})
         elif user_id:
-            # Load active knowledge docs from repository
-            # Since repository lacks direct database reference in some imports, construct locally
+            # Nothing selected: fall back to the user's reference documents. Custom prompts are NOT
+            # applied implicitly — they override answer style, so only explicitly selected ones count.
             try:
-                stmt = select(KnowledgeDocument).where(KnowledgeDocument.user_id == user_id).order_by(KnowledgeDocument.uploaded_at.desc())
+                stmt = (
+                    select(KnowledgeDocument)
+                    .where(KnowledgeDocument.user_id == user_id, KnowledgeDocument.document_type != "prompt")
+                    .order_by(KnowledgeDocument.uploaded_at.desc())
+                )
                 res = await knowledge_repo.db.execute(stmt)
                 db_docs = res.scalars().all()
                 for doc in db_docs:
@@ -246,8 +258,11 @@ class ContextOrchestrator:
             if not resume_obj and user_id:
                 resume_obj = await resume_repo.get_active(user_id)
 
-            if resume_obj:
-                # Attempt to use pre-calculated summaries to minimize tokens
+            # Use the candidate's real resume text. The AI-generated summaries are only a fallback:
+            # feeding the model AI-written text about the candidate makes answers sound AI-written.
+            if resume_obj and resume_obj.parsed_content:
+                raw_resume = resume_obj.parsed_content
+            elif resume_obj:
                 parts = []
                 if resume_obj.professional_summary:
                     parts.append(f"Professional Summary:\n{resume_obj.professional_summary}")
@@ -255,17 +270,14 @@ class ContextOrchestrator:
                     parts.append(f"Core Strengths:\n{resume_obj.strengths}")
                 if resume_obj.project_summary:
                     parts.append(f"Key Projects:\n{resume_obj.project_summary}")
-                
                 if parts:
                     optimized_resume = "\n\n".join(parts)
-                else:
-                    raw_resume = resume_obj.parsed_content
             elif resume_content:
                 raw_resume = resume_content
 
             if raw_resume:
-                # Compact token limit: top 8 most relevant resume lines
-                ranked = rank_and_truncate_text(raw_resume, search_terms, max_items=8)
+                # Compact token limit: top 12 most relevant resume lines
+                ranked = rank_and_truncate_text(raw_resume, search_terms, max_items=12)
                 if ranked:
                     optimized_resume = "\n".join(ranked)
                 else:
@@ -342,9 +354,8 @@ class ContextOrchestrator:
             for score, name, doc_type, chunk in top_chunks:
                 knowledge_list.append(f"Reference Document [{name}]: {chunk}")
 
-        # Keep instruction prompt template if uploaded
-        for p in prompts:
-            knowledge_list.append(f"AI Instruction Prompt [{p['name']}]: {p['content']}")
+        # Custom prompts are NOT mixed into reference material: they are returned separately
+        # and placed in the system prompt by prompt_builder.build_system_prompt().
 
         # 4. Session Follow-Up Context Awareness
         previous_str = "None."
@@ -373,7 +384,8 @@ class ContextOrchestrator:
             "knowledge_context": "\n\n".join(knowledge_list) if knowledge_list else "None loaded.",
             "jd_context": optimized_jd if optimized_jd else "None loaded.",
             "previous_context": previous_str,
-            "reasoning_focus": reasoning_focus
+            "reasoning_focus": reasoning_focus,
+            "custom_prompts": [{"name": p["name"], "content": p["content"]} for p in prompts if p.get("content")],
         }
 
 context_orchestrator = ContextOrchestrator()

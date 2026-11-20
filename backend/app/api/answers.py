@@ -12,8 +12,16 @@ from pydantic import BaseModel
 from app.db.database import get_db
 from app.db.repositories import QARepository, SessionRepository
 from app.schemas.answer import AnswerRequest, AnswerResponse
-from app.services.context_service import build_session_context
-from app.services.ai_service import call_gemini, call_llm, stream_llm
+from app.services.context_service import build_session_context, role_info_for
+from app.services.context_orchestrator import context_orchestrator
+from app.services.ai_service import call_gemini, call_llm, stream_llm, resolve_model_by_task
+from app.services.prompt_builder import (
+    build_system_prompt,
+    build_context_message,
+    build_introduction_message,
+    resolve_mode,
+    session_type_from_name,
+)
 from app.cache.redis import redis_cache
 from app.core.rate_limiter import rate_limit
 
@@ -47,197 +55,6 @@ def _log_prompt_to_file(question: str, system_prompt: str, user_prompt: str, pro
 
     import threading
     threading.Thread(target=_write, daemon=True).start()
-
-def get_system_prompt() -> str:
-    from datetime import datetime
-    now = datetime.utcnow()
-    current_date_str = now.strftime("%B %d, %Y")
-
-    return f"""
-You are a real human candidate sitting in a live job interview today, {current_date_str}.
-You are NOT an AI assistant. You are the candidate.
-
-PRIMARY DIRECTIVE:
-You must answer every interviewer question like a top candidate who prepared thoroughly.
-Deliver your answer in the FIRST PERSON ("I", "my experience", "in my previous team", "I built").
-
-ANSWER FORMATTING (MANDATORY BOLD HEADED BULLETS):
-- Start directly with the answer. Never add greetings, filler, or conversational preamble ("Certainly", "Great question", "Sure", "As an AI").
-- Use concise bullet points for explanations.
-- Every bullet MUST begin with a meaningful bold side heading.
-- Required format: - **Heading:** Explanation in simple, natural English.
-- Use actual Markdown bold syntax (**Heading:**) for every side heading.
-- Use 2–5 bullets for a standard interview question.
-- Keep each bullet focused on one key idea (2–4 sentences per bullet).
-- Avoid long dense paragraphs, repetition, and unnecessary buzzwords.
-
-ADAPTIVE HEADINGS:
-- For general technical/architectural questions, use question-specific headings like:
-  - **My approach:** How I analyze the problem and design the solution.
-  - **Technology choice:** Why a specific tool, database, or pattern fits.
-  - **Performance:** Indexes, caching, concurrency, or bottlenecks.
-  - **Trade-offs:** Balancing latency, consistency, maintainability, and delivery speed.
-  (Use only relevant headings; do NOT force unnecessary headings).
-- For behavioral/experience questions, use STAR format with bold side headings:
-  - **Situation:** The problem, context, and environment.
-  - **Task:** My exact responsibility.
-  - **Action:** The engineering and leadership steps I personally executed.
-  - **Result:** The measurable outcome, metric, or positive business impact.
-
-NATURAL, SIMPLE SPOKEN ENGLISH (MANDATORY):
-- Speak in simple, clear, everyday conversational English.
-- Do NOT use complex, fancy, pompous, or unnatural words (never say "plethora", "synergy", "paradigm", "quintessential", "leverage", "utilize", "orchestration", "henceforth").
-- Use plain, direct words like "use", "build", "help", "solve", "handle", "improve", "fix".
-- Keep your sentences clear, easy to speak out loud, and natural (use contractions like "I've", "I'd", "we're", "don't", "it's").
-
-MANDATORY SEPARATE CODE / QUERY / DIAGRAM BOXES:
-- If your answer contains ANY code snippet, SQL query, shell script, command, formula, or system diagram:
-  You MUST wrap it inside triple backticks with the exact language tag (e.g. ```sql ... ``` or ```python ... ``` or ```text ... ``` for diagrams).
-- NEVER output bare code or SQL queries inline in normal text paragraphs.
-- Every code block MUST be clean, executable, and have simple comments.
-
-STRICT CANDIDATE GROUNDING:
-- NEVER invent companies, job titles, or tools not in context.
-- Sound like a real, confident human candidate.
-- If personal experience on a topic is not in context, explain your engineering approach honestly without fabricating metrics.
-
-MULTI-PART QUESTIONS MANDATE:
-- If the interviewer asks a multi-part question:
-  You MUST address EVERY single part of the question with dedicated bullet points. Never answer only one clause and drop the other.
-
-OUTPUT FORMAT:
-Return ONLY valid JSON with exactly two keys.
-{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<your answer as headed bullet points — EACH bullet MUST start with - **Heading:** followed by natural explanation. Put any code/query/diagram inside triple-backtick markdown blocks.>"}}
-""".strip()
-
-
-def get_hr_system_prompt() -> str:
-    from datetime import datetime
-    now = datetime.utcnow()
-    current_date_str = now.strftime("%B %d, %Y")
-
-    return f"""
-You are a real candidate in an HR interview today, {current_date_str}.
-You are NOT an AI. You are a person. Speak like one.
-
-The HR interviewer is asking you questions about yourself, your experience, your personality, and why you want this role.
-Answer like a real human being sitting across the table.
-
-HOW TO SPEAK (STANDARDIZED HEADED BULLETS):
-- Give a structured answer using 2–4 concise bullet points.
-- Every bullet MUST begin with a meaningful bold side heading.
-- Required format: - **Heading:** Explanation in natural, conversational English.
-- Examples of headings: **Why this role:**, **Core strength:**, **Area of growth:**, **My approach:**, **Motivation:**.
-- Talk naturally within each bullet — contractions, casual phrasing, first person: "I'm", "I've", "I'd", "that's".
-- Get to the first bullet immediately. No warm-up, no preamble.
-
-SEEMINGLY SMALL THINGS THAT MATTER:
-Never say: "Certainly", "Great question", "Absolutely", "Of course", "Sure", "I'd be happy to", "As an AI".
-Never say "Based on the resume" or "According to the resume" — you ARE the person, speak from experience.
-Never use placeholder text like "[Company Name]" or "[Your Name]".
-If you don't know the company name from context, speak generally about the role and domain instead.
-
-TONE:
-Confident but not arrogant. Honest. Grounded.
-When talking about strengths: specific, not generic.
-When talking about weaknesses: be real — something you're genuinely working on.
-When talking about motivation: make it personal.
-
-FACTS:
-Only use what's in the resume and context provided. Never invent companies, roles, or achievements.
-If something isn't in context, handle it naturally: "That's not something I've encountered yet, but how I'd approach it is..."
-
-MULTI-PART QUESTIONS MANDATE:
-- If the HR interviewer asks a multi-part question (e.g. what made you apply AND why you want to work here, or your strengths AND weaknesses):
-  You MUST address EVERY part of the question with dedicated bold heading points. Never ignore or drop any part.
-
-OUTPUT FORMAT:
-Return ONLY valid JSON with exactly two keys.
-{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<your answer as bullet points — EACH bullet MUST start with - **Heading:** followed by explanation. Use \\n- to separate bullets. No numbered lists.>"}}
-""".strip()
-
-
-def get_coding_system_prompt() -> str:
-    from datetime import datetime
-    now = datetime.utcnow()
-    current_date_str = now.strftime("%B %d, %Y")
-    
-    return f"""
-You are the interview candidate attending a technical coding or database round today, {current_date_str}.
-Forget that you are an AI assistant. You are the candidate.
-
-NATURAL, SIMPLE SPOKEN ENGLISH (MANDATORY):
-- Speak in simple, clear, everyday conversational English.
-- Avoid fancy, complex, academic, or robotic words. Explain the solution like you're talking directly to a friendly fellow engineer.
-- Be concise, direct, and practical.
-
-MANDATORY SEPARATE CODE BOX:
-- For any coding or SQL question, you MUST return the complete, clean, working code solution inside a dedicated markdown code block with the language name (e.g., ```sql ... ``` or ```python ... ``` or ```javascript ... ```).
-- Include helpful, clear comments inside the code block explaining the key lines.
-- NEVER output bare code outside of a triple-backtick code block.
-
-ANSWER STRUCTURE:
-1. Short 1-sentence intuition in plain, simple English.
-2. Complete, executable code block wrapped in ```language ... ```.
-3. 2-3 brief bullet points explaining the core approach and trade-offs.
-4. Time Complexity and Space Complexity stated simply (e.g. O(N) time, O(1) space).
-
-MULTI-PART QUESTIONS MANDATE:
-- If the interviewer asks a question with multiple parts or constraints:
-  Answer EVERY part and requirement completely. Never omit any sub-question.
-
-OUTPUT FORMAT:
-Return ONLY valid JSON with exactly two keys.
-{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<intuition in simple English, followed by the complete code block wrapped in triple backticks with comments, followed by approach bullets and complexity>"}}
-""".strip()
-
-
-def get_screenshot_coding_system_prompt() -> str:
-    return """
-You are a world-class senior multi-disciplinary technical expert, engineering architect, and master vision solver.
-Analyze the provided screenshot with 100% precision and provide an exhaustive, 360-degree deep solution and complete technical breakdown across ANY domain.
-
-SUPPORTED DOMAIN COVERAGE (AUTO-DETECT & SOLVE):
-• Electronics, VLSI & Microcontrollers: IC Pinouts (8051, 555, ARM, Arduino, ESP32), Logic Circuits, Verilog/VHDL, MOSFETs, PCBs, Timing Diagrams.
-• Networking, Cloud & Infrastructure: Cisco Meraki, IP Subnetting, VLANs, BGP/OSPF, OSI Layers, AWS/Azure/GCP Cloud Architecture, Wireshark.
-• Mechanical, Civil & CAD/CAM: 2D/3D CAD Models (SolidWorks, AutoCAD), Orthographic Blueprints, Stress/FEA Analysis, Thermodynamics.
-• Computer Science & AI/ML: LeetCode/HackerRank Algorithms, IDE Stack Traces, SQL, ER/UML Diagrams, Neural Networks, Flowcharts.
-• Physics, Chemistry & Biomedical: Kinematics, Circuit Analysis, Chemical Reaction Pathways, Optics, Control Systems.
-• Mathematics, Aptitude & MCQs: Calculus, Geometry, Chart/Graph Data Interpretation, Technical Assessment MCQs.
-
-UNIVERSAL 360-DEGREE EXHAUSTIVE ANALYSIS MANDATES:
-
-1. FULL FORMS & TERMINOLOGY BREAKDOWN:
-   - Identify and expand EVERY acronym, abbreviation, protocol, component tag, or technical term in the screenshot (e.g., VLSI, UART, BGP, GPIO, CAD, IC numbers, OSI layers, MOSFET, etc.).
-   - Explain the specific role of each term/protocol in the context of the diagram.
-
-2. PIN DIAGRAM, PORT & COMPONENT SPECIFICATIONS:
-   - If ICs, microcontrollers, logic chips, switches, or hardware ports are present, detail the pinout/pin diagram, signal directions, power supply (VCC/GND), and pin functions.
-
-3. WORKING PRINCIPLE & OPERATIONAL MECHANISM:
-   - Explain in detail HOW the system, circuit, network, model, or algorithm works from first principles.
-   - Describe the underlying physical, electrical, logical, or mechanical mechanisms clearly.
-
-4. FLOW OF DIAGRAM & STEP-BY-STEP SIGNAL/DATA SEQUENCE:
-   - Detail the exact step-by-step flow across the diagram: input signal/trigger → processing nodes → output states.
-   - Trace packet travel paths, current/voltage flows, structural load propagation, or data pipeline execution.
-
-5. PREDICTED NEXT STEPS, WORKFLOW EXECUTION & TROUBLESHOOTING:
-   - Predict the immediate next steps in the operational sequence or execution flow.
-   - Provide potential failure points, diagnostic checks, or recommended next actions for troubleshooting.
-
-6. DIRECT SOLUTION, CALCULATIONS & OPTIMAL CODE:
-   - Answer any specific question, calculation, or exercise with exact values and step-by-step math.
-   - For coding/algorithms, detect the EXACT programming language shown or implied (Java, C++, C, Python, Verilog/VHDL, JS, SQL, Rust, Go) and write the complete, optimal, bug-free code solution.
-   - Highlight correct options for MCQs.
-
-JSON OUTPUT FORMAT:
-Return ONLY valid JSON.
-{
-  "question": "<1-sentence clean summary of the problem in the screenshot>",
-  "answer": "<complete, exhaustive 360-degree technical solution covering Full Forms, Working Principle, Pin Diagram/Specs, Flow Sequence, Predicted Next Steps, and Exact Answer/Code>"
-}
-""".strip()
 
 def extract_question_from_transcript(transcript: str) -> str:
     """Extract the most recent meaningful question from a raw transcript, preserving multi-part questions."""
@@ -291,110 +108,41 @@ def extract_question_from_transcript(transcript: str) -> str:
     return ' '.join(sentences[-2:]) if len(sentences) >= 2 else sentences[-1]
 
 
-def get_system_design_prompt() -> str:
-    from datetime import datetime
-    now = datetime.utcnow()
-    current_date_str = now.strftime("%B %d, %Y")
-
-    return f"""
-You are a senior principal systems architect sitting in a technical system design interview today, {current_date_str}.
-You are answering a system design, software architecture, microservices, database schema, or infrastructure question.
-
-MANDATORY VISUAL ARCHITECTURE DIAGRAM (CODE BLOCK FORMAT):
-1. VISUAL ARCHITECTURE DIAGRAM (CODE BLOCK):
-   - At the VERY TOP of your answer, you MUST output a complete, clean, visual ASCII/Unicode Text-Art Architecture Diagram wrapped inside a code block (```text ... ```).
-   - Draw clear component boxes, arrows (--->, |), client applications, API gateways, load balancers, microservices, caches (Redis), databases (PostgreSQL/Mongo), message queues (Kafka), and CDNs inside the text block.
-   - Example format:
-   ```text
-   +-------------------------------------------------------------------------------+
-   |                         SYSTEM ARCHITECTURE DIAGRAM                           |
-   +-------------------------------------------------------------------------------+
-   |  [ Client App ] ---> [ API Gateway / Nginx ] ---> [ Auth Service ]            |
-   |                             |                                                 |
-   |                             v                                                 |
-   |                    [ Microservice Cluster ]                                   |
-   |                             |                                                 |
-   |                   +---------+---------+                                       |
-   |                   |                   |                                       |
-   |                   v                   v                                       |
-   |           [ Redis Cache ]     [ Kafka Queue ]                                 |
-   |                   |                   |                                       |
-   |                   v                   v                                       |
-   |          [ PostgreSQL DB ]   [ ElasticSearch ]                                |
-   +-------------------------------------------------------------------------------+
-   ```
-
-2. DETAILED TECHNICAL BREAKDOWN (BELOW DIAGRAM):
-   - Immediately below the visual architecture diagram code block, provide a comprehensive, step-by-step breakdown using bold headings (**Component:** explanation).
-   - Detail the data flow, storage layer, caching strategy, load balancing, async queues, scalability, fault tolerance, and trade-offs.
-
-MULTI-PART QUESTIONS MANDATE:
-- If the interviewer asks a question with multiple requirements, components, or sub-questions:
-  Address EVERY requirement and component in both the diagram and technical explanation.
-
-OUTPUT FORMAT:
-Return ONLY valid JSON with exactly two keys.
-{{"question": "<the FULL question asked by the interviewer, keeping all parts and clauses intact>", "answer": "<architecture diagram code block followed by detailed bulleted breakdown with bold headings>"}}
-""".strip()
-
-
-def resolve_system_prompt_type(latest_question: str, session_category: str = "", session_name: str = "") -> tuple[str, str]:
-    q_lower = latest_question.lower()
-    session_category_lower = session_category.lower()
-    session_name_lower = session_name.lower() if session_name else ""
-    
-    # 1. Coding / SQL / Algorithm check (MANDATORY SEPARATE CODE BOX & SIMPLE ENGLISH)
-    coding_triggers = [
-        "sql", "query", "write a query", "write a sql", "delete the duplicates", "dedupe", "duplicate",
-        "window function", "partition by", "row_number", "leetcode", "algorithm", "write code",
-        "write a function", "implement", "python", "javascript", "typescript", "java", "c++",
-        "binary tree", "linked list", "hash map", "array", "regex", "complexity", "big o",
-        "join", "group by", "database table", "subquery", "cte", "index"
-    ]
-    is_coding = (session_category_lower in ["coding", "technical", "sql", "dsa"]) or any(t in q_lower for t in coding_triggers)
-    if is_coding:
-        return get_coding_system_prompt(), "coding"
-
-    # 2. HR/Behavioral check
-    hr_triggers = [
-        "salary", "strength", "weakness", "career goal", "why this company", "compensation", "benefits",
-        "why should we hire", "conflict", "disagreement", "challenge", "teamwork", "leadership", "behavioral",
-        "tell me about yourself", "introduce yourself", "walk me through your resume", "walk me through your background"
-    ]
-    is_hr = (session_category_lower in ["hr", "behavioral"]) or any(t in q_lower for t in hr_triggers)
-    if is_hr:
-        return get_hr_system_prompt(), "hr"
-        
-    # 3. System Design / Architecture check
-    design_triggers = [
-        "design", "architecture", "microservice", "infrastructure", "topology", "component diagram",
-        "database schema", "er diagram", "flowchart", "how would you build", "how would you scale",
-        "rate limiter", "load balancer", "kafka", "redis", "sharding", "system design", "distributed system"
-    ]
-    is_design = (session_category_lower in ["system design", "architecture"]) or any(t in q_lower for t in design_triggers)
-    if is_design:
-        return get_system_design_prompt(), "system_design"
-    
-    # 4. Default: general interview system prompt
-    return get_system_prompt(), "interview"
-
-
 class _AnswerContext:
     """Prepared context bundle returned by _prepare_answer_context()."""
     __slots__ = (
-        "session", "session_uuid", "latest_question",
-        "sys_prompt", "prompt_type", "context_prompt",
-        "stored_introduction",
+        "session", "session_uuid", "latest_question", "mode",
+        "custom_prompts", "context_message", "stored_introduction",
     )
-    def __init__(self, session, session_uuid, latest_question,
-                 sys_prompt, prompt_type, context_prompt, stored_introduction):
+
+    def __init__(self, session, session_uuid, latest_question, mode,
+                 custom_prompts, context_message, stored_introduction):
         self.session = session
         self.session_uuid = session_uuid
         self.latest_question = latest_question
-        self.sys_prompt = sys_prompt
-        self.prompt_type = prompt_type
-        self.context_prompt = context_prompt
+        self.mode = mode
+        self.custom_prompts = custom_prompts
+        self.context_message = context_message
         self.stored_introduction = stored_introduction
+
+    def system_prompt(self, output: str) -> str:
+        return build_system_prompt(self.mode, self.custom_prompts, output=output)
+
+
+def _format_client_qa_history(qa_history) -> str:
+    entries = []
+    if isinstance(qa_history, list):
+        for item in qa_history:
+            if not isinstance(item, dict) or not item.get("question"):
+                continue
+            q_txt = str(item.get("question", "")).strip()
+            a_txt = str(item.get("answer", "")).strip()
+            if a_txt:
+                a_snippet = a_txt[:300] + "..." if len(a_txt) > 300 else a_txt
+                entries.append(f"Q: {q_txt}\nA: {a_snippet}")
+            else:
+                entries.append(f"Q: {q_txt}")
+    return "\n\n".join(entries)
 
 
 async def _prepare_answer_context(
@@ -402,9 +150,9 @@ async def _prepare_answer_context(
     db: AsyncSession,
 ) -> _AnswerContext:
     """
-    Shared helper: resolves session, extracts the question, picks the right
-    system prompt, loads (or builds) the context prompt, and detects stored
-    introductions. Called by both /answer and /answer/stream.
+    Shared by /answer and /answer/stream: resolves the session, extracts the question,
+    picks the answer mode, gathers context + the user's custom prompts, and builds the
+    user message. The system prompt is built by the caller (JSON vs plain-text output).
     """
     # 1. Resolve session
     session = None
@@ -417,8 +165,7 @@ async def _prepare_answer_context(
                 else (payload.session_id if isinstance(payload.session_id, uuid.UUID) else None)
             )
             if session_uuid:
-                session_repo = SessionRepository(db)
-                session = await session_repo.get_by_id(session_uuid)
+                session = await SessionRepository(db).get_by_id(session_uuid)
         except Exception:
             pass
 
@@ -431,113 +178,62 @@ async def _prepare_answer_context(
     else:
         latest_question = ""
 
-    # 3. Detect session category / name for prompt-type routing
-    session_category = ""
-    session_name = ""
-    if payload.session_id:
-        try:
-            cached_session = await redis_cache.get_session_state(str(payload.session_id))
-            if cached_session:
-                session_category = cached_session.get("category", "")
-        except Exception:
-            pass
-        if session:
-            session_name = session.session_name
-
-    # 4. Choose the right system prompt
+    # 3. Answer mode: the session type the user picked wins, then the question itself
     if payload.source_type == "screenshot":
-        sys_prompt = get_screenshot_coding_system_prompt()
-        prompt_type = "coding"
+        mode = "screenshot"
     else:
-        sys_prompt, prompt_type = resolve_system_prompt_type(
-            latest_question, session_category, session_name
-        )
+        mode = resolve_mode(latest_question, session_type_from_name(getattr(session, "session_name", "")))
 
-    # 5. Check prewarmed context packet from speculative retrieval (Fastest path - 0ms DB latency)
-    context_prompt = None
+    # 4. Context: prewarmed packet from speculative retrieval (0ms DB) or build it now
+    context = None
     if payload.session_id:
         try:
             cached_session = await redis_cache.get_session_state(str(payload.session_id))
-            if cached_session and "prewarmed_context" in cached_session:
-                pw = cached_session["prewarmed_context"]
-                if isinstance(pw, dict):
-                    role_info = pw.get("role_info", f"Role: {session_name or 'Software Engineer'} at Target Company")
-                    context_prompt = f"""ROLE & COMPANY:
-{role_info}
-
-CANDIDATE MEMORIES (PRACTICED STAR STORIES & EXPERIENCES):
-{pw.get("candidate_memories", "None loaded.")}
-
-USER RESUME EVIDENCE:
-{pw.get("resume_context", "None loaded.")}
-
-JOB DESCRIPTION & FOCUS:
-{pw.get("jd_context", "None loaded.")}
-
-RECENT INTERVIEW Q&A:
-{pw.get("previous_context", "None.")}
-
-QUESTION TO ANSWER:
-{latest_question}
-
-SYSTEM MANDATE & INSTRUCTIONS:
-- You ARE the candidate sitting in the interview right now. Speak in the FIRST PERSON ("I", "my experience", "I've built", "in my project").
-- MANDATE: START IMMEDIATELY with the core STAR answer or technical points so the candidate can speak instantly.
-- REUSE THE CANDIDATE'S PREPARED STAR STORIES, METRICS, AND PRACTICED ANSWERS SHOWN ABOVE.
-- PRIORITY ORDER: 1. Practiced Answer -> 2. Relevant STAR Story -> 3. Candidate Experience -> 4. Resume -> 5. JD -> 6. General Reasoning.
-- NEVER fabricate projects, companies, metrics, or experiences not in context.
-- Talk like a confident candidate: direct, articulate, using spoken contractions: I've, I'd, I'm, that's.""".strip()
-                    logger.info(f"[FastPath] Used speculative prewarmed context packet for session {payload.session_id} (0ms DB latency)")
-            elif cached_session and "prepared_prompt" in cached_session and payload.source_type != "transcript":
-                prompt_data = json.loads(cached_session["prepared_prompt"])
-                user_p = prompt_data.get("user_prompt", "")
-                question_in_cache = (
-                    latest_question
-                    and len(latest_question) > 5
-                    and latest_question.lower()[:40] in user_p.lower()
-                )
-                if user_p and question_in_cache:
-                    context_prompt_data = prompt_data.get("system_prompt", "")
-                    base_prompt, _ = resolve_system_prompt_type(
-                        latest_question, session_category, session_name
-                    )
-                    sys_prompt = f"{base_prompt}\n\n{context_prompt_data}"
-                    context_prompt = user_p
-                    logger.info(
-                        f"Loaded matching prepared prompt from cache for session {payload.session_id}"
-                    )
+            pw = cached_session.get("prewarmed_context") if cached_session else None
+            if isinstance(pw, dict):
+                context = {
+                    "role_info": role_info_for(session) or pw.get("role_info", ""),
+                    "jd_context": pw.get("jd_context", ""),
+                    "resume_context": pw.get("resume_context", ""),
+                    "knowledge_context": pw.get("candidate_memories", ""),
+                    "previous_context": pw.get("previous_context", ""),
+                }
+                logger.info(f"[FastPath] Using prewarmed context for session {payload.session_id}")
         except Exception as e:
-            logger.warning(f"Error checking prewarmed context in Redis: {e}")
+            logger.warning(f"Error reading prewarmed context from Redis: {e}")
 
-    # 6. Fallback: build context from DB / orchestrator
-    if not context_prompt:
-        context_prompt = await build_session_context(
+    if context is None:
+        context = await build_session_context(
             session_id=session_uuid,
             latest_question=latest_question,
             db=db,
             resume_content=payload.resume_content,
             knowledge_content=payload.knowledge_content,
+            session=session,
         )
 
-    # 7. Check for a stored self-introduction & self-heal missing summaries (non-blocking)
+    # 5. Custom prompts the user selected — these override the default answer style
+    if "custom_prompts" in context:
+        custom_prompts = context["custom_prompts"]
+    else:
+        custom_prompts = await context_orchestrator.get_custom_prompts(payload.knowledge_content, db)
+
+    # 6. Stored self-introduction (+ non-blocking self-heal of missing resume summaries)
     stored_introduction = None
     resume_obj = None
     if payload.resume_content and len(payload.resume_content) < 100:
         try:
-            res_uuid = uuid.UUID(payload.resume_content)
             from app.db.models import Resume
-            resume_obj = await db.get(Resume, res_uuid)
+            resume_obj = await db.get(Resume, uuid.UUID(payload.resume_content))
         except Exception:
             pass
     if not resume_obj and session and session.user_id:
         try:
             from app.db.repositories import ResumeRepository
-            resume_repo = ResumeRepository(db)
-            resume_obj = await resume_repo.get_active(session.user_id)
+            resume_obj = await ResumeRepository(db).get_active(session.user_id)
         except Exception:
             pass
 
-    # Self-healing: generate summaries asynchronously in background without blocking live answer!
     if resume_obj and not resume_obj.introduction:
         async def _async_heal_resume(r_id, r_content):
             try:
@@ -561,75 +257,42 @@ SYSTEM MANDATE & INSTRUCTIONS:
         import asyncio
         asyncio.create_task(_async_heal_resume(resume_obj.id, resume_obj.parsed_content))
 
-    # Detect introduction trigger
-    if resume_obj and resume_obj.introduction:
-        q_clean = (
-            latest_question.lower().strip()
-            .replace("?", "").replace(".", "").replace(",", "")
-        )
+    if resume_obj and resume_obj.introduction and mode != "screenshot":
+        q_clean = latest_question.lower().strip().replace("?", "").replace(".", "").replace(",", "")
         intro_triggers = [
             "tell me about yourself", "introduce yourself",
             "walk me through your resume", "walk me through your background",
-            "explain your experience", "tell me about your experience",
-            "talk about yourself", "who are you", "intro", "introduction",
+            "talk about yourself", "who are you",
         ]
         if any(t in q_clean for t in intro_triggers):
             stored_introduction = resume_obj.introduction
             logger.info("Found stored introduction for question: " + latest_question)
 
-    # 8. Incorporate client-sent QA history & full transcript (essential for stateless / zero-Redis mode)
-    qa_history_entries = []
-    if getattr(payload, 'qa_history', None) and isinstance(payload.qa_history, list):
-        for item in payload.qa_history:
-            if isinstance(item, dict) and item.get('question'):
-                q_txt = str(item.get('question', '')).strip()
-                a_txt = str(item.get('answer', '')).strip()
-                if a_txt:
-                    a_snippet = a_txt[:300] + '...' if len(a_txt) > 300 else a_txt
-                    qa_history_entries.append(f"Q: {q_txt}\nA: {a_snippet}")
-                elif q_txt:
-                    qa_history_entries.append(f"Q: {q_txt}")
-
-    if qa_history_entries and context_prompt:
-        formatted_qa = "\n\n".join(qa_history_entries)
-        if "RECENT INTERVIEW Q&A:\nNone." in context_prompt:
-            context_prompt = context_prompt.replace(
-                "RECENT INTERVIEW Q&A:\nNone.",
-                f"RECENT INTERVIEW Q&A (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}"
-            )
-        elif "RECENT SESSION Q&A HISTORY:\nNone." in context_prompt:
-            context_prompt = context_prompt.replace(
-                "RECENT SESSION Q&A HISTORY:\nNone.",
-                f"RECENT SESSION Q&A HISTORY (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}"
-            )
-        elif "RECENT INTERVIEW Q&A:" in context_prompt:
-            context_prompt = context_prompt.replace(
-                "RECENT INTERVIEW Q&A:",
-                f"RECENT INTERVIEW Q&A (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}\n\n[PRIOR DB Q&A]:"
-            )
-        elif "RECENT SESSION Q&A HISTORY:" in context_prompt:
-            context_prompt = context_prompt.replace(
-                "RECENT SESSION Q&A HISTORY:",
-                f"RECENT SESSION Q&A HISTORY (ALREADY ANSWERED - DO NOT REPEAT):\n{formatted_qa}\n\n[PRIOR DB Q&A]:"
-            )
-
-    if raw_transcript and raw_transcript.strip() and context_prompt:
-        transcript_block = f"FULL CONVERSATION TRANSCRIPT (CHRONOLOGICAL):\n{raw_transcript.strip()}\n\n"
-        if "LATEST QUESTION TO ANSWER:" in context_prompt:
-            context_prompt = context_prompt.replace("LATEST QUESTION TO ANSWER:", f"{transcript_block}LATEST QUESTION TO ANSWER:")
-        elif "QUESTION TO ANSWER:" in context_prompt:
-            context_prompt = context_prompt.replace("QUESTION TO ANSWER:", f"{transcript_block}QUESTION TO ANSWER:")
+    # 7. User message: data only, no instructions
+    if stored_introduction:
+        mode = "introduction"
+        context_message = build_introduction_message(stored_introduction)
+    else:
+        history = _format_client_qa_history(getattr(payload, "qa_history", None)) or context.get("previous_context", "")
+        context_message = build_context_message(
+            question=latest_question,
+            role_info=context.get("role_info", ""),
+            jd_context=context.get("jd_context", ""),
+            resume_context=context.get("resume_context", ""),
+            knowledge_context=context.get("knowledge_context", ""),
+            history=history,
+            transcript=raw_transcript,
+        )
 
     return _AnswerContext(
         session=session,
         session_uuid=session_uuid,
         latest_question=latest_question,
-        sys_prompt=sys_prompt,
-        prompt_type=prompt_type,
-        context_prompt=context_prompt,
+        mode=mode,
+        custom_prompts=custom_prompts,
+        context_message=context_message,
         stored_introduction=stored_introduction,
     )
-
 
 
 @router.post("/answer", response_model=AnswerResponse)
@@ -638,27 +301,7 @@ async def generate_answer(
     db: AsyncSession = Depends(get_db)
 ):
     ctx = await _prepare_answer_context(payload, db)
-
-    # Override sys_prompt / context_prompt for stored introductions
-    if ctx.stored_introduction:
-        base_prompt, _ = resolve_system_prompt_type(
-            ctx.latest_question, "", getattr(ctx.session, "session_name", "")
-        )
-        ctx.sys_prompt = (
-            f"{base_prompt}\n\n"
-            "SPECIAL TASK: You are a spoken introduction polisher.\n"
-            "You will receive a pre-written candidate introduction below.\n"
-            "Your ONLY job is to polish the grammar, readability, and natural spoken flow "
-            "so it sounds perfect for a 3-minute verbal interview delivery.\n"
-            "Rules:\n"
-            "- Keep ALL original facts, dates, technologies, company names, and achievements exactly as they are.\n"
-            "- Do NOT add, invent, or remove any facts.\n"
-            "- Do NOT adapt content to match the job role or company from context.\n"
-            "- Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or any AI preamble.\n"
-            "- Start directly with 'I am...' or similar — no greeting.\n"
-            '- Return ONLY valid JSON: {"question": "<cleaned question>", "answer": "<polished introduction>"}'
-        )
-        ctx.context_prompt = f"Pre-written Introduction:\n{ctx.stored_introduction}"
+    sys_prompt = ctx.system_prompt(output="json")
 
     # Log prompt
     _source = (
@@ -668,16 +311,16 @@ async def generate_answer(
     )
     _log_prompt_to_file(
         question=ctx.latest_question,
-        system_prompt=ctx.sys_prompt,
-        user_prompt=ctx.context_prompt or "",
-        prompt_type=ctx.prompt_type,
+        system_prompt=sys_prompt,
+        user_prompt=ctx.context_message,
+        prompt_type=ctx.mode,
         source_type=_source,
     )
 
     # Call LLM
     raw_response = await call_gemini(
-        prompt=ctx.context_prompt,
-        system_prompt=ctx.sys_prompt,
+        prompt=ctx.context_message,
+        system_prompt=sys_prompt,
         response_json=True,
         model=payload.model,
     )
@@ -754,35 +397,10 @@ async def generate_answer_stream(
     db: AsyncSession = Depends(get_db)
 ):
     ctx = await _prepare_answer_context(payload, db)
-
-    # Override for stored introductions (plain-text output, no JSON)
-    if ctx.stored_introduction:
-        ctx.sys_prompt = (
-            "SPECIAL TASK — Introduction Polisher.\n"
-            "You will receive a pre-written candidate introduction.\n"
-            "Your ONLY job: polish the grammar, readability, and natural spoken flow so it "
-            "sounds perfect and highly professional for a 3-minute verbal interview delivery.\n\n"
-            "STRICT RULES:\n"
-            "- Keep ALL original facts, dates, technologies, company names, and achievements exactly as-is.\n"
-            "- Do NOT add, invent, or remove any facts.\n"
-            "- Do NOT reference the job role, company, or JD context — only use what is in the introduction.\n"
-            "- Do NOT say 'Sure!', 'Certainly', 'Of course', 'Absolutely', or any AI filler.\n"
-            "- Start directly with 'I am...' or 'My name is...' — no greeting, no preamble.\n"
-            "- Write in a warm, confident, natural speaking voice — like a real person, not a report.\n\n"
-            "OUTPUT: Return ONLY the polished spoken introduction as plain text. No JSON. No markdown. No labels."
-        )
-        ctx.context_prompt = f"Pre-written Introduction to polish:\n\n{ctx.stored_introduction}"
-
-    # Strip JSON output format instruction for plain-text streaming
-    if payload.source_type != "screenshot" and not ctx.stored_introduction:
-        import re as _re
-        ctx.sys_prompt = _re.sub(
-            r'OUTPUT FORMAT:.*',
-            'OUTPUT FORMAT:\nOutput ONLY the candidate\'s spoken response directly as plain text. '
-            'Do NOT wrap it in JSON, markdown, or any other formatting. Just speak.',
-            ctx.sys_prompt,
-            flags=_re.DOTALL,
-        )
+    # Screenshots keep the JSON contract (the client parses it); everything else streams plain text.
+    sys_prompt = ctx.system_prompt(output="json" if ctx.mode == "screenshot" else "text")
+    # Same resolution stream_llm does internally — used for the token-cost ledger below.
+    resolved_model = resolve_model_by_task(payload.model, sys_prompt)
 
     _source_stream = (
         payload.source_type
@@ -791,17 +409,17 @@ async def generate_answer_stream(
     )
     _log_prompt_to_file(
         question=ctx.latest_question,
-        system_prompt=ctx.sys_prompt,
-        user_prompt=ctx.context_prompt or "",
-        prompt_type=ctx.prompt_type,
+        system_prompt=sys_prompt,
+        user_prompt=ctx.context_message,
+        prompt_type=ctx.mode,
         source_type=_source_stream,
     )
 
     async def stream_generator():
         accumulated_chunks = []
         async for chunk in stream_llm(
-            prompt=ctx.context_prompt,
-            system_prompt=ctx.sys_prompt,
+            prompt=ctx.context_message,
+            system_prompt=sys_prompt,
             model=payload.model,
             response_json=False,  # plain-text stream (sub-1s TTFT)
         ):
@@ -854,7 +472,7 @@ async def generate_answer_stream(
 
                     # Record AI token usage & estimated cost ledger
                     try:
-                        p_len = len(ctx.sys_prompt or "") + len(ctx.context_prompt or "")
+                        p_len = len(sys_prompt) + len(ctx.context_message)
                         p_tok = max(1, p_len // 4)
                         c_tok = max(1, len(answer) // 4)
                         cost = 0.0
