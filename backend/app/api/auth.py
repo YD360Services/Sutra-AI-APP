@@ -535,6 +535,28 @@ BACKEND_OAUTH_CALLBACK = _get_env(
 FRONTEND_BASE = _get_env("FRONTEND_URL", "http://localhost:5173")
 _SIGNING_KEY  = _get_env("JWT_SECRET", "roundmate-oauth-signing-secret")
 
+# Frontends allowed to receive the signed login token. Exact origin match only;
+# add more (comma-separated) with the OAUTH_ALLOWED_ORIGINS env var.
+_OAUTH_ALLOWED_ORIGINS = {
+    "https://roundmateai.com",
+    "https://www.roundmateai.com",
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    FRONTEND_BASE.rstrip("/"),
+} | {o.strip().rstrip("/") for o in _get_env("OAUTH_ALLOWED_ORIGINS", "").split(",") if o.strip()}
+
+
+def _safe_redirect_path(path) -> str:
+    """Only same-site absolute paths ("/x"), never "//host", backslashes or control chars."""
+    if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
+        return "/"
+    if chr(92) in path or any(ord(c) < 32 or ord(c) == 127 for c in path):
+        return "/"
+    return path
+
 
 def _sign_payload(payload: dict) -> str:
     """Encode payload as base64url JSON + HMAC signature."""
@@ -578,8 +600,11 @@ async def google_oauth_login(
             detail="GOOGLE_CLIENT_ID not configured. Add it to backend .env"
         )
 
-    # Encode both redirect path and frontend origin in state
-    state_data = json.dumps({"path": redirect_after, "origin": frontend_origin or FRONTEND_BASE})
+    # Encode both redirect path and frontend origin in state (re-validated in the callback)
+    origin = (frontend_origin or "").rstrip("/")
+    if origin not in _OAUTH_ALLOWED_ORIGINS:
+        origin = FRONTEND_BASE.rstrip("/")
+    state_data = json.dumps({"path": _safe_redirect_path(redirect_after), "origin": origin})
     state_encoded = urllib.parse.quote(state_data)
 
     params = {
@@ -613,18 +638,10 @@ async def google_oauth_callback(
     try:
         state_str = urllib.parse.unquote(state or "{}")
         state_data = json.loads(state_str)
-        redirect_path = state_data.get("path", "/")
-        origin = state_data.get("origin", "").rstrip("/")
-        # Validate origin is strictly one of our known frontends (security check)
-        allowed = {
-            "https://roundmateai.com", 
-            "https://www.roundmateai.com",
-            "http://localhost:5173", 
-            "http://localhost:3000",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000"
-        }
-        if origin and origin in allowed:
+        redirect_path = _safe_redirect_path(state_data.get("path", "/"))
+        origin = str(state_data.get("origin", "")).rstrip("/")
+        # Exact-match allow-list: prefix checks would accept e.g. http://localhost.attacker.com
+        if origin in _OAUTH_ALLOWED_ORIGINS:
             frontend_url = origin
         else:
             frontend_url = FRONTEND_BASE
@@ -633,7 +650,7 @@ async def google_oauth_callback(
         if not redirect_path.startswith("/") or redirect_path.startswith("//") or "@" in redirect_path or "\\" in redirect_path:
             redirect_path = "/"
     except Exception:
-        redirect_path = urllib.parse.unquote(state or "/")
+        redirect_path = _safe_redirect_path(urllib.parse.unquote(state or "/"))
 
     if error or not code:
         return RedirectResponse(

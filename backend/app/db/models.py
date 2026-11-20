@@ -244,3 +244,22 @@ class AITokenUsage(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     trace_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class PlatformHealthCheck(Base):
+    """Latest manually recorded check for one supported interview platform (one row per platform).
+
+    Written only by admins (see app/api/platform_health.py). A platform with no row is
+    "not reported"; nothing here is inferred or defaulted.
+    """
+    __tablename__ = "platform_health_checks"
+
+    platform_id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    troubleshooting: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -1831,6 +1831,7 @@ function triggerLaunchToolbar() {
 }
 
 // Start a local HTTP server to listen for launch triggers from the web browser
+// (http is already required at the top of this file)
 
 // Allowed origins for the internal controller (localhost, Render backend, and production web app)
 const ALLOWED_ORIGINS = new Set([
@@ -1841,28 +1842,24 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:8080', 'http://127.0.0.1:8080',
   'https://roundmateai.com', 'https://www.roundmateai.com',
   'http://roundmateai.com', 'http://www.roundmateai.com',
-  'https://round-mate-ai.onrender.com', 'http://round-mate-ai.onrender.com'
+  'https://round-mate-ai.onrender.com'
 ]);
 
 const server = http.createServer((req, res) => {
-  const rawOrigin = req.headers['origin'] || '';
-  const origin = rawOrigin.replace(/\/+$/, '');
-  const parsedUrl = require('url').parse(req.url, true);
-  const sensitivePaths = ['/auth-callback', '/sync-account', '/launch', '/logout'];
-
-  // Security check: require Origin on all browser/cross-site sensitive requests
-  const isAllowedOrigin = origin && ALLOWED_ORIGINS.has(origin);
+  const origin = String(req.headers['origin'] || '').replace(/\/+$/, '');
+  const contentType = String(req.headers['content-type'] || '').toLowerCase();
+  // Exact-match origins only: prefix/suffix checks let attacker sites in
+  // (http://localhost.attacker.com, anything hosted on *.onrender.com).
+  // Requests without an Origin are accepted only as JSON POSTs: browsers always send
+  // Origin on cross-origin POSTs and need a preflight for JSON, so a web page can't
+  // forge them (e.g. via <img src=...>). Local tools such as server.js still work.
+  const isAllowedOrigin = origin
+    ? ALLOWED_ORIGINS.has(origin)
+    : req.method === 'POST' && contentType.startsWith('application/json');
 
   if (!isAllowedOrigin) {
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Forbidden: unauthorized origin' }));
-    return;
-  }
-
-  // Reject GET requests on state-changing endpoints to prevent <img src="..."> CSRF attacks
-  if (sensitivePaths.includes(parsedUrl.pathname) && req.method !== 'POST') {
-    res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Method Not Allowed: POST required' }));
     return;
   }
 
@@ -1879,6 +1876,15 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const parsedUrl = require('url').parse(req.url, true);
+
+  // Every controller endpoint changes app state, so only POST is accepted.
+  if (req.method !== 'POST') {
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Allow': 'POST, OPTIONS' });
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+
   if (parsedUrl.pathname === '/auth-callback') {
     // Accept credentials via POST body or query params
     let body = '';
@@ -1887,13 +1893,10 @@ const server = http.createServer((req, res) => {
       try {
         const payload = JSON.parse(body || '{}');
         const { email, token, user_id, subscription, tokens, isPro } = payload;
-        // Fallback to query params for backward compat
-        const qEmail = parsedUrl.query?.email;
-        const qToken = parsedUrl.query?.token;
-        const qUserId = parsedUrl.query?.user_id;
-        const finalEmail = email || qEmail;
-        const finalToken = token || qToken;
-        const finalUserId = user_id || qUserId;
+        // Credentials come from the JSON body only (query params could be set by any link).
+        const finalEmail = email;
+        const finalToken = token;
+        const finalUserId = user_id;
 
         if (finalEmail && finalToken) {
           if (mainWindow) {

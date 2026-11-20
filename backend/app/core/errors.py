@@ -12,6 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 
+from app.core.config import settings
 from app.core.context import get_trace_id
 
 logger = logging.getLogger("roundmate.errors")
@@ -101,10 +102,14 @@ def _build_cors_headers(request: Request, extra_headers: Optional[Dict[str, str]
         "Access-Control-Allow-Methods": "*",
         "Access-Control-Allow-Headers": "*",
     }
+    # Only echo origins the API actually allows — reflecting any Origin with credentials
+    # would let arbitrary sites read error responses with the user's cookies.
     origin = request.headers.get("origin")
-    if origin:
+    allowed_origins = settings.get_cors_origins()
+    if origin and ("*" in allowed_origins or origin in allowed_origins):
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
+        headers["Vary"] = "Origin"
     if extra_headers:
         headers.update(extra_headers)
     return headers
