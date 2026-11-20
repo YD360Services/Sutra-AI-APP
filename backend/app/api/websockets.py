@@ -322,6 +322,14 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                     pass
                 except Exception as e:
                     logger.debug(f"Browser connection closed or error: {e}")
+                finally:
+                    # Browser is gone: end the Deepgram stream so deepgram_to_browser (and the gather) finish
+                    # instead of the keep-alive holding an orphaned, billed connection open.
+                    try:
+                        await dg_ws.send(json.dumps({"type": "CloseStream"}))
+                        await dg_ws.close()
+                    except Exception:
+                        pass
 
             async def deepgram_to_browser():
                 # Track the accumulated text for the current utterance to avoid Redis duplication
@@ -432,7 +440,18 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                         logger.warning(f"[Deepgram] Session {session_id} - error processing message: {frame_err}")
                         continue
 
-            await asyncio.gather(browser_to_deepgram(), deepgram_to_browser())
+            async def deepgram_keepalive():
+                # Deepgram closes the stream (NET-0001) after ~10s without data. The browser only sends
+                # audio while its MediaRecorder runs and never sends KeepAlive, so cover silent gaps here.
+                while True:
+                    await asyncio.sleep(5)
+                    await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+
+            keepalive_task = asyncio.create_task(deepgram_keepalive())
+            try:
+                await asyncio.gather(browser_to_deepgram(), deepgram_to_browser())
+            finally:
+                keepalive_task.cancel()
 
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected for session {session_id} cleanly.")
