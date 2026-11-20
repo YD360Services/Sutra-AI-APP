@@ -181,6 +181,12 @@ if (window.electronAPI && typeof window.electronAPI.onWindowMoved === 'function'
 let hasActiveAnswer = false;
 let shouldSaveTranscript = true;
 let autoAnswerTimeoutId = null;
+// Set while an answer request is running (cleared when the stream ends, not when it starts),
+// so auto-answer can't start a second paid LLM call for the same question.
+let answerInFlightSince = 0;
+const ANSWER_LOCK_MAX_MS = 60000;           // safety valve if a stream never reports its end
+const AUTO_ANSWER_DELAY_QUESTION_MS = 700;  // last sentence ends with "?" — fire soon after silence
+const AUTO_ANSWER_DELAY_DEFAULT_MS = 1500;  // question-like but unpunctuated — wait for a real pause
 let userOpacity = 1.0;
 let answerHistory = [];
 let currentAnswerIndex = -1;
@@ -3181,6 +3187,7 @@ async function endSession() {
   // 9. Clear live transcript state
   accumulatedTranscript = '';
   lastAnswerOffset = 0;
+  cancelPendingAutoAnswer();
   if (transcriptFlushTimer) {
     clearTimeout(transcriptFlushTimer);
     transcriptFlushTimer = null;
@@ -3839,6 +3846,77 @@ async function ensureAudioPipelineReady() {
 
 let localSpeechRecognition = null;
 
+// ── Auto-answer ────────────────────────────────────────────────────────────────
+// Fires at most one answer per question:
+//  - waits for a pause (any interim chunk = still talking, so the timer resets);
+//  - judges the whole unanswered text since the last answer, not a single STT segment
+//    (Deepgram's endpointing=10 splits one question into many tiny finals);
+//  - requires the LAST sentence to actually be a question, so the candidate reading
+//    an answer aloud ("...and that's how I'd scale it") doesn't trigger a new one;
+//  - never starts while another answer is still streaming.
+
+function isAutoAnswerEnabled() {
+  const el = document.getElementById('setup-auto-answer');
+  return Boolean(el && el.checked);
+}
+
+function isAnswerInFlight() {
+  return answerInFlightSince > 0 && (Date.now() - answerInFlightSince) < ANSWER_LOCK_MAX_MS;
+}
+
+function cancelPendingAutoAnswer() {
+  if (autoAnswerTimeoutId) {
+    clearTimeout(autoAnswerTimeoutId);
+    autoAnswerTimeoutId = null;
+  }
+}
+
+const QUESTION_OPENERS = [
+  'what', 'why', 'how', 'when', 'where', 'who', 'which', 'whats', 'hows',
+  'can you', 'could you', 'would you', 'will you', 'should', 'do you', 'did you', 'does',
+  'have you', 'has', 'are you', 'were you', 'is there', 'are there', 'is it',
+  'explain', 'describe', 'tell me', 'tell us', 'walk me', 'walk us', 'talk me', 'talk about',
+  'give me', 'give us', 'share', 'imagine', 'suppose', 'lets say', 'say you',
+];
+
+function isLikelyQuestion(sentence) {
+  if (!sentence) return false;
+  const trimmed = sentence.trim();
+  const clean = trimmed.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return false;
+  if (CONVERSATIONAL_FILLERS.has(clean)) return false;
+  if (trimmed.endsWith('?')) return true;
+  return QUESTION_OPENERS.some((opener) => clean === opener || clean.startsWith(opener + ' '));
+}
+
+// Returns { fire, delayMs } for the text the interviewer has said since the last answer.
+function evaluatePendingQuestion() {
+  const pending = accumulatedTranscript.slice(lastAnswerOffset).trim();
+  if (pending.split(/\s+/).filter(Boolean).length < 4) return { fire: false };
+  const sentences = splitIntoSentences(pending);
+  const last = sentences.length ? sentences[sentences.length - 1] : pending;
+  if (!isLikelyQuestion(last)) return { fire: false };
+  return {
+    fire: true,
+    delayMs: last.trim().endsWith('?') ? AUTO_ANSWER_DELAY_QUESTION_MS : AUTO_ANSWER_DELAY_DEFAULT_MS,
+  };
+}
+
+function scheduleAutoAnswer() {
+  cancelPendingAutoAnswer();
+  if (!isAutoAnswerEnabled() || isAnswerInFlight()) return;
+  const { fire, delayMs } = evaluatePendingQuestion();
+  if (!fire) return;
+  autoAnswerTimeoutId = setTimeout(() => {
+    autoAnswerTimeoutId = null;
+    // Re-check at fire time: more speech or another answer may have started meanwhile.
+    if (!isAutoAnswerEnabled() || isAnswerInFlight()) return;
+    if (!evaluatePendingQuestion().fire) return;
+    queryAssistant(null, false);
+  }, delayMs);
+}
+
 function handleTranscriptChunk(text, is_final) {
   if (!text || !text.trim()) return;
   const cleanTranscript = text.trim();
@@ -3868,30 +3946,10 @@ function handleTranscriptChunk(text, is_final) {
       }
     }
 
-    const autoAnswerCheckbox = document.getElementById('setup-auto-answer');
-    const autoAnswerActive = autoAnswerCheckbox ? autoAnswerCheckbox.checked : false;
-
-    if (autoAnswerActive && !answerBlock.classList.contains('loading')) {
-      const score = questionScore(cleanTranscript);
-      if (score > 0) {
-        if (autoAnswerTimeoutId) { clearTimeout(autoAnswerTimeoutId); autoAnswerTimeoutId = null; }
-        queryAssistant(null, false);
-      } else {
-        // Only consider delayed trigger if recent window contains actual question structure
-        const trailingWindow = accumulatedTranscript.slice(-250).trim();
-        const windowScore = questionScore(trailingWindow);
-        if (windowScore > 0 && cleanTranscript.split(/\s+/).filter(Boolean).length >= 4) {
-          if (autoAnswerTimeoutId) clearTimeout(autoAnswerTimeoutId);
-          autoAnswerTimeoutId = setTimeout(() => {
-            if (!answerBlock.classList.contains('loading')) {
-              queryAssistant(null, false);
-            }
-            autoAnswerTimeoutId = null;
-          }, 800);
-        }
-      }
-    }
+    scheduleAutoAnswer();
   } else {
+    // Speaker is still talking — don't fire mid-sentence.
+    cancelPendingAutoAnswer();
     transcriptBlock.innerHTML = accumulatedTranscript + (accumulatedTranscript ? ' ' : '') + `<span style="color: var(--text-muted); font-style: italic;">${cleanTranscript}</span>`;
   }
   transcriptBlock.scrollLeft = transcriptBlock.scrollWidth;
@@ -4224,6 +4282,8 @@ if (copyAllAnswerBtn) {
 // Call AI — routes through backend (4-layer memory) or offline Gemini (local 4-layer memory)
 async function queryAssistant(manualQuestionText, isManual = false) {
   const _ttftStart = Date.now();
+  cancelPendingAutoAnswer();
+  answerInFlightSince = _ttftStart;
   answerBlock.classList.add('loading');
   updateWindowSize();
 
@@ -4503,6 +4563,13 @@ async function queryAssistant(manualQuestionText, isManual = false) {
       `;
     } else {
       answerBlock.innerHTML = `<span style="color: var(--accent-danger);">Error: ${msg}</span>`;
+    }
+  } finally {
+    // Only release the lock this call took (a newer call may have replaced it).
+    if (answerInFlightSince === _ttftStart) {
+      answerInFlightSince = 0;
+      // The interviewer may have asked the next question while this answer streamed.
+      scheduleAutoAnswer();
     }
   }
 }
