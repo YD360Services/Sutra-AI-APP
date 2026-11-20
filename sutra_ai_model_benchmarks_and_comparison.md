@@ -13,7 +13,7 @@ Sutra AI features 9 production-grade Large Language Models grouped across 4 lead
 | gpt-6-luna | **GPT 6 Astra** | OpenAI | **~210 ms** ⚡ | Quality ★ Flagship | Next-generation OpenAI flagship with Astra reasoning engine for deep coding & system design. |
 | gpt-5.6 | **GPT 5.6 Sol** | OpenAI | **~220 ms** ⚡ | Quality | OpenAI high-precision Sol Engine for multi-part architecture and coding questions. |
 | gptoss | **OpenAI o3-mini (GPTOSS)** | OpenAI | **~600 ms** 🧠 | Quality | OpenAI reasoning model for deep logic, complex mathematics, and algorithmic puzzles. |
-| gemini-3.8-flash-lite-tts | **Gemini 3.8 Flash** | Google Gemini | **~180 ms** 🚀 | Fast ★ Best for Live | Recommended for Live Audio Sessions with sub-220ms voice response latency and hybrid reasoning. |
+| gemini-3.8-flash-lite-tts | **Gemini 3.8 Flash** | Google Gemini | **~180 ms** 🚀 | Fasts ★ Best for Live | Recommended for Live Audio Sessions with sub-220ms voice response latency and hybrid reasoning. |
 | gemini-3.7-flash | **Gemini 3.7 Flash** | Google Gemini | **~220 ms** ⚡ | Quality ★ Recommended | High-speed Google reasoning model with low latency and deep technical analysis. |
 | claude-haiku | **Claude Haiku 4.5** | Anthropic Claude | **~200 ms** ⚡ | Fast | Blazing fast real-time live interview answers and rapid conversational Q&A. |
 | claude-sonnet | **Claude Sonnet 5** | Anthropic Claude | **~380 ms** 🏆 | Quality ★ Deep Coding | Sonnet flagship - best for complex coding, refactoring, and large-scale system design. |
