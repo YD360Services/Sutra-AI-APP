@@ -21,21 +21,30 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      # Match the Python version Render deploys with.
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
           cache: 'pip'
 
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
-          pip install pydantic fastapi httpx starlette sqlalchemy aiosqlite "pytest>=8,<10"
+          # Only requirements.txt + the test runner: installing anything else here would hide a
+          # dependency missing from requirements.txt (that's how httpx broke the Render deploy).
+          pip install -r backend/requirements.txt "pytest>=8,<10"
 
       - name: Byte-compile Check (Syntax Validation)
         run: |
           python -m compileall backend/app
+
+      - name: App Import Check (same as Render startup)
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./ci-test.db
+        run: |
+          python -c "import app.main"
 
       # pytest also runs the unittest.TestCase suites, plus the plain pytest-style
       # test functions that `unittest discover` silently skipped.
