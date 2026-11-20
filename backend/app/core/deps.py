@@ -15,6 +15,17 @@ from app.db.models import User, AdminEmail
 logger = logging.getLogger("roundmate.deps")
 security_bearer = HTTPBearer(auto_error=False)
 
+
+async def _user_from_session_token(token: str, db: AsyncSession) -> Optional[User]:
+    # Session tokens are UUIDs; reject trivially short values without touching the DB.
+    if len(token) < 16:
+        return None
+    result = await db.execute(select(User).where(User.active_session_token == token))
+    user = result.scalars().first()
+    if user:
+        set_user_id(user.id)
+    return user
+
 async def get_current_user_optional(
     auth_creds: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
     authorization: Optional[str] = Header(None),
@@ -40,7 +51,10 @@ async def get_current_user_optional(
     try:
         user_id_str = decode_access_token(token)
         if not user_id_str:
-            return None
+            # Not a JWT: the web app and desktop authenticate with the per-login session token
+            # (`login-token`, stored on the user as active_session_token). Nothing issues JWTs
+            # today, so without this every protected route returned 401.
+            return await _user_from_session_token(token, db)
 
         # Convert to UUID
         try:
