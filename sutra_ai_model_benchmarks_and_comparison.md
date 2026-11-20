@@ -16,7 +16,7 @@ Sutra AI features 9 production-grade Large Language Models grouped across 4 lead
 | gemini-3.8-flash-lite-tts | **Gemini 3.8 Flash** | Google Gemini | **~180 ms** 🚀 | Fasts ★ Best for Live | Recommended for Live Audio Sessions with sub-220ms voice response latency and hybrid reasoning. |
 | gemini-3.7-flash | **Gemini 3.7 Flash** | Google Gemini | **~220 ms** ⚡ | Quality ★ Recommended | High-speed Google reasoning model with low latency and deep technical analysis. |
 | claude-haiku | **Claude Haiku 4.5** | Anthropic Claude | **~200 ms** ⚡ | Fast | Blazing fast real-time live interview answers and rapid conversational Q&A. |
-| claude-sonnet | **Claude Sonnet 5** | Anthropic Claude | **~380 ms** 🏆 | Quality ★ Deep Coding | Sonnet flagship - best for complex coding, refactoring, and large-scale system design. |
+| claude-sonnet | **Claude Sonnet 5** | Anthropic Claude | **~380 ms** 🏆 | Quality ★ Deep Coding | Sonnesdsdt flagship - best for complex coding, refactoring, and large-scale system design. |
 | llama-4-scout | **Llama 4 Scout (Groq)** | Meta / Groq | **~150 ms** 🚀 | Fast | Next-gen Meta Llama 4 Scout architecture hosted on ultra-fast Groq LPU hardware. |
 | gpt-oss-20b | **GPT-OSS 20B (Groq)** | Meta / Groq | **~130 ms** 🚀 | Fast ★ Ultra-Low | High-speed open-weight model for rapid Q&A and coding assistance with ultra-low latency. |
 
