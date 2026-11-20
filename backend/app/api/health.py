@@ -11,7 +11,7 @@ from typing import Dict, Any
 
 from app.core.config import settings
 from app.cache.redis import redis_cache
-from app.db.database import AsyncSessionLocal
+from app.db import database as db_module
 
 router = APIRouter()
 START_TIME = time.time()
@@ -33,7 +33,7 @@ async def health_check():
     db_latency_ms = None
     try:
         t0 = time.perf_counter()
-        async with AsyncSessionLocal() as session:
+        async with db_module.SessionLocal() as session:  # read at call time; it is rebuilt on DB fallback
             from sqlalchemy import text
             await session.execute(text("SELECT 1"))
         db_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
