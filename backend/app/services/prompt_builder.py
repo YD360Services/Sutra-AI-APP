@@ -33,7 +33,7 @@ Ground rules:
 
 LIVE_SPEECH_GUIDANCE = """The question comes from live speech-to-text, so treat its wording as approximate:
 - It may be cut off, start mid-sentence, or be a fragment that continues the interviewer's previous turn (e.g. "helped you at your job" after "how has your experience..."). Use the conversation so far to rebuild the full question.
-- Words may be misheard as similar-sounding ones, especially technical terms and names: "sequel" -> SQL, "cuber nets" -> Kubernetes, "wrecked hooks" -> React hooks, "Jason" -> JSON, "post grass" -> Postgres, "a sink" -> async. Pick the reading that makes sense for this role, the job description, and the candidate's resume.
+- Words may be misheard as similar-sounding ones, especially technical terms and names: "hoops" -> OOPS, "sequel" -> SQL, "cuber nets" -> Kubernetes, "wrecked hooks" -> React hooks, "Jason" -> JSON, "post grass" -> Postgres, "a sink" -> async. Pick the reading that makes sense for this role, the job description, and the candidate's resume.
 - Filler, false starts, and repeated words ("so, um, can you, can you tell me") are noise; ignore them.
 - If one turn holds several questions, answer the latest one, plus any earlier part it clearly depends on.
 - Answer what the interviewer most plausibly meant. Never mention transcription, mishearing, or that the question was unclear."""

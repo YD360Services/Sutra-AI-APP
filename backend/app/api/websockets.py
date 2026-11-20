@@ -8,6 +8,7 @@ import time
 
 from app.core.config import settings
 from app.services.deepgram_service import DeepgramService
+from app.services.transcript_vocab import correct_transcript, is_software_role, keyterms
 from app.cache.redis import redis_cache
 from app.services.transcript_intelligence import transcript_engine
 from app.services.context_orchestrator import context_orchestrator
@@ -177,6 +178,25 @@ async def _process_pipeline(session_id: str, transcript_text: str, client_ws: We
     except Exception as e:
         logger.error(f"Error running background pipeline: {e}", exc_info=True)
 
+async def _session_is_software(session_id: str) -> bool:
+    """Role-aware vocabulary needs the session's role; the web app only sends the session id."""
+    try:
+        sid = uuid.UUID(str(session_id))
+    except (ValueError, TypeError):
+        return False
+    try:
+        from app.db import database
+        from app.db.models import Session as SessionModel
+        if database.SessionLocal is None:
+            return False
+        async with database.SessionLocal() as db:
+            s = await db.get(SessionModel, sid)
+            return bool(s) and is_software_role(s.role_name, s.session_name)
+    except Exception as e:
+        logger.debug(f"Role lookup failed for session {session_id}: {e}")
+        return False
+
+
 async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
     await client_ws.accept()
     
@@ -187,7 +207,8 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
         'en'
     ).strip()
 
-    dg_url = DeepgramService.get_websocket_url(language=requested_lang)
+    software = await _session_is_software(session_id)
+    dg_url = DeepgramService.get_websocket_url(language=requested_lang, keyterms=keyterms(software))
     client_id = str(uuid.uuid4())
     # Track this active socket connection in Redis
     await redis_cache.track_websocket(session_id, client_id, register=True)
@@ -264,6 +285,7 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
 
                             if not transcript:
                                 continue
+                            transcript = correct_transcript(transcript, software)
 
                             is_final = (msg_type == "AddTranscript")
                             # In Speechmatics, AddTranscript is always a complete finalized segment
@@ -388,6 +410,8 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                         transcript = str(alternatives[0].get("transcript", "")).strip()
                         if not transcript:
                             continue
+                        # Role-aware fix-ups ("hoops" -> "OOPS" for software roles) before the candidate sees it.
+                        transcript = correct_transcript(transcript, software)
 
                         # Properly distinguish the two Deepgram finality signals:
                         # is_final: This segment/endpoint is finalized (can happen multiple times per sentence)

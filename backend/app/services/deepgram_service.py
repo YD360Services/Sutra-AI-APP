@@ -1,10 +1,12 @@
-from typing import Optional
+from typing import List, Optional
+from urllib.parse import quote
 from app.core.config import settings
 
 
 class DeepgramService:
     @staticmethod
-    def get_websocket_url(language: str = "en", model: Optional[str] = None) -> str:
+    def get_websocket_url(language: str = "en", model: Optional[str] = None,
+                          keyterms: Optional[List[str]] = None) -> str:
         """
         Deepgram streaming URL for the backend proxy (/ws/audio/...), which the WEB app uses.
 
@@ -25,6 +27,12 @@ class DeepgramService:
 
         model_param = model or "nova-3"
 
+        # Keyterm prompting (Nova-3, English) biases recognition toward role vocabulary,
+        # e.g. "OOPS" instead of "hoops" in a software interview.
+        keyterm_params = ""
+        if keyterms and lang_param == "en" and model_param.startswith("nova-3"):
+            keyterm_params = "".join(f"&keyterm={quote(t)}" for t in keyterms[:100])
+
         return (
             "wss://api.deepgram.com/v1/listen"
             f"?model={model_param}"
@@ -37,6 +45,7 @@ class DeepgramService:
             # The web app's auto-answer listens for UtteranceEnd; it needs these two.
             "&utterance_end_ms=1500"
             "&vad_events=true"
+            f"{keyterm_params}"
         )
 
     @staticmethod
