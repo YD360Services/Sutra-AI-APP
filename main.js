@@ -773,7 +773,7 @@ function createWindow() {
   ipcMain.on('start-transcription', (event, config = {}) => {
     warmBackendConnection();
     const language = config.language || 'en';
-    const dgKey = env.DEEPGRAM_API_KEY || '3cad982200a3b1b6be970a367c19c5032092d982';
+    const dgKey = env.DEEPGRAM_API_KEY || 'b8c9477ee765b08e755f320c169f3d6fed7b585d';
 
     // If socket is already open and ready, inform client immediately
     if (liveSTTSocket && liveSTTSocket.readyState === WebSocket.OPEN) {
@@ -787,9 +787,17 @@ function createWindow() {
     }
 
     audioChunkCount = 0;
-    const langQuery = (language && language !== 'multi') ? `&language=${encodeURIComponent(language)}` : '';
-    // Use raw 16kHz linear PCM for zero-header stream reliability
-    const dgUrl = `wss://api.deepgram.com/v1/listen?model=nova-3&encoding=linear16&sample_rate=16000&channels=1&smart_format=true&interim_results=true&endpointing=100${langQuery}`;
+    // Multilingual configuration matching high-performance Nova-3 pipeline
+    const cleanLang = (language || 'en').trim().toLowerCase();
+    let langQuery = '';
+    if (cleanLang === 'multi' || cleanLang === 'auto') {
+      langQuery = '&detect_language=true';
+    } else if (cleanLang) {
+      langQuery = `&language=${encodeURIComponent(cleanLang)}`;
+    }
+
+    // endpointing=10 emits final speech packets immediately on 10ms silence detection
+    const dgUrl = `wss://api.deepgram.com/v1/listen?endpointing=10&interim_results=true&smart_format=true&model=nova-3&encoding=linear16&sample_rate=16000&channels=1${langQuery}`;
 
     console.log(`[Deepgram STT] Connecting to live WebSocket: ${dgUrl}`);
     try {
@@ -811,8 +819,10 @@ function createWindow() {
           const isFinal = (data.is_final !== undefined) ? data.is_final : (data.speech_final || false);
 
           if (transcript && transcript.trim()) {
-            console.log(`[Deepgram STT] Live Transcript: "${transcript.trim()}" (final: ${isFinal})`);
-            event.sender.send('transcription-chunk', { text: transcript.trim(), is_final: isFinal });
+            const prefix = isFinal ? '[ FINAL ]' : '[Interim]';
+            const detectedLang = data.channel?.detected_language || data.results?.channels?.[0]?.detected_language || cleanLang;
+            console.log(`[Deepgram STT] ${prefix} "${transcript.trim()}" (lang: ${detectedLang})`);
+            event.sender.send('transcription-chunk', { text: transcript.trim(), is_final: isFinal, language: detectedLang });
           }
         } catch (e) {
           console.error('[Deepgram STT] Error parsing Deepgram message:', e.message);
