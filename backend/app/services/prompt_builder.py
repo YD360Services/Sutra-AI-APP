@@ -3,10 +3,11 @@ Single place where live-answer prompts are assembled.
 
 System prompt layers, in order (later layers win on conflict):
   1. Persona + grounding rules           (always)
+  1b. Live-speech guidance               (fuzzy / partial / misheard transcripts; not screenshot or intro)
   2. Mode guidance                       (coding / system design / hr / screenshot / introduction)
   3. Default answer style                (DROPPED entirely when the user has custom prompts)
   4. The user's custom prompts           (highest priority)
-  5. Output contract                     (JSON vs plain text — transport only)
+  5. Output contract                     (JSON / plain text / plain text with a `Q:` headline line)
 
 Everything about the candidate (resume, JD, notes, history, transcript) goes in the
 user message as plain data via build_context_message(). The user message never
@@ -29,6 +30,13 @@ Ground rules:
 - Only claim experience that shows up in the background you're given (resume, notes, prepared answers). If it doesn't cover something, say how you'd approach it rather than inventing a project, employer, or number.
 - Answer the question that was actually asked. If it has several parts, cover every part.
 - Put any code, SQL, shell commands, or diagrams in fenced code blocks with a language tag."""
+
+LIVE_SPEECH_GUIDANCE = """The question comes from live speech-to-text, so treat its wording as approximate:
+- It may be cut off, start mid-sentence, or be a fragment that continues the interviewer's previous turn (e.g. "helped you at your job" after "how has your experience..."). Use the conversation so far to rebuild the full question.
+- Words may be misheard as similar-sounding ones, especially technical terms and names: "sequel" -> SQL, "cuber nets" -> Kubernetes, "wrecked hooks" -> React hooks, "Jason" -> JSON, "post grass" -> Postgres, "a sink" -> async. Pick the reading that makes sense for this role, the job description, and the candidate's resume.
+- Filler, false starts, and repeated words ("so, um, can you, can you tell me") are noise; ignore them.
+- If one turn holds several questions, answer the latest one, plus any earlier part it clearly depends on.
+- Answer what the interviewer most plausibly meant. Never mention transcription, mishearing, or that the question was unclear."""
 
 DEFAULT_STYLE = """How the answer should sound:
 - Like a sharp, relaxed engineer talking across the table: plain words, contractions, mostly short sentences. It should be easy to read aloud on the first try.
@@ -79,7 +87,24 @@ OUTPUT_CONTRACT = {
         '{"question": "<the interviewer\'s full question>", "answer": "<the answer>"}'
     ),
     "text": "Reply with only the answer itself — no preamble, no labels, no JSON.",
+    # Web app: a clean question line it shows as the answer card's headline.
+    "text_headline": (
+        "Format: the very first line is `Q: ` followed by the interviewer's question as you understood it — "
+        "one complete, clearly worded question (fragments rebuilt, misheard words fixed, under 20 words, "
+        "no answer content). Then one blank line, then the answer itself, with no other preamble, labels, or JSON."
+    ),
 }
+
+HEADLINE_PREFIX = "Q:"
+
+
+def split_headline(text: str) -> tuple:
+    """Split a `Q: <question>` first line off a headline-format answer. Returns (question or "", answer)."""
+    stripped = (text or "").lstrip().lstrip("*#").lstrip()
+    if stripped[:2].upper() != HEADLINE_PREFIX:
+        return "", text or ""
+    first, _, rest = stripped.partition("\n")
+    return first[2:].strip().strip("*").strip(), rest.strip()
 
 _EMPTY_VALUES = {"", "none", "none.", "none loaded", "none loaded.", "skipped for coding question."}
 
@@ -164,17 +189,26 @@ def build_system_prompt(
     mode: str,
     custom_prompts: Optional[List[Dict[str, str]]] = None,
     output: str = "text",
+    headline: bool = False,
 ) -> str:
     if mode not in MODES:
         mode = "interview"
     custom_text = format_custom_prompts(custom_prompts or [])
 
-    sections = [PERSONA, MODE_GUIDANCE.get(mode, "")]
+    sections = [PERSONA]
+    # Screenshots and pre-written introductions aren't transcribed speech.
+    if mode not in ("screenshot", "introduction"):
+        sections.append(LIVE_SPEECH_GUIDANCE)
+    sections.append(MODE_GUIDANCE.get(mode, ""))
     if not custom_text:
         sections.append(DEFAULT_STYLE)
     else:
         sections.append(f"{CUSTOM_PROMPTS_HEADER}\n\n{custom_text}")
-    sections.append(OUTPUT_CONTRACT["json" if output == "json" else "text"])
+    if output == "json":
+        contract = OUTPUT_CONTRACT["json"]
+    else:
+        contract = OUTPUT_CONTRACT["text_headline" if headline else "text"]
+    sections.append(contract)
 
     return "\n\n".join(s.strip() for s in sections if s and s.strip())
 

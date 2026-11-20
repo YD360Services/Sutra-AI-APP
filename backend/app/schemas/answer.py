@@ -12,6 +12,8 @@ class AnswerRequest(BaseModel):
     resume_content: Optional[str] = None
     knowledge_content: Optional[str] = None
     model: Optional[str] = None
+    # Stream only: start the answer with a "Q: <clean question>" line (web app headline). Off for the desktop app.
+    headline: bool = False
 
 class AnswerResponse(BaseModel):
     id: uuid.UUID

@@ -17,6 +17,7 @@ from app.services.context_orchestrator import context_orchestrator
 from app.services.ai_service import call_gemini, call_llm, stream_llm, resolve_model_by_task
 from app.services.prompt_builder import (
     build_system_prompt,
+    split_headline,
     build_context_message,
     build_introduction_message,
     resolve_mode,
@@ -125,8 +126,8 @@ class _AnswerContext:
         self.context_message = context_message
         self.stored_introduction = stored_introduction
 
-    def system_prompt(self, output: str) -> str:
-        return build_system_prompt(self.mode, self.custom_prompts, output=output)
+    def system_prompt(self, output: str, headline: bool = False) -> str:
+        return build_system_prompt(self.mode, self.custom_prompts, output=output, headline=headline)
 
 
 def _format_client_qa_history(qa_history) -> str:
@@ -343,11 +344,9 @@ async def generate_answer(
             cleaned = cleaned[start_idx:end_idx + 1]
         data = json.loads(cleaned, strict=False)
         ai_question = (data.get("question") or "").strip()
-        # Preserve full question: never allow an LLM-shortened fragment to overwrite verbatim question
-        if not ctx.latest_question or len(ctx.latest_question.strip()) < 10:
-            question = ai_question or ctx.latest_question or "Interview Question"
-        else:
-            question = ctx.latest_question
+        # The model's version is the cleaned-up question (fragments rebuilt, misheard words fixed);
+        # the raw transcript slice is only a fallback.
+        question = ai_question or ctx.latest_question or "Interview Question"
         answer   = data.get("answer",   raw_response).strip()
     except Exception as e:
         logger.warning(f"Failed to parse Gemini response as JSON: {e}. Raw: {raw_response}")
@@ -398,7 +397,8 @@ async def generate_answer_stream(
 ):
     ctx = await _prepare_answer_context(payload, db)
     # Screenshots keep the JSON contract (the client parses it); everything else streams plain text.
-    sys_prompt = ctx.system_prompt(output="json" if ctx.mode == "screenshot" else "text")
+    use_headline = bool(payload.headline) and ctx.mode != "screenshot"
+    sys_prompt = ctx.system_prompt(output="json" if ctx.mode == "screenshot" else "text", headline=use_headline)
     # Same resolution stream_llm does internally — used for the token-cost ledger below.
     resolved_model = resolve_model_by_task(payload.model, sys_prompt)
 
@@ -431,6 +431,11 @@ async def generate_answer_stream(
         question = ctx.latest_question
         answer = full_response
 
+        if use_headline:
+            clean_q, rest = split_headline(full_response)
+            if clean_q:
+                question, answer = clean_q, rest
+
         # Handle JSON fallback (backwards compatibility)
         if full_response.strip().startswith("{"):
             try:
@@ -448,11 +453,7 @@ async def generate_answer_stream(
                     cleaned = cleaned[start_idx:end_idx + 1]
                 data = json.loads(cleaned, strict=False)
                 ai_question = (data.get("question") or "").strip()
-                # Preserve full question: never allow an LLM-shortened fragment to overwrite verbatim question
-                if not ctx.latest_question or len(ctx.latest_question.strip()) < 10:
-                    question = ai_question or ctx.latest_question or "Interview Question"
-                else:
-                    question = ctx.latest_question
+                question = ai_question or ctx.latest_question or "Interview Question"
                 answer   = data.get("answer", full_response).strip()
             except Exception as e:
                 logger.warning(f"Failed to parse stream response as JSON: {e}. Raw: {full_response}")
