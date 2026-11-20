@@ -10,7 +10,7 @@ Sutra AI features 9 production-grade Large Language Models grouped across 4 lead
 
 | Model ID / Value | Model Label | Provider | Latency (TTFT) | Category | Primary Focus & Recommended For |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| gpt-6-luna | **GPT 6 Astra** | OpenAI | **~210 ms** ⚡ | Quality ★ Flagship | Next-generation OpenAI flagship with Astra reasoning engine for deep coding & system design. |
+| gpt-6-luna | **GPT 6 Astra** | OpenAI | **~210 ms** ⚡ | Quality ★ Flagship | Next-generation OwpenAI flagship with Astra reasoning engine for deep coding & system design. |
 | gpt-5.6 | **GPT 5.6 Sol** | OpenAI | **~220 ms** ⚡ | Quality | OpenAI high-precision Sol Engine for multi-part architecture and coding questions. |
 | gptoss | **OpenAI o3-mini (GPTOSS)** | OpenAI | **~600 ms** 🧠 | Quality | OpenAI reasoning model for deep logic, complex mathematics, and algorithmic puzzles. |
 | gemini-3.8-flash-lite-tts | **Gemini 3.8 Flash** | Google Gemini | **~180 ms** 🚀 | Fasts ★ Best for Live | Recommended for Live Audio Sessions with sub-220ms voice response latency and hybrid reasoning. |
