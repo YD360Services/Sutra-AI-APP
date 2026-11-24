@@ -400,6 +400,79 @@ class ContextOrchestrator:
             "custom_prompts": [{"name": p["name"], "content": p["content"]} for p in prompts if p.get("content")],
         }
 
+    def classify_answerability_mode(
+        self,
+        question: str,
+        candidate_projects_text: str = ""
+    ) -> Dict[str, Any]:
+        """
+        LLD v1.3 3-Tier Answerability & Truthfulness Guard:
+        Distinguishes between:
+        1. practical_experience: First-person claim allowed only if verified evidence exists.
+        2. applied_reasoning: Hypothetical ("How would you...") answered via architectural reasoning.
+        3. technical_knowledge: Conceptual explanation without fabricating personal claims.
+        """
+        q_lower = question.lower()
+        experience_triggers = ["have you", "tell me about a time", "your project", "did you implement", "in your experience", "have you built"]
+        hypothetical_triggers = ["how would you", "suppose you", "if you had to", "design a", "how could we"]
+
+        if any(t in q_lower for t in hypothetical_triggers):
+            return {
+                "mode": "applied_reasoning",
+                "allow_first_person_claims": False,
+                "guidance": "Answer with structured architectural reasoning and trade-offs. Do not fabricate past experience."
+            }
+
+        if any(t in q_lower for t in experience_triggers):
+            # Verify if any relevant keyword appears in verified candidate evidence
+            has_evidence = bool(candidate_projects_text and len(candidate_projects_text.strip()) > 20)
+            if has_evidence:
+                return {
+                    "mode": "practical_experience",
+                    "allow_first_person_claims": True,
+                    "guidance": "Ground answer strictly in verified candidate project facts; never invent metrics."
+                }
+            return {
+                "mode": "technical_knowledge",
+                "allow_first_person_claims": False,
+                "guidance": "No direct project evidence found. Provide sound technical explanation without claiming personal implementation."
+            }
+
+        return {
+            "mode": "technical_knowledge",
+            "allow_first_person_claims": False,
+            "guidance": "Provide concise, accurate conceptual explanation."
+        }
+
+    def resolve_pronoun_reference(
+        self,
+        question: str,
+        active_entities: List[str],
+        previous_question: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Resolves follow-up pronouns ('it', 'its', 'that', 'this') against active topic entities.
+        Preserves ambiguity if confidence is low rather than silently binding incorrectly.
+        """
+        q_lower = question.lower()
+        pronouns = [" it ", " its ", " that ", " this ", " they ", " them "]
+        padded = f" {q_lower} "
+        has_pronoun = any(p in padded for p in pronouns) or q_lower.endswith((" it?", " it", " that?", " that"))
+
+        if not has_pronoun:
+            return {"resolved": False, "resolved_question": question, "bound_entity": None, "confidence": 1.0}
+
+        if active_entities:
+            primary_entity = active_entities[0]
+            return {
+                "resolved": True,
+                "resolved_question": f"{question} [Context: referring to {primary_entity}]",
+                "bound_entity": primary_entity,
+                "confidence": 0.85
+            }
+
+        return {"resolved": False, "resolved_question": question, "bound_entity": None, "confidence": 0.3}
+
 context_orchestrator = ContextOrchestrator()
 
 

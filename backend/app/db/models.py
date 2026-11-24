@@ -243,6 +243,7 @@ class AITokenUsage(Base):
     estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     trace_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    generation_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
@@ -282,4 +283,155 @@ class SemanticEmbedding(Base):
     embedding_json: Mapped[str] = mapped_column(Text, nullable=False)  # JSON-encoded float array (768-dim)
     metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+# =====================================================================
+# LLD v1.3 Core Lifecycle, Evidence & Provenance Entities
+# =====================================================================
+
+class TranscriptSegment(Base):
+    """Immutable raw ASR transcript segment paired with derived normalized/corrected text."""
+    __tablename__ = "transcript_segments"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    sequence: Mapped[int] = mapped_column(Integer, default=0)
+    speaker: Mapped[str] = mapped_column(String(100), default="interviewer")
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    corrected_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    is_final: Mapped[bool] = mapped_column(Boolean, default=False)
+    speech_final: Mapped[bool] = mapped_column(Boolean, default=False)
+    processor_version: Mapped[str] = mapped_column(String(50), default="v1.3")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ConversationTurn(Base):
+    """Durable dialogue turn linking question interpretation, answer generation, and timings."""
+    __tablename__ = "conversation_turns"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    turn_index: Mapped[int] = mapped_column(Integer, default=0)
+    question_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    final_question: Mapped[str] = mapped_column(Text, nullable=False)
+    final_answer: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    generation_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    topic: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    intent: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class QuestionEvent(Base):
+    """Tracks question interpretation lifecycle and monotonic version transitions."""
+    __tablename__ = "question_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    question_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    question_version: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(50), default="predicted")  # predicted, revised, finalized, superseded
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class QuestionPrediction(Base):
+    """Stores interim speculative question predictions and promotion fingerprint metadata."""
+    __tablename__ = "question_predictions"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    prediction_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    session_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    question_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    predicted_question: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    fingerprint: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    was_promoted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AnswerGeneration(Base):
+    """Tracks provisional and final LLM answer generations, supersession, and context fingerprints."""
+    __tablename__ = "answer_generations"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    generation_id: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    session_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    question_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    question_version: Mapped[int] = mapped_column(Integer, default=1)
+    generation_version: Mapped[int] = mapped_column(Integer, default=1)
+    is_provisional: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(50), default="started")  # started, completed, cancelled, superseded, failed
+    provider: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    context_fingerprint: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    superseded_by_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    answer_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class CandidateProfile(Base):
+    """Structured verified candidate profile separate from raw uploaded resume text."""
+    __tablename__ = "candidate_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    profile_version: Mapped[int] = mapped_column(Integer, default=1)
+    skills_json: Mapped[str] = mapped_column(Text, default="[]")
+    verified_facts_json: Mapped[str] = mapped_column(Text, default="[]")
+    verification_status: Mapped[str] = mapped_column(String(50), default="imported")  # imported, user_confirmed
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CandidateProject(Base):
+    """Verified candidate project ownership and technical evidence for truthfulness guard."""
+    __tablename__ = "candidate_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("candidate_profiles.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    project_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    ownership_role: Mapped[str] = mapped_column(String(255), nullable=False)
+    evidence_source: Mapped[str] = mapped_column(String(100), default="resume")  # resume, user_confirmed, session_statement
+    tech_stack_json: Mapped[str] = mapped_column(Text, default="[]")
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SourceProvenance(Base):
+    """Tracks evidence source origin, tenant/ACL scope, and permissions for RAG chunks."""
+    __tablename__ = "source_provenance"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    user_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    document_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    access_scope: Mapped[str] = mapped_column(String(50), default="private")  # private, tenant, shared_opt_in
+    document_version: Mapped[int] = mapped_column(Integer, default=1)
+    checksum: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    storage_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)  # S3/R2 object key
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LLMModelRegistryRecord(Base):
+    """Persisted LLM model capabilities, pricing, and availability configuration."""
+    __tablename__ = "llm_model_registry"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    provider: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    model_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    supports_streaming: Mapped[bool] = mapped_column(Boolean, default=True)
+    context_window: Mapped[int] = mapped_column(Integer, default=128000)
+    input_cost_per_1m: Mapped[float] = mapped_column(Float, default=0.0)
+    output_cost_per_1m: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_ttft_ms: Mapped[int] = mapped_column(Integer, default=500)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

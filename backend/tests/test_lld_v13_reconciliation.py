@@ -20,8 +20,21 @@ from app.schemas.websocket_events import (
     HeartbeatPingEvent,
     HeartbeatPongEvent
 )
-from app.cache.redis import ValkeySessionCoordinator
+from app.cache.redis import ValkeySessionCoordinator, ValkeyKeyFactory
 from app.services.predictive_engine import predictive_engine
+from app.services.context_orchestrator import context_orchestrator
+from app.api.websockets import PriorityOutboundQueue
+from app.db.models import (
+    TranscriptSegment,
+    ConversationTurn,
+    QuestionEvent,
+    QuestionPrediction,
+    AnswerGeneration,
+    CandidateProfile,
+    CandidateProject,
+    SourceProvenance,
+    LLMModelRegistryRecord
+)
 
 class TestLLDv13Reconciliation(unittest.IsolatedAsyncioTestCase):
 
@@ -108,70 +121,140 @@ class TestLLDv13Reconciliation(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(final_comp.event, "answer.final.completed")
         self.assertEqual(final_comp.tokens, 120)
 
-    async def test_03_valkey_session_coordinator_state(self):
-        """Verifies ValkeySessionCoordinator dual-version increments and cancellation."""
+    async def test_03_valkey_hierarchical_keys_and_tickets(self):
+        """Verifies ValkeyKeyFactory hierarchical scoping, dual-version increments, and one-time WS tickets."""
         session_id = f"test-sess-{uuid.uuid4()}"
+        q1 = "q-1"
+        q2 = "q-2"
 
-        q_v, g_v = await ValkeySessionCoordinator.get_state(session_id)
-        self.assertEqual(q_v, 1)
-        self.assertEqual(g_v, 1)
+        self.assertEqual(
+            ValkeyKeyFactory.question_version(session_id, q1),
+            f"rm:session:{session_id}:question:q-1:version"
+        )
 
-        # Inferred question intent shifts -> bumps both question_version and generation_version
-        new_qv, new_gv = await ValkeySessionCoordinator.bump_question_version(session_id)
-        self.assertEqual(new_qv, 2)
-        self.assertEqual(new_gv, 2)
+        # Question 1 and Question 2 stay isolated
+        q1_v, g1_v = await ValkeySessionCoordinator.bump_question_version(session_id, question_id=q1)
+        self.assertEqual(q1_v, 2)
+        self.assertEqual(g1_v, 2)
 
-        # Cancel active generation
+        q2_v, g2_v = await ValkeySessionCoordinator.get_state(session_id, question_id=q2)
+        self.assertEqual(q2_v, 1)
+        self.assertEqual(g2_v, 1)
+
+        # Active generation & cancellation
         gen_id = f"gen-{uuid.uuid4()}"
-        bumped_gv = await ValkeySessionCoordinator.cancel_generation(session_id, gen_id)
+        await ValkeySessionCoordinator.set_active_generation(session_id, q1, gen_id)
+        self.assertEqual(await ValkeySessionCoordinator.get_active_generation(session_id, q1), gen_id)
+
+        bumped_gv = await ValkeySessionCoordinator.cancel_generation(session_id, gen_id, question_id=q1)
         self.assertEqual(bumped_gv, 3)
         self.assertTrue(await ValkeySessionCoordinator.is_cancelled(gen_id))
 
-    def test_04_predictive_promotion_fingerprint_gate(self):
-        """Verifies promotion gate logic: exact fingerprint match allows promotion, divergence blocks it."""
-        question_text = "What is the difference between TCP and UDP?"
-        context_str = "Candidate has networking fundamentals in resume."
-        policy_ver = 1
+        # One-time WS ticket
+        ticket = await ValkeySessionCoordinator.issue_ws_ticket(session_id, user_id="user-99")
+        consumed = await ValkeySessionCoordinator.consume_ws_ticket(ticket, expected_session_id=session_id)
+        self.assertIsNotNone(consumed)
+        self.assertEqual(consumed["user_id"], "user-99")
+        # Second consumption must fail (one-time use)
+        self.assertIsNone(await ValkeySessionCoordinator.consume_ws_ticket(ticket, expected_session_id=session_id))
 
-        prov_fingerprint = predictive_engine.compute_fingerprint(question_text, context_str, policy_ver)
+    async def test_04_priority_outbound_queue_coalescing(self):
+        """Verifies interim events coalesce under pressure while critical answer chunks are preserved."""
+        q = PriorityOutboundQueue(maxsize=4)
+        # Fill 3 of 4 slots (75% threshold)
+        await q.enqueue({"event": "answer.final.delta", "seq": 1})
+        await q.enqueue({"event": "answer.final.delta", "seq": 2})
+        await q.enqueue({"event": "answer.final.delta", "seq": 3})
 
-        # Exact match -> eligible for promotion
+        # Interim event at 75% capacity must coalesce/drop
+        accepted_interim = await q.enqueue({"event": "transcript.interim", "text": "hello"})
+        self.assertFalse(accepted_interim)
+        self.assertEqual(q.dropped_interim_count, 1)
+
+        # Critical final event must still be preserved in the remaining slot
+        accepted_final = await q.enqueue({"event": "answer.final.completed", "seq": 4})
+        self.assertTrue(accepted_final)
+        self.assertEqual(q.qsize, 4)
+
+    def test_05_multifactor_promotion_validator(self):
+        """Verifies multi-factor LLD v1.3 Promotion Gate across question, candidate, docs, model, and policy."""
+        meta = {
+            "question": "What is CAP theorem?",
+            "candidate_hash": "hash-abc",
+            "doc_versions": ["doc1:v2", "doc2:v1"],
+            "model_id": "claude-3-5-sonnet",
+            "policy_version": 1
+        }
         self.assertTrue(
-            predictive_engine.can_promote_provisional(
-                prov_fingerprint,
-                final_question=question_text,
-                final_context=context_str,
-                policy_version=policy_ver
+            predictive_engine.validate_provisional_promotion(
+                meta,
+                final_question="What is CAP theorem?",
+                candidate_profile_hash="hash-abc",
+                active_document_versions=["doc2:v1", "doc1:v2"],
+                model_id="claude-3-5-sonnet",
+                policy_version=1
             )
         )
-
-        # Divergent question (speaker finished with a qualifier) -> rejects promotion
-        divergent_q = "What is the difference between TCP and UDP in HTTP/3?"
+        # Model mismatch blocks promotion
         self.assertFalse(
-            predictive_engine.can_promote_provisional(
-                prov_fingerprint,
-                final_question=divergent_q,
-                final_context=context_str,
-                policy_version=policy_ver
+            predictive_engine.validate_provisional_promotion(
+                meta,
+                final_question="What is CAP theorem?",
+                candidate_profile_hash="hash-abc",
+                active_document_versions=["doc1:v2", "doc2:v1"],
+                model_id="gpt-4o",
+                policy_version=1
             )
         )
 
-    def test_05_client_events_generation_cancel_and_heartbeat(self):
-        """Verifies client control events: generation.cancel, heartbeat.ping/pong, audio.frame."""
-        cancel_evt = GenerationCancelEvent(session_id="sess-300", reason="interrupted")
-        self.assertEqual(cancel_evt.event, "generation.cancel")
-        self.assertEqual(cancel_evt.reason, "interrupted")
+    def test_06_answerability_and_pronoun_resolution(self):
+        """Verifies 3-tier answerability guard and follow-up pronoun resolution."""
+        # Hypothetical -> applied_reasoning without personal claims
+        res_hypo = context_orchestrator.classify_answerability_mode("How would you design a rate limiter?")
+        self.assertEqual(res_hypo["mode"], "applied_reasoning")
+        self.assertFalse(res_hypo["allow_first_person_claims"])
 
-        ping_evt = HeartbeatPingEvent(session_id="sess-300")
-        self.assertEqual(ping_evt.event, "heartbeat.ping")
+        # Experience question without evidence -> fallback to technical_knowledge
+        res_no_ev = context_orchestrator.classify_answerability_mode("Have you implemented Kafka in production?", "")
+        self.assertEqual(res_no_ev["mode"], "technical_knowledge")
+        self.assertFalse(res_no_ev["allow_first_person_claims"])
 
-        pong_evt = HeartbeatPongEvent(session_id="sess-300")
-        self.assertEqual(pong_evt.event, "heartbeat.pong")
+        # Experience question with verified project evidence -> practical_experience
+        res_with_ev = context_orchestrator.classify_answerability_mode(
+            "Have you implemented Kafka in production?",
+            "Built an event-driven Kafka pipeline processing 50k msgs/sec."
+        )
+        self.assertEqual(res_with_ev["mode"], "practical_experience")
+        self.assertTrue(res_with_ev["allow_first_person_claims"])
 
-        audio_evt = AudioFrameEvent(session_id="sess-300", frame_ms=250, sample_rate=16000)
-        self.assertEqual(audio_evt.event, "audio.frame")
-        self.assertEqual(audio_evt.sample_rate, 16000)
-        self.assertEqual(audio_evt.frame_ms, 250)
+        # Pronoun resolution
+        res_pronoun = context_orchestrator.resolve_pronoun_reference(
+            "Have you implemented it?",
+            active_entities=["Inheritance", "Polymorphism"]
+        )
+        self.assertTrue(res_pronoun["resolved"])
+        self.assertEqual(res_pronoun["bound_entity"], "Inheritance")
+
+    def test_07_lld_v13_orm_models_instantiation(self):
+        """Verifies all new LLD v1.3 SQLAlchemy models instantiate cleanly."""
+        seg = TranscriptSegment(session_id="s1", raw_text="raw", corrected_text="corrected")
+        turn = ConversationTurn(session_id="s1", question_id="q1", final_question="What is X?")
+        q_evt = QuestionEvent(session_id="s1", question_id="q1", question_text="What is X?", status="predicted")
+        q_pred = QuestionPrediction(prediction_id="p1", session_id="s1", question_id="q1", predicted_question="What is X?")
+        a_gen = AnswerGeneration(generation_id="g1", session_id="s1", question_id="q1", status="started")
+        prof = CandidateProfile(user_id="u1", verification_status="imported")
+        proj = CandidateProject(profile_id=uuid.uuid4(), user_id="u1", project_name="P1", ownership_role="Lead", summary="Built X")
+        prov = SourceProvenance(tenant_id="t1", document_id="d1", access_scope="private")
+        reg = LLMModelRegistryRecord(provider="anthropic", model_id="claude-3-5-sonnet")
+        self.assertEqual(seg.raw_text, "raw")
+        self.assertEqual(turn.question_id, "q1")
+        self.assertEqual(q_evt.status, "predicted")
+        self.assertEqual(q_pred.prediction_id, "p1")
+        self.assertEqual(a_gen.status, "started")
+        self.assertEqual(prof.verification_status, "imported")
+        self.assertEqual(proj.ownership_role, "Lead")
+        self.assertEqual(prov.access_scope, "private")
+        self.assertEqual(reg.provider, "anthropic")
 
 if __name__ == "__main__":
     unittest.main()

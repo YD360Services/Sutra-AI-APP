@@ -145,4 +145,31 @@ class PredictiveQuestionEngine:
         final_fingerprint = self.compute_fingerprint(final_question, final_context, policy_version)
         return provisional_fingerprint == final_fingerprint
 
+    def validate_provisional_promotion(
+        self,
+        provisional_meta: Dict[str, Any],
+        final_question: str,
+        candidate_profile_hash: str,
+        active_document_versions: List[str],
+        model_id: str,
+        policy_version: int = 1
+    ) -> bool:
+        """
+        Multi-factor LLD v1.3 Promotion Validator:
+        Verifies question text, candidate evidence hash, document versions, model ID, and policy version.
+        """
+        if not provisional_meta:
+            return False
+        if provisional_meta.get("question", "").strip().lower() != final_question.strip().lower():
+            return False
+        if provisional_meta.get("candidate_hash") != candidate_profile_hash:
+            return False
+        if set(provisional_meta.get("doc_versions", [])) != set(active_document_versions):
+            return False
+        if provisional_meta.get("model_id") != model_id:
+            return False
+        if provisional_meta.get("policy_version") != policy_version:
+            return False
+        return True
+
 predictive_engine = PredictiveQuestionEngine()

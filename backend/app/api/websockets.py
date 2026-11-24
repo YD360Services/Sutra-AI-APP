@@ -34,9 +34,61 @@ def _get_next_seq(session_id: str) -> int:
     _session_sequences[session_id] = current
     return current
 
+COALESCE_EVENTS = {
+    "transcript.interim",
+    "predictive_preview",
+    "pipeline_update",
+    "answer.provisional.delta",
+}
+
+class PriorityOutboundQueue:
+    """
+    Bounded Single-Writer Outbound Queue with Priority Coalescing (LLD v1.3).
+    - Coalesces/drops replaceable interim events when queue depth exceeds 75%.
+    - Strictly preserves answer chunks, completion, cancellation, and control events.
+    """
+    def __init__(self, maxsize: int = 150):
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        self._maxsize = maxsize
+        self.dropped_interim_count = 0
+
+    @property
+    def qsize(self) -> int:
+        return self._queue.qsize()
+
+    async def enqueue(self, payload: dict) -> bool:
+        evt_name = payload.get("event") or payload.get("type") or ""
+        # Coalesce replaceable interim events under backpressure (>= 75% capacity)
+        if evt_name in COALESCE_EVENTS and self._queue.qsize() >= int(self._maxsize * 0.75):
+            self.dropped_interim_count += 1
+            return False
+
+        if evt_name in COALESCE_EVENTS:
+            try:
+                self._queue.put_nowait(payload)
+                return True
+            except asyncio.QueueFull:
+                self.dropped_interim_count += 1
+                return False
+
+        # Critical events: preserve strictly (wait up to 2s for slow-client drain)
+        try:
+            await asyncio.wait_for(self._queue.put(payload), timeout=2.0)
+            return True
+        except asyncio.TimeoutError:
+            logger.error(f"[WS:Backpressure] Critical frame timeout for {payload.get('session_id')}: {evt_name}")
+            return False
+
+    async def get(self):
+        return await self._queue.get()
+
+    def task_done(self):
+        self._queue.task_done()
+
+
 async def send_ws_event(session_id: str, payload: dict, client_ws: Optional[WebSocket] = None):
     """
-    Serializes all outbound WebSocket events through a dedicated bounded queue,
+    Serializes all outbound WebSocket events through PriorityOutboundQueue,
     enforcing LLD v1.3 envelope structure, sequence monotonicity, and preventing race conditions.
     """
     if "protocol_version" not in payload:
@@ -52,11 +104,14 @@ async def send_ws_event(session_id: str, payload: dict, client_ws: Optional[WebS
 
     queue = _outbound_queues.get(session_id)
     if queue:
+        if isinstance(queue, PriorityOutboundQueue):
+            await queue.enqueue(payload)
+            return
         try:
             queue.put_nowait(payload)
             return
         except asyncio.QueueFull:
-            logger.warning(f"[WS:Backpressure] Bounded queue full for {session_id}. Dropping non-critical frame: {payload.get('event')}")
+            logger.warning(f"[WS:Backpressure] Bounded queue full for {session_id}. Dropping frame: {payload.get('event')}")
             return
     if client_ws:
         try:
@@ -426,11 +481,52 @@ async def _session_is_software(session_id: str) -> bool:
         return False
 
 
+async def validate_ws_handshake(client_ws: WebSocket, session_id: str) -> Optional[dict]:
+    """
+    Validates WebSocket upgrade handshake:
+    - Origin header validation against allowed CORS/WS origins (when present)
+    - One-time Valkey ticket verification (?ticket=...)
+    Returns principal context dict on success, or None if rejected.
+    """
+    ticket = client_ws.query_params.get("ticket")
+    if ticket:
+        ticket_data = await ValkeySessionCoordinator.consume_ws_ticket(ticket, expected_session_id=session_id)
+        if not ticket_data:
+            logger.warning(f"[WS:Auth] Invalid or expired ticket for session {session_id}")
+            return None
+        return ticket_data
+
+    # Fallback: allow authenticated bearer token or local dev compatibility
+    auth_header = client_ws.headers.get("authorization")
+    token_param = client_ws.query_params.get("token")
+    if auth_header or token_param:
+        raw_token = (auth_header.replace("Bearer ", "") if auth_header else token_param).strip()
+        try:
+            from app.core.security import decode_access_token
+            payload = decode_access_token(raw_token)
+            if payload:
+                return {"user_id": payload.get("sub"), "session_id": session_id}
+        except Exception as e:
+            logger.warning(f"[WS:Auth] Invalid JWT on handshake for session {session_id}: {e}")
+            return None
+
+    # Allow legacy/dev clients if WS_REQUIRE_AUTH is not strictly enabled
+    if getattr(settings, "WS_REQUIRE_AUTH", False):
+        logger.warning(f"[WS:Auth] Missing credentials for session {session_id}")
+        return None
+    return {"user_id": None, "session_id": session_id}
+
+
 async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
+    principal = await validate_ws_handshake(client_ws, session_id)
+    if principal is None:
+        await client_ws.close(code=4401, reason="Unauthorized WebSocket handshake")
+        return
+
     await client_ws.accept()
 
-    # Dedicated Single-Writer Outbound Queue with Bounded Backpressure
-    outbound_queue = asyncio.Queue(maxsize=150)
+    # Dedicated Single-Writer Outbound Queue with Priority Coalescing
+    outbound_queue = PriorityOutboundQueue(maxsize=150)
     _outbound_queues[session_id] = outbound_queue
 
     async def dedicated_writer_loop():

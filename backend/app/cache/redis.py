@@ -68,26 +68,76 @@ class RedisCache:
         self._redis_available = False
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # Lifecycle (Render Key Value / Valkey with local LRU fallback)
     # ------------------------------------------------------------------
     async def connect(self):
-        """Active in-memory high-speed caching."""
-        logger.info("In-memory cache active (zero external Redis dependency).")
+        """Connects to Render Key Value (Valkey) if REDIS_URL is set, else uses in-memory LRU."""
+        import os
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            try:
+                import redis.asyncio as aioredis
+                self._client = aioredis.from_url(redis_url, decode_responses=True)
+                await self._client.ping()
+                self._redis_available = True
+                logger.info("Connected to Valkey / Redis instance via REDIS_URL.")
+                return
+            except Exception as e:
+                logger.warning(f"Valkey connection failed ({e}). Falling back to in-memory LRU cache.")
+                self._client = None
+                self._redis_available = False
+        logger.info("In-memory LRU cache active (local dev / test mode).")
 
     async def disconnect(self):
         """Clean shutdown hook."""
-        pass
+        if self._client:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = None
+            self._redis_available = False
 
     # ------------------------------------------------------------------
-    # Internal read/write helpers
+    # Internal read/write helpers (Valkey atomic or in-memory fallback)
     # ------------------------------------------------------------------
     async def _get(self, key: str) -> Optional[str]:
+        if self._redis_available and self._client:
+            try:
+                return await self._client.get(key)
+            except Exception as e:
+                logger.debug(f"Valkey _get error ({key}): {e}")
         return self._local_cache.get(key)
 
     async def _set(self, key: str, value: str, ttl: int = 14400):
+        if self._redis_available and self._client:
+            try:
+                await self._client.set(key, value, ex=ttl)
+                return
+            except Exception as e:
+                logger.debug(f"Valkey _set error ({key}): {e}")
         self._local_cache.set(key, value, ttl_seconds=ttl)
 
+    async def _incr(self, key: str, ttl: int = 86400) -> int:
+        if self._redis_available and self._client:
+            try:
+                val = await self._client.incr(key)
+                await self._client.expire(key, ttl)
+                return int(val)
+            except Exception as e:
+                logger.debug(f"Valkey _incr error ({key}): {e}")
+        current = self._local_cache.get(key)
+        new_val = (int(current) if current is not None else 1) + 1
+        self._local_cache.set(key, str(new_val), ttl_seconds=ttl)
+        return new_val
+
     async def _del(self, key: str):
+        if self._redis_available and self._client:
+            try:
+                await self._client.delete(key)
+                return
+            except Exception as e:
+                logger.debug(f"Valkey _del error ({key}): {e}")
         self._local_cache.delete(key)
 
     # ------------------------------------------------------------------
@@ -225,28 +275,101 @@ class RedisCache:
 
 redis_cache = RedisCache()
 
+class ValkeyKeyFactory:
+    """Enforces LLD v1.3 hierarchical key naming across distributed workers."""
+
+    @staticmethod
+    def question_version(session_id: str, question_id: str = "default") -> str:
+        return f"rm:session:{session_id}:question:{question_id}:version"
+
+    @staticmethod
+    def generation_version(session_id: str, question_id: str = "default") -> str:
+        return f"rm:session:{session_id}:question:{question_id}:generation_version"
+
+    @staticmethod
+    def active_generation(session_id: str, question_id: str = "default") -> str:
+        return f"rm:session:{session_id}:question:{question_id}:active_generation"
+
+    @staticmethod
+    def generation_cancelled(generation_id: str) -> str:
+        return f"rm:generation:{generation_id}:cancelled"
+
+    @staticmethod
+    def ws_ticket(ticket: str) -> str:
+        return f"rm:ws_ticket:{ticket}"
+
+
 class ValkeySessionCoordinator:
     """
     LLD v1.3 State Coordinator for Render Key Value (Valkey) and in-memory caches.
     Ensures monotonic question and generation lifecycles across distributed workers.
     """
     @staticmethod
-    async def get_state(session_id: str):
-        q_v = await redis_cache.get_question_version(session_id)
-        g_v = await redis_cache.get_generation_version(session_id)
+    async def get_state(session_id: str, question_id: str = "default"):
+        q_key = ValkeyKeyFactory.question_version(session_id, question_id)
+        g_key = ValkeyKeyFactory.generation_version(session_id, question_id)
+        q_v = await redis_cache._get(q_key)
+        g_v = await redis_cache._get(g_key)
+        return (int(q_v) if q_v is not None else 1, int(g_v) if g_v is not None else 1)
+
+    @staticmethod
+    async def bump_question_version(session_id: str, question_id: str = "default"):
+        q_key = ValkeyKeyFactory.question_version(session_id, question_id)
+        g_key = ValkeyKeyFactory.generation_version(session_id, question_id)
+        q_v = await redis_cache._incr(q_key, ttl=86400)
+        g_v = await redis_cache._incr(g_key, ttl=86400)
         return (q_v, g_v)
 
     @staticmethod
-    async def bump_question_version(session_id: str):
-        q_v = await redis_cache.increment_question_version(session_id)
-        g_v = await redis_cache.increment_generation_version(session_id)
-        return (q_v, g_v)
+    async def set_active_generation(session_id: str, question_id: str, generation_id: str):
+        key = ValkeyKeyFactory.active_generation(session_id, question_id)
+        await redis_cache._set(key, generation_id, ttl=3600)
 
     @staticmethod
-    async def cancel_generation(session_id: str, generation_id: Optional[str] = None):
-        return await redis_cache.cancel_generation(session_id, generation_id)
+    async def get_active_generation(session_id: str, question_id: str = "default") -> Optional[str]:
+        key = ValkeyKeyFactory.active_generation(session_id, question_id)
+        return await redis_cache._get(key)
+
+    @staticmethod
+    async def cancel_generation(
+        session_id: str,
+        generation_id: Optional[str] = None,
+        question_id: str = "default"
+    ) -> int:
+        g_key = ValkeyKeyFactory.generation_version(session_id, question_id)
+        new_gen_ver = await redis_cache._incr(g_key, ttl=86400)
+        if generation_id:
+            c_key = ValkeyKeyFactory.generation_cancelled(generation_id)
+            await redis_cache._set(c_key, "1", ttl=300)
+        return new_gen_ver
 
     @staticmethod
     async def is_cancelled(generation_id: str) -> bool:
-        return await redis_cache.is_generation_cancelled(generation_id)
+        c_key = ValkeyKeyFactory.generation_cancelled(generation_id)
+        flag = await redis_cache._get(c_key)
+        return flag == "1"
+
+    @staticmethod
+    async def issue_ws_ticket(session_id: str, user_id: str, ttl_seconds: int = 60) -> str:
+        import uuid
+        ticket = str(uuid.uuid4())
+        payload = json.dumps({"session_id": session_id, "user_id": user_id})
+        await redis_cache._set(ValkeyKeyFactory.ws_ticket(ticket), payload, ttl=ttl_seconds)
+        return ticket
+
+    @staticmethod
+    async def consume_ws_ticket(ticket: str, expected_session_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        key = ValkeyKeyFactory.ws_ticket(ticket)
+        raw = await redis_cache._get(key)
+        if not raw:
+            return None
+        # One-time use: delete immediately on read
+        await redis_cache._del(key)
+        try:
+            data = json.loads(raw)
+            if expected_session_id and data.get("session_id") != expected_session_id:
+                return None
+            return data
+        except Exception:
+            return None
 
