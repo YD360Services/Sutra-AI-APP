@@ -263,3 +263,23 @@ class PlatformHealthCheck(Base):
     troubleshooting: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     updated_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SemanticEmbedding(Base):
+    """
+    High-dimensional vector embedding record supporting pgvector semantic retrieval
+    for candidate resumes, technical knowledge documents, and interview question banks.
+    """
+    __tablename__ = "semantic_embeddings"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    source_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)  # 'resume', 'knowledge_document', 'interview_bank', 'session_qa'
+    source_id: Mapped[Optional[str]] = mapped_column(String(255), index=True, nullable=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, default=0)
+    chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
+    tsv_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True, index=True)  # Pre-computed tokens for PostgreSQL GIN / SQLite FTS
+    embedding_json: Mapped[str] = mapped_column(Text, nullable=False)  # JSON-encoded float array (768-dim)
+    metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+

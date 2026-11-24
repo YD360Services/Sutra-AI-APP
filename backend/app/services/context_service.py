@@ -38,6 +38,27 @@ async def build_session_context(
         knowledge_content=knowledge_content,
         session_jd_id=session_jd_id,
     )
+
+    # 3. Retrieve Technical RAG Semantic Knowledge
+    try:
+        from app.services.rag_service import rag_service
+        rag_chunks = await rag_service.retrieve_relevant_chunks(
+            db=db,
+            query=latest_question,
+            user_id=str(user_id) if user_id else None,
+            top_k=3,
+            min_similarity=0.35
+        )
+        if rag_chunks:
+            context["rag_context"] = rag_service.format_rag_context(rag_chunks)
+            # If knowledge_context was default empty, replace/augment with RAG context
+            if context.get("knowledge_context") in ("None loaded.", "", None):
+                context["knowledge_context"] = context["rag_context"]
+            else:
+                context["knowledge_context"] = f"{context['knowledge_context']}\n\n{context['rag_context']}"
+    except Exception as e:
+        logger.debug(f"[ContextService] Technical RAG retrieval skipped: {e}")
+
     context["role_info"] = role_info_for(session)
     return context
 

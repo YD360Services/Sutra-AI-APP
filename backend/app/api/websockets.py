@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Optional, Dict, Any, List
 import asyncio
 import json
 import websockets
@@ -20,9 +21,163 @@ logger = logging.getLogger("roundmate.websockets")
 
 # Dictionary to hold the task reference per session to allow cancellation of obsolete tasks
 _active_analysis_tasks: dict = {}
+_active_generation_tasks: dict = {}
+_generation_versions: dict = {}
+_outbound_queues: dict = {}  # session_id -> asyncio.Queue for single-writer serialization
 _last_run_time: dict = {}
 # Per-session last transcript timestamp for pause duration detection
 _last_transcript_time: dict = {}
+
+async def send_ws_event(session_id: str, payload: dict, client_ws: Optional[WebSocket] = None):
+    """
+    Serializes all outbound WebSocket events through a dedicated bounded queue,
+    preventing socket send collisions, interleaved frames, and race conditions.
+    """
+    queue = _outbound_queues.get(session_id)
+    if queue:
+        try:
+            queue.put_nowait(payload)
+            return
+        except asyncio.QueueFull:
+            logger.warning(f"[WS:Backpressure] Bounded queue full for {session_id}. Dropping non-critical frame: {payload.get('event')}")
+            return
+    if client_ws:
+        try:
+            await client_ws.send_json(payload)
+        except Exception as e:
+            logger.debug(f"[WS:Send] Fallback send error: {e}")
+
+async def stream_answer_over_websocket(
+    session_id: str,
+    question: str,
+    model: Optional[str],
+    client_ws: WebSocket,
+    prediction_id: str,
+    version: int,
+    source_type: str = "transcript",
+    answer_id: Optional[str] = None
+):
+    """
+    Streams answer tokens directly over the persistent WebSocket connection
+    gated by immutable answer_id, prediction_id and distributed generation_version guards.
+    """
+    answer_id = answer_id or str(uuid.uuid4())
+    if _generation_versions.get(session_id, 0) != version:
+        logger.info(f"[WS] Aborting obsolete generation version {version} for session {session_id}")
+        return
+
+    start_time = time.time()
+    accumulated_chunks = []
+    seq = 0
+
+    try:
+        from app.db.database import SessionLocal
+        from app.services.context_service import build_session_context
+        from app.services.ai_service import stream_llm
+
+        async with SessionLocal() as db_session:
+            sid = uuid.UUID(session_id) if len(session_id) == 36 else None
+            ctx_dict = await build_session_context(session_id=sid, latest_question=question, db=db_session)
+            sys_prompt = ctx_dict.get("sys_prompt") or ""
+            context_prompt = ctx_dict.get("context_prompt") or question
+            resolved_model = model or ctx_dict.get("model") or "gemini-3.8-flash"
+
+        # Emit answer.started event through serialized queue
+        await send_ws_event(session_id, {
+            "protocol_version": "2.0",
+            "event_id": str(uuid.uuid4()),
+            "event": "answer.started",
+            "session_id": session_id,
+            "answer_id": answer_id,
+            "prediction_id": prediction_id,
+            "generation_version": version,
+            "model": resolved_model
+        }, client_ws=client_ws)
+
+        async for chunk in stream_llm(prompt=context_prompt, system_prompt=sys_prompt, model=resolved_model):
+            # STALE TOKEN GUARD: if prediction was superseded or cancelled mid-stream, drop immediately
+            if _generation_versions.get(session_id, 0) != version:
+                logger.info(f"[WS] Dropping stale token for superseded version {version} in session {session_id}")
+                return
+
+            seq += 1
+            accumulated_chunks.append(chunk)
+            await send_ws_event(session_id, {
+                "protocol_version": "2.0",
+                "event_id": str(uuid.uuid4()),
+                "event": "answer.chunk",
+                "session_id": session_id,
+                "answer_id": answer_id,
+                "prediction_id": prediction_id,
+                "generation_version": version,
+                "seq": seq,
+                "text": chunk
+            }, client_ws=client_ws)
+
+        duration_ms = (time.time() - start_time) * 1000
+        full_answer = "".join(accumulated_chunks)
+
+        # Emit answer.completed event
+        await send_ws_event(session_id, {
+            "protocol_version": "2.0",
+            "event_id": str(uuid.uuid4()),
+            "event": "answer.completed",
+            "session_id": session_id,
+            "answer_id": answer_id,
+            "prediction_id": prediction_id,
+            "generation_version": version,
+            "full_answer": full_answer,
+            "tokens": max(1, len(full_answer) // 4),
+            "duration_ms": duration_ms
+        }, client_ws=client_ws)
+
+        # Decoupled persistence: save finalized QA exchange to PostgreSQL WITH DISTRIBUTED ATOMIC VERSION GUARD
+        if full_answer:
+            async def _persist_qa(target_version: int, target_prediction_id: str, target_answer_id: str):
+                try:
+                    # ATOMIC CHECK 1: Ensure Redis generation version is STILL current across all workers
+                    active_redis_v = await redis_cache.get_generation_version(session_id)
+                    if (active_redis_v > 0 and active_redis_v != target_version) or _generation_versions.get(session_id, 0) != target_version:
+                        logger.info(f"[WS:Persist] Multi-worker atomic guard rejected stale QA persist v{target_version} (redis_active={active_redis_v})")
+                        return
+
+                    from app.db.database import SessionLocal
+                    from app.db.repositories import QARepository
+                    async with SessionLocal() as db:
+                        # ATOMIC CHECK 2: Re-verify right before committing transaction
+                        active_redis_v2 = await redis_cache.get_generation_version(session_id)
+                        if (active_redis_v2 > 0 and active_redis_v2 != target_version) or _generation_versions.get(session_id, 0) != target_version:
+                            logger.info(f"[WS:Persist] Multi-worker race detected! Discarding commit for superseded v{target_version}")
+                            return
+
+                        qa_repo = QARepository(db)
+                        await qa_repo.create(
+                            session_id=uuid.UUID(session_id) if len(session_id) == 36 else uuid.uuid4(),
+                            question=question,
+                            answer=full_answer,
+                            source_type=source_type
+                        )
+                        await db.commit()
+                        logger.info(f"[WS:Persist] Atomically committed QA exchange for answer {target_answer_id} v{target_version}")
+                except Exception as p_err:
+                    logger.warning(f"Error persisting QA to DB: {p_err}")
+
+            asyncio.create_task(_persist_qa(version, prediction_id, answer_id))
+
+    except asyncio.CancelledError:
+        logger.info(f"[WS] Generation task {prediction_id} v{version} cancelled successfully.")
+    except Exception as e:
+        logger.error(f"[WS] Error in stream_answer_over_websocket: {e}", exc_info=True)
+        try:
+            await send_ws_event(session_id, {
+                "event": "error",
+                "code": "GENERATION_FAILED",
+                "message": str(e),
+                "session_id": session_id
+            }, client_ws=client_ws)
+        except Exception:
+            pass
+
 
 async def run_background_pipeline(session_id: str, transcript_text: str, client_ws: WebSocket, pause_duration: float = 0.0):
     now = time.time()
@@ -199,6 +354,29 @@ async def _session_is_software(session_id: str) -> bool:
 
 async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
     await client_ws.accept()
+
+    # Dedicated Single-Writer Outbound Queue with Bounded Backpressure
+    outbound_queue = asyncio.Queue(maxsize=150)
+    _outbound_queues[session_id] = outbound_queue
+
+    async def dedicated_writer_loop():
+        """Single dedicated coroutine to sequentially write all frames to client_ws with bounded backpressure."""
+        try:
+            while True:
+                payload = await outbound_queue.get()
+                if payload is None:
+                    break
+                try:
+                    await client_ws.send_json(payload)
+                except Exception as ws_write_err:
+                    logger.debug(f"[WS:Writer] Write error: {ws_write_err}")
+                    break
+                finally:
+                    outbound_queue.task_done()
+        except asyncio.CancelledError:
+            pass
+
+    writer_task = asyncio.create_task(dedicated_writer_loop())
     
     # Extract language from query params (e.g. ?language=hi or ?lang=te)
     requested_lang = (
@@ -287,6 +465,22 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                                 continue
                             transcript = correct_transcript(transcript, software)
 
+                        # Predictive Question Engine: Live speculation on interim speech tokens
+                        if not bool(data.get("is_final")) and len(transcript.split()) >= 3:
+                            try:
+                                from app.services.predictive_engine import predictive_engine
+                                pred = predictive_engine.predict_from_interim(transcript)
+                                if pred.get("predicted") and pred.get("confidence", 0) >= 0.50:
+                                    await client_ws.send_json({
+                                        "type": "predictive_preview",
+                                        "predicted_question": pred["question"],
+                                        "confidence": pred["confidence"],
+                                        "category": pred["category"],
+                                        "intent": pred["intent"]
+                                    })
+                            except Exception as pred_err:
+                                logger.debug(f"[PredictivePreview] Skipped interim speculation: {pred_err}")
+
                             is_final = (msg_type == "AddTranscript")
                             # In Speechmatics, AddTranscript is always a complete finalized segment
                             speech_final = is_final
@@ -336,10 +530,85 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                         elif "text" in msg and msg["text"]:
                             try:
                                 data = json.loads(msg["text"])
-                                if isinstance(data, dict) and data.get("type") == "KeepAlive":
-                                    await dg_ws.send(json.dumps({"type": "KeepAlive"}))
-                            except Exception:
-                                pass
+                                if isinstance(data, dict):
+                                    evt_name = data.get("event") or data.get("type") or data.get("action", "")
+
+                                    # 1. Answer Request over WebSocket (Unified Gateway)
+                                    if evt_name in ("answer.request", "request_answer"):
+                                        question_text = data.get("question") or ""
+                                        model_req = data.get("model")
+                                        pred_id = data.get("prediction_id") or str(uuid.uuid4())
+                                        ans_id = data.get("answer_id") or str(uuid.uuid4())
+                                        curr_ver = await redis_cache.increment_generation_version(session_id)
+                                        _generation_versions[session_id] = curr_ver
+
+                                        # Cancel any previously running answer generation for this session
+                                        if session_id in _active_generation_tasks:
+                                            old_gen = _active_generation_tasks.pop(session_id, None)
+                                            if old_gen and not old_gen.done():
+                                                old_gen.cancel()
+
+                                        gen_task = asyncio.create_task(
+                                            stream_answer_over_websocket(
+                                                session_id=session_id,
+                                                question=question_text,
+                                                model=model_req,
+                                                client_ws=client_ws,
+                                                prediction_id=pred_id,
+                                                version=curr_ver,
+                                                source_type=data.get("source_type", "transcript"),
+                                                answer_id=ans_id
+                                            )
+                                        )
+                                        _active_generation_tasks[session_id] = gen_task
+                                        await client_ws.send_json({
+                                            "protocol_version": "2.0",
+                                            "event_id": str(uuid.uuid4()),
+                                            "event": "ack",
+                                            "reply_to": "answer.request",
+                                            "status": "started",
+                                            "answer_id": ans_id,
+                                            "prediction_id": pred_id,
+                                            "generation_version": curr_ver
+                                        })
+
+                                    # 2. Prediction / Answer Cancellation (Stale Token Guard)
+                                    elif evt_name in ("prediction.cancel", "answer.cancel", "cancel", "abort", "cancel_stream"):
+                                        curr_ver = await redis_cache.increment_generation_version(session_id)
+                                        _generation_versions[session_id] = curr_ver
+                                        if session_id in _active_generation_tasks:
+                                            old_gen = _active_generation_tasks.pop(session_id, None)
+                                            if old_gen and not old_gen.done():
+                                                old_gen.cancel()
+                                        if session_id in _active_analysis_tasks:
+                                            old_task = _active_analysis_tasks.pop(session_id, None)
+                                            if old_task and not old_task.done():
+                                                old_task.cancel()
+                                        await client_ws.send_json({
+                                            "protocol_version": "2.0",
+                                            "event_id": str(uuid.uuid4()),
+                                            "event": "prediction.cancelled",
+                                            "session_id": session_id,
+                                            "prediction_id": data.get("prediction_id"),
+                                            "generation_version": curr_ver
+                                        })
+
+                                    # 3. Heartbeat / KeepAlive
+                                    elif evt_name in ("heartbeat", "ping"):
+                                        await client_ws.send_json({"event": "heartbeat", "timestamp": time.time()})
+                                    elif evt_name == "KeepAlive":
+                                        await dg_ws.send(json.dumps({"type": "KeepAlive"}))
+
+                                    # 4. Session Start Acknowledgement
+                                    elif evt_name in ("session.start", "init"):
+                                        await client_ws.send_json({
+                                            "event": "ack",
+                                            "reply_to": "session.start",
+                                            "status": "ready",
+                                            "session_id": session_id
+                                        })
+                            except Exception as text_err:
+                                logger.debug(f"Error parsing client text frame: {text_err}")
                 except WebSocketDisconnect:
                     pass
                 except Exception as e:
@@ -412,6 +681,22 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                             continue
                         # Role-aware fix-ups ("hoops" -> "OOPS" for software roles) before the candidate sees it.
                         transcript = correct_transcript(transcript, software)
+
+                        # Predictive Question Engine: Live speculation on interim speech tokens
+                        if not bool(data.get("is_final")) and len(transcript.split()) >= 3:
+                            try:
+                                from app.services.predictive_engine import predictive_engine
+                                pred = predictive_engine.predict_from_interim(transcript)
+                                if pred.get("predicted") and pred.get("confidence", 0) >= 0.50:
+                                    await client_ws.send_json({
+                                        "type": "predictive_preview",
+                                        "predicted_question": pred["question"],
+                                        "confidence": pred["confidence"],
+                                        "category": pred["category"],
+                                        "intent": pred["intent"]
+                                    })
+                            except Exception as pred_err:
+                                logger.debug(f"[PredictivePreview] Skipped interim speculation: {pred_err}")
 
                         # Properly distinguish the two Deepgram finality signals:
                         # is_final: This segment/endpoint is finalized (can happen multiple times per sentence)
@@ -487,6 +772,8 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
         except Exception:
             pass
     finally:
+        writer_task.cancel()
+        _outbound_queues.pop(session_id, None)
         await redis_cache.track_websocket(session_id, client_id, register=False)
 
 @router.websocket("/ws/transcribe/{session_id}")

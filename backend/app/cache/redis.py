@@ -152,6 +152,33 @@ class RedisCache:
         await self._del(key)
 
     # ------------------------------------------------------------------
+    # Predictive Question & RAG Cache
+    # ------------------------------------------------------------------
+    async def get_predictive_cache(self, session_id: str) -> Optional[Dict[str, Any]]:
+        raw = self._local_cache.get(f"predictive:{session_id}")
+        if raw is not None:
+            return raw if isinstance(raw, dict) else json.loads(raw)
+        return None
+
+    async def set_predictive_cache(
+        self, session_id: str, data: Dict[str, Any], expire_seconds: int = 120
+    ):
+        self._local_cache.set(f"predictive:{session_id}", data, ttl_seconds=expire_seconds)
+
+    # ------------------------------------------------------------------
+    # Distributed Generation Version Guard (Multi-worker atomicity)
+    # ------------------------------------------------------------------
+    async def get_generation_version(self, session_id: str) -> int:
+        val = await self._get(f"gen_ver:{session_id}")
+        return int(val) if val is not None else 0
+
+    async def increment_generation_version(self, session_id: str) -> int:
+        current = await self.get_generation_version(session_id)
+        new_val = current + 1
+        await self._set(f"gen_ver:{session_id}", str(new_val), ttl=86400)
+        return new_val
+
+    # ------------------------------------------------------------------
     # WebSocket tracking (thread-safe in-memory)
     # ------------------------------------------------------------------
     async def track_websocket(

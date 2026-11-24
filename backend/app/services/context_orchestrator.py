@@ -357,20 +357,32 @@ class ContextOrchestrator:
         # Custom prompts are NOT mixed into reference material: they are returned separately
         # and placed in the system prompt by prompt_builder.build_system_prompt().
 
-        # 4. Session Follow-Up Context Awareness
+        # 4. Hybrid Session Context (Recent 2 verbatim turns + Rolling Summary of earlier turns)
         previous_str = "None."
         if previous_qas:
             followup_triggers = ["why", "how", "what was", "biggest challenge", "tradeoff", "elaborate", "scale", "edge case", "disagree"]
             is_followup = any(t in " ".join(search_terms).lower() for t in followup_triggers)
             last_qa = previous_qas[-1]
+
+            # Verbatim recent turns (up to 2)
+            recent_turns = previous_qas[-2:]
+            recent_str = "\n".join([f"Q: {qa['question']}\nA: {qa['answer'][:220]}..." for qa in recent_turns])
+
+            # Earlier turns (>2) condensed into an incremental rolling summary to preserve older context
+            earlier_turns = previous_qas[:-2]
+            summary_str = ""
+            if earlier_turns:
+                earlier_topics = [f"- Earlier Topic: '{q['question'][:70]}' (Candidate key point: {q['answer'][:80]}...)" for q in earlier_turns]
+                summary_str = "[Rolling Summary of Earlier Interview Turns]:\n" + "\n".join(earlier_topics) + "\n\n"
+
             if is_followup and last_qa:
                 previous_str = (
-                    f"[Follow-Up Note: Interviewer is following up on previous topic]\n"
+                    f"{summary_str}[Follow-Up Note: Interviewer is following up on previous topic]\n"
                     f"Previous Question: {last_qa['question']}\n"
                     f"Candidate's Previous Point: {last_qa['answer'][:250]}..."
                 )
             else:
-                previous_str = "\n".join([f"Q: {qa['question']}\nA: {qa['answer'][:200]}" for qa in previous_qas[-2:]])
+                previous_str = f"{summary_str}{recent_str}"
 
         # 5. Reasoning Focus logic
         reasoning_focus = "General technical review and validation."
