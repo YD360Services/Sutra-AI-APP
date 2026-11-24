@@ -166,17 +166,41 @@ class RedisCache:
         self._local_cache.set(f"predictive:{session_id}", data, ttl_seconds=expire_seconds)
 
     # ------------------------------------------------------------------
-    # Distributed Generation Version Guard (Multi-worker atomicity)
+    # Distributed Generation & Question Version Guard (LLD v1.3 Valkey)
     # ------------------------------------------------------------------
     async def get_generation_version(self, session_id: str) -> int:
         val = await self._get(f"gen_ver:{session_id}")
-        return int(val) if val is not None else 0
+        return int(val) if val is not None else 1
 
     async def increment_generation_version(self, session_id: str) -> int:
         current = await self.get_generation_version(session_id)
         new_val = current + 1
         await self._set(f"gen_ver:{session_id}", str(new_val), ttl=86400)
         return new_val
+
+    async def get_question_version(self, session_id: str) -> int:
+        val = await self._get(f"q_ver:{session_id}")
+        return int(val) if val is not None else 1
+
+    async def increment_question_version(self, session_id: str) -> int:
+        current = await self.get_question_version(session_id)
+        new_val = current + 1
+        await self._set(f"q_ver:{session_id}", str(new_val), ttl=86400)
+        return new_val
+
+    async def cancel_generation(self, session_id: str, generation_id: Optional[str] = None) -> int:
+        """
+        Increments the session's generation_version to invalidate in-flight generators.
+        Optionally sets a direct cancellation flag for generation_id.
+        """
+        new_gen_ver = await self.increment_generation_version(session_id)
+        if generation_id:
+            await self._set(f"cancelled_gen:{generation_id}", "1", ttl=300)
+        return new_gen_ver
+
+    async def is_generation_cancelled(self, generation_id: str) -> bool:
+        flag = await self._get(f"cancelled_gen:{generation_id}")
+        return flag == "1"
 
     # ------------------------------------------------------------------
     # WebSocket tracking (thread-safe in-memory)
@@ -200,3 +224,29 @@ class RedisCache:
 
 
 redis_cache = RedisCache()
+
+class ValkeySessionCoordinator:
+    """
+    LLD v1.3 State Coordinator for Render Key Value (Valkey) and in-memory caches.
+    Ensures monotonic question and generation lifecycles across distributed workers.
+    """
+    @staticmethod
+    async def get_state(session_id: str):
+        q_v = await redis_cache.get_question_version(session_id)
+        g_v = await redis_cache.get_generation_version(session_id)
+        return (q_v, g_v)
+
+    @staticmethod
+    async def bump_question_version(session_id: str):
+        q_v = await redis_cache.increment_question_version(session_id)
+        g_v = await redis_cache.increment_generation_version(session_id)
+        return (q_v, g_v)
+
+    @staticmethod
+    async def cancel_generation(session_id: str, generation_id: Optional[str] = None):
+        return await redis_cache.cancel_generation(session_id, generation_id)
+
+    @staticmethod
+    async def is_cancelled(generation_id: str) -> bool:
+        return await redis_cache.is_generation_cancelled(generation_id)
+

@@ -10,7 +10,7 @@ import time
 from app.core.config import settings
 from app.services.deepgram_service import DeepgramService
 from app.services.transcript_vocab import correct_transcript, is_software_role, keyterms
-from app.cache.redis import redis_cache
+from app.cache.redis import redis_cache, ValkeySessionCoordinator
 from app.services.transcript_intelligence import transcript_engine
 from app.services.context_orchestrator import context_orchestrator
 from app.services.prompt_builder import prompt_builder
@@ -24,15 +24,32 @@ _active_analysis_tasks: dict = {}
 _active_generation_tasks: dict = {}
 _generation_versions: dict = {}
 _outbound_queues: dict = {}  # session_id -> asyncio.Queue for single-writer serialization
+_session_sequences: dict = {} # session_id -> int for strictly increasing packet sequence
 _last_run_time: dict = {}
 # Per-session last transcript timestamp for pause duration detection
 _last_transcript_time: dict = {}
 
+def _get_next_seq(session_id: str) -> int:
+    current = _session_sequences.get(session_id, 0) + 1
+    _session_sequences[session_id] = current
+    return current
+
 async def send_ws_event(session_id: str, payload: dict, client_ws: Optional[WebSocket] = None):
     """
     Serializes all outbound WebSocket events through a dedicated bounded queue,
-    preventing socket send collisions, interleaved frames, and race conditions.
+    enforcing LLD v1.3 envelope structure, sequence monotonicity, and preventing race conditions.
     """
+    if "protocol_version" not in payload:
+        payload["protocol_version"] = 1
+    if "event_id" not in payload:
+        payload["event_id"] = str(uuid.uuid4())
+    if "session_id" not in payload:
+        payload["session_id"] = session_id
+    if "sequence" not in payload:
+        payload["sequence"] = _get_next_seq(session_id)
+    if "created_at" not in payload:
+        payload["created_at"] = time.time()
+
     queue = _outbound_queues.get(session_id)
     if queue:
         try:
@@ -55,15 +72,20 @@ async def stream_answer_over_websocket(
     prediction_id: str,
     version: int,
     source_type: str = "transcript",
-    answer_id: Optional[str] = None
+    answer_id: Optional[str] = None,
+    question_id: Optional[str] = None,
+    is_provisional: bool = False
 ):
     """
     Streams answer tokens directly over the persistent WebSocket connection
-    gated by immutable answer_id, prediction_id and distributed generation_version guards.
+    governed by LLD v1.3 envelope, provisional/final event transitions, and Valkey distributed state.
     """
     answer_id = answer_id or str(uuid.uuid4())
-    if _generation_versions.get(session_id, 0) != version:
-        logger.info(f"[WS] Aborting obsolete generation version {version} for session {session_id}")
+    question_id = question_id or str(uuid.uuid4())
+
+    active_q_v, active_g_v = await ValkeySessionCoordinator.get_state(session_id)
+    if active_g_v != version or _generation_versions.get(session_id, 0) != version:
+        logger.info(f"[WS] Aborting obsolete generation version {version} (active={active_g_v}) for session {session_id}")
         return
 
     start_time = time.time()
@@ -82,70 +104,122 @@ async def stream_answer_over_websocket(
             context_prompt = ctx_dict.get("context_prompt") or question
             resolved_model = model or ctx_dict.get("model") or "gemini-3.8-flash"
 
-        # Emit answer.started event through serialized queue
+        # Emit started event (provisional vs final)
+        start_event = "answer.provisional.started" if is_provisional else "answer.final.started"
         await send_ws_event(session_id, {
-            "protocol_version": "2.0",
-            "event_id": str(uuid.uuid4()),
-            "event": "answer.started",
+            "protocol_version": 1,
+            "event": start_event,
             "session_id": session_id,
-            "answer_id": answer_id,
+            "question_id": question_id,
+            "question_version": active_q_v,
             "prediction_id": prediction_id,
+            "generation_id": answer_id,
+            "answer_id": answer_id,
             "generation_version": version,
-            "model": resolved_model
+            "model": resolved_model,
+            "payload": {
+                "model": resolved_model,
+                "is_provisional": is_provisional,
+                "source_type": source_type
+            }
         }, client_ws=client_ws)
 
         async for chunk in stream_llm(prompt=context_prompt, system_prompt=sys_prompt, model=resolved_model):
-            # STALE TOKEN GUARD: if prediction was superseded or cancelled mid-stream, drop immediately
-            if _generation_versions.get(session_id, 0) != version:
+            # STALE TOKEN GUARD: if prediction or generation was superseded/cancelled mid-stream, abort immediately
+            chk_q_v, chk_g_v = await ValkeySessionCoordinator.get_state(session_id)
+            if chk_g_v != version or _generation_versions.get(session_id, 0) != version:
                 logger.info(f"[WS] Dropping stale token for superseded version {version} in session {session_id}")
+                if is_provisional:
+                    await send_ws_event(session_id, {
+                        "protocol_version": 1,
+                        "event": "answer.provisional.cancelled",
+                        "session_id": session_id,
+                        "question_id": question_id,
+                        "question_version": chk_q_v,
+                        "generation_id": answer_id,
+                        "generation_version": version,
+                        "payload": {"reason": "superseded"}
+                    }, client_ws=client_ws)
                 return
 
             seq += 1
             accumulated_chunks.append(chunk)
+
+            delta_event = "answer.provisional.delta" if is_provisional else "answer.final.delta"
             await send_ws_event(session_id, {
-                "protocol_version": "2.0",
-                "event_id": str(uuid.uuid4()),
-                "event": "answer.chunk",
+                "protocol_version": 1,
+                "event": delta_event,
                 "session_id": session_id,
-                "answer_id": answer_id,
+                "question_id": question_id,
+                "question_version": chk_q_v,
                 "prediction_id": prediction_id,
+                "generation_id": answer_id,
+                "answer_id": answer_id,
                 "generation_version": version,
                 "seq": seq,
-                "text": chunk
+                "text": chunk,
+                "payload": {
+                    "delta_text": chunk,
+                    "accumulated_length": len("".join(accumulated_chunks)),
+                    "is_speculative": is_provisional
+                }
             }, client_ws=client_ws)
 
         duration_ms = (time.time() - start_time) * 1000
         full_answer = "".join(accumulated_chunks)
 
-        # Emit answer.completed event
-        await send_ws_event(session_id, {
-            "protocol_version": "2.0",
-            "event_id": str(uuid.uuid4()),
-            "event": "answer.completed",
-            "session_id": session_id,
-            "answer_id": answer_id,
-            "prediction_id": prediction_id,
-            "generation_version": version,
-            "full_answer": full_answer,
-            "tokens": max(1, len(full_answer) // 4),
-            "duration_ms": duration_ms
-        }, client_ws=client_ws)
+        if is_provisional:
+            await send_ws_event(session_id, {
+                "protocol_version": 1,
+                "event": "answer.provisional.updated",
+                "session_id": session_id,
+                "question_id": question_id,
+                "question_version": active_q_v,
+                "generation_id": answer_id,
+                "generation_version": version,
+                "payload": {
+                    "full_text": full_answer,
+                    "tokens": max(1, len(full_answer) // 4),
+                    "duration_ms": duration_ms
+                }
+            }, client_ws=client_ws)
+        else:
+            await send_ws_event(session_id, {
+                "protocol_version": 1,
+                "event": "answer.final.completed",
+                "session_id": session_id,
+                "question_id": question_id,
+                "question_version": active_q_v,
+                "prediction_id": prediction_id,
+                "generation_id": answer_id,
+                "answer_id": answer_id,
+                "generation_version": version,
+                "full_answer": full_answer,
+                "tokens": max(1, len(full_answer) // 4),
+                "duration_ms": duration_ms,
+                "payload": {
+                    "full_text": full_answer,
+                    "tokens": max(1, len(full_answer) // 4),
+                    "duration_ms": duration_ms,
+                    "model_resolved": resolved_model
+                }
+            }, client_ws=client_ws)
 
         # Decoupled persistence: save finalized QA exchange to PostgreSQL WITH DISTRIBUTED ATOMIC VERSION GUARD
-        if full_answer:
+        if full_answer and not is_provisional:
             async def _persist_qa(target_version: int, target_prediction_id: str, target_answer_id: str):
                 try:
-                    # ATOMIC CHECK 1: Ensure Redis generation version is STILL current across all workers
-                    active_redis_v = await redis_cache.get_generation_version(session_id)
+                    # ATOMIC CHECK 1: Ensure Valkey generation version is STILL current across all workers
+                    _, active_redis_v = await ValkeySessionCoordinator.get_state(session_id)
                     if (active_redis_v > 0 and active_redis_v != target_version) or _generation_versions.get(session_id, 0) != target_version:
-                        logger.info(f"[WS:Persist] Multi-worker atomic guard rejected stale QA persist v{target_version} (redis_active={active_redis_v})")
+                        logger.info(f"[WS:Persist] Multi-worker atomic guard rejected stale QA persist v{target_version} (valkey_active={active_redis_v})")
                         return
 
                     from app.db.database import SessionLocal
                     from app.db.repositories import QARepository
                     async with SessionLocal() as db:
                         # ATOMIC CHECK 2: Re-verify right before committing transaction
-                        active_redis_v2 = await redis_cache.get_generation_version(session_id)
+                        _, active_redis_v2 = await ValkeySessionCoordinator.get_state(session_id)
                         if (active_redis_v2 > 0 and active_redis_v2 != target_version) or _generation_versions.get(session_id, 0) != target_version:
                             logger.info(f"[WS:Persist] Multi-worker race detected! Discarding commit for superseded v{target_version}")
                             return
@@ -572,9 +646,9 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                                             "generation_version": curr_ver
                                         })
 
-                                    # 2. Prediction / Answer Cancellation (Stale Token Guard)
-                                    elif evt_name in ("prediction.cancel", "answer.cancel", "cancel", "abort", "cancel_stream"):
-                                        curr_ver = await redis_cache.increment_generation_version(session_id)
+                                    # 2. Prediction / Answer Cancellation (LLD v1.3 generation.cancel)
+                                    elif evt_name in ("generation.cancel", "prediction.cancel", "answer.cancel", "cancel", "abort", "cancel_stream"):
+                                        curr_ver = await ValkeySessionCoordinator.cancel_generation(session_id, data.get("generation_id"))
                                         _generation_versions[session_id] = curr_ver
                                         if session_id in _active_generation_tasks:
                                             old_gen = _active_generation_tasks.pop(session_id, None)
@@ -584,29 +658,36 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                                             old_task = _active_analysis_tasks.pop(session_id, None)
                                             if old_task and not old_task.done():
                                                 old_task.cancel()
-                                        await client_ws.send_json({
-                                            "protocol_version": "2.0",
-                                            "event_id": str(uuid.uuid4()),
-                                            "event": "prediction.cancelled",
+                                        await send_ws_event(session_id, {
+                                            "protocol_version": 1,
+                                            "event": "answer.provisional.cancelled",
                                             "session_id": session_id,
                                             "prediction_id": data.get("prediction_id"),
-                                            "generation_version": curr_ver
-                                        })
+                                            "generation_id": data.get("generation_id"),
+                                            "generation_version": curr_ver,
+                                            "payload": {"reason": data.get("reason", "user_cancelled")}
+                                        }, client_ws=client_ws)
 
-                                    # 3. Heartbeat / KeepAlive
-                                    elif evt_name in ("heartbeat", "ping"):
-                                        await client_ws.send_json({"event": "heartbeat", "timestamp": time.time()})
+                                    # 3. Heartbeat / KeepAlive (LLD v1.3 heartbeat.ping / pong)
+                                    elif evt_name in ("heartbeat.ping", "heartbeat", "ping"):
+                                        await send_ws_event(session_id, {
+                                            "protocol_version": 1,
+                                            "event": "heartbeat.pong",
+                                            "session_id": session_id,
+                                            "payload": {"timestamp": time.time()}
+                                        }, client_ws=client_ws)
                                     elif evt_name == "KeepAlive":
                                         await dg_ws.send(json.dumps({"type": "KeepAlive"}))
 
-                                    # 4. Session Start Acknowledgement
+                                    # 4. Session Start Acknowledgement (LLD v1.3 session.start)
                                     elif evt_name in ("session.start", "init"):
-                                        await client_ws.send_json({
+                                        await send_ws_event(session_id, {
+                                            "protocol_version": 1,
                                             "event": "ack",
                                             "reply_to": "session.start",
-                                            "status": "ready",
-                                            "session_id": session_id
-                                        })
+                                            "session_id": session_id,
+                                            "payload": {"status": "ready", "session_id": session_id}
+                                        }, client_ws=client_ws)
                             except Exception as text_err:
                                 logger.debug(f"Error parsing client text frame: {text_err}")
                 except WebSocketDisconnect:

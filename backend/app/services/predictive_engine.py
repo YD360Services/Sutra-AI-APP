@@ -122,4 +122,27 @@ class PredictiveQuestionEngine:
             logger.debug(f"[PredictiveEngine] Pre-warm caching skipped: {e}")
             return None
 
+    def compute_fingerprint(self, question: str, context: Optional[str] = None, policy_version: int = 1) -> str:
+        """
+        Computes SHA256 context/input fingerprint for the LLD v1.3 Promotion Gate.
+        A provisional answer can only be promoted to final answer if fingerprints match exactly.
+        """
+        import hashlib
+        raw = f"{question.strip().lower()}|{(context or '').strip()}|{policy_version}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def can_promote_provisional(
+        self,
+        provisional_fingerprint: str,
+        final_question: str,
+        final_context: Optional[str] = None,
+        policy_version: int = 1
+    ) -> bool:
+        """
+        Evaluates exact equality invariant between provisional and final intent.
+        Returns True only if the candidate's provisional context matches the final question.
+        """
+        final_fingerprint = self.compute_fingerprint(final_question, final_context, policy_version)
+        return provisional_fingerprint == final_fingerprint
+
 predictive_engine = PredictiveQuestionEngine()
