@@ -24,16 +24,27 @@ def setup_database_session(database_url: str):
     
     # SQLite doesn't support pool_pre_ping or pool size settings in the same way
     connect_args = {}
+    engine_kwargs = {
+        "pool_pre_ping": not is_sqlite,
+        "future": True,
+    }
     if is_sqlite:
         connect_args["check_same_thread"] = False
     else:
-        connect_args["timeout"] = 2
-        
+        connect_args["timeout"] = 5
+        connect_args["server_settings"] = {
+            "statement_timeout": str(settings.DB_STATEMENT_TIMEOUT_MS),
+            "lock_timeout": str(settings.DB_LOCK_TIMEOUT_MS),
+        }
+        engine_kwargs["pool_size"] = settings.DB_POOL_SIZE
+        engine_kwargs["max_overflow"] = settings.DB_MAX_OVERFLOW
+        engine_kwargs["pool_recycle"] = 1800
+        engine_kwargs["pool_timeout"] = 30
+
     engine = create_async_engine(
         database_url,
-        pool_pre_ping=not is_sqlite,
         connect_args=connect_args,
-        future=True
+        **engine_kwargs,
     )
     SessionLocal = async_sessionmaker(
         bind=engine,
@@ -42,6 +53,17 @@ def setup_database_session(database_url: str):
         autocommit=False,
         autoflush=False
     )
+
+
+async def close_database_pool():
+    """Gracefully disposes the SQLAlchemy async engine connection pool on shutdown."""
+    global engine
+    if engine is not None:
+        try:
+            await engine.dispose()
+            logger.info("Database connection pool disposed cleanly.")
+        except Exception as e:
+            logger.warning(f"Error disposing database pool: {e}")
 
 # Setup initial primary engine
 setup_database_session(settings.DATABASE_URL)

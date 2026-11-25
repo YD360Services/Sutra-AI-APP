@@ -30,12 +30,14 @@ async def lifespan(app: FastAPI):
     # Startup actions
     setup_logging()
     logger.info("Initializing Roundmate AI backend services...")
+    settings.validate_critical_config(fail_fast=(settings.ENVIRONMENT in ("production", "staging")))
+    logger.info(f"Config summary: {settings.redacted_summary()}")
     
     # Connect to Redis
     await redis_cache.connect()
     
     # Initialize database tables with fallback support
-    from app.db.database import verify_and_initialize_db
+    from app.db.database import verify_and_initialize_db, close_database_pool
     await verify_and_initialize_db()
     
     yield
@@ -43,6 +45,7 @@ async def lifespan(app: FastAPI):
     # Shutdown actions
     logger.info("Cleaning up backend resources...")
     await redis_cache.disconnect()
+    await close_database_pool()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -82,21 +85,27 @@ app.add_middleware(EnterpriseGatewayMiddleware)
 # Register legacy websockets directly at root for current frontend compatibility
 app.include_router(websockets_router)
 
-# Register REST endpoints under the API prefix
+# Register REST endpoints under both /api (legacy compatibility) and /api/v1 (LLD v1.3 contract)
 app.include_router(health_router, tags=["Health"])
-app.include_router(sessions_router, prefix=settings.API_V1_STR, tags=["Sessions"])
-app.include_router(transcripts_router, prefix=settings.API_V1_STR, tags=["Transcripts"])
-app.include_router(answers_router, prefix=settings.API_V1_STR, tags=["Answers"])
-app.include_router(screenshots_router, prefix=settings.API_V1_STR, tags=["Screenshots"])
-app.include_router(resumes_router, prefix=settings.API_V1_STR, tags=["Resumes"])
-app.include_router(knowledge_router, prefix=settings.API_V1_STR, tags=["Knowledge"])
-app.include_router(jds_router, prefix=settings.API_V1_STR, tags=["Job Descriptions"])
-app.include_router(mock_interviews_router, prefix=settings.API_V1_STR, tags=["Mock Interview"])
-app.include_router(auth_router, prefix=settings.API_V1_STR, tags=["Authentication"])
-app.include_router(admins_router, prefix=settings.API_V1_STR, tags=["Admins"])
-app.include_router(notifications_router, prefix=settings.API_V1_STR, tags=["Notifications"])
-app.include_router(tickets_router, prefix=settings.API_V1_STR, tags=["Support Tickets"])
-app.include_router(platform_health_router, prefix=settings.API_V1_STR, tags=["Platform Health"])
+_rest_routers = [
+    (sessions_router, "Sessions"),
+    (transcripts_router, "Transcripts"),
+    (answers_router, "Answers"),
+    (screenshots_router, "Screenshots"),
+    (resumes_router, "Resumes"),
+    (knowledge_router, "Knowledge"),
+    (jds_router, "Job Descriptions"),
+    (mock_interviews_router, "Mock Interview"),
+    (auth_router, "Authentication"),
+    (admins_router, "Admins"),
+    (notifications_router, "Notifications"),
+    (tickets_router, "Support Tickets"),
+    (platform_health_router, "Platform Health"),
+]
+for _r, _tag in _rest_routers:
+    app.include_router(_r, prefix=settings.API_V1_STR, tags=[_tag])
+    if settings.API_V1_STR != "/api/v1":
+        app.include_router(_r, prefix="/api/v1", tags=[f"{_tag} v1"])
 
 @app.get("/")
 async def root():

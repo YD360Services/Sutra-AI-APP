@@ -9,12 +9,22 @@ logger = logging.getLogger("roundmate.config")
 class Settings(BaseSettings):
     # App Settings
     PROJECT_NAME: str = "Roundmate AI Backend"
+    ENVIRONMENT: str = "local"  # local | test | staging | production
     API_V1_STR: str = "/api"
+    WS_REQUIRE_AUTH: bool = False
     
     # Security
     JWT_SECRET: str = ""
+    JWT_ISSUER: str = "roundmate-auth"
+    JWT_AUDIENCE: str = "roundmate-api"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    
+    # Database Pool & Timeout Settings (LLD v1.3)
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 20
+    DB_STATEMENT_TIMEOUT_MS: int = 15000
+    DB_LOCK_TIMEOUT_MS: int = 5000
     
     # CORS Origins (Explicit domains allowed)
     CORS_ORIGINS: Union[str, List[str]] = [
@@ -142,5 +152,44 @@ class Settings(BaseSettings):
             return json.loads(self.CORS_ORIGINS)
         except Exception:
             return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
+    @staticmethod
+    def _redact(value: str) -> str:
+        if not value:
+            return "<unset>"
+        if len(value) <= 6:
+            return "***"
+        return f"***{value[-4:]}"
+
+    def validate_critical_config(self, fail_fast: bool = False) -> List[str]:
+        """Validates critical configuration for production/staging deployments."""
+        errors: List[str] = []
+        env = (self.ENVIRONMENT or "local").lower()
+        if env in ("production", "staging"):
+            if not self.JWT_SECRET or self.JWT_SECRET.startswith("roundmate-jwt-secret"):
+                errors.append("JWT_SECRET must be set to a strong non-default secret in production/staging.")
+            if not self.DATABASE_URL:
+                errors.append("DATABASE_URL must be configured in production/staging.")
+        if fail_fast and errors:
+            raise RuntimeError("Critical configuration validation failed: " + "; ".join(errors))
+        return errors
+
+    def redacted_summary(self) -> dict:
+        """Returns a safe configuration summary with all secrets redacted."""
+        return {
+            "project_name": self.PROJECT_NAME,
+            "environment": self.ENVIRONMENT,
+            "api_prefix": self.API_V1_STR,
+            "ws_require_auth": self.WS_REQUIRE_AUTH,
+            "jwt_secret": self._redact(self.JWT_SECRET),
+            "database_url": self._redact(self.DATABASE_URL),
+            "gemini_api_key": self._redact(self.GEMINI_API_KEY),
+            "deepgram_api_key": self._redact(self.DEEPGRAM_API_KEY),
+            "openai_api_key": self._redact(self.OPENAI_API_KEY),
+            "anthropic_api_key": self._redact(self.ANTHROPIC_API_KEY),
+            "groq_api_key": self._redact(self.GROQ_API_KEY),
+            "db_pool_size": self.DB_POOL_SIZE,
+            "db_statement_timeout_ms": self.DB_STATEMENT_TIMEOUT_MS,
+        }
 
 settings = Settings()
