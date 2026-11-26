@@ -216,6 +216,49 @@ class RedisCache:
         self._local_cache.set(f"predictive:{session_id}", data, ttl_seconds=expire_seconds)
 
     # ------------------------------------------------------------------
+    # Versioned & Tenant-Scoped Supporting Evidence Cache (LLD v1.3 Item 38)
+    # ------------------------------------------------------------------
+    async def set_versioned_evidence(
+        self,
+        tenant_id: str,
+        key: str,
+        data: Any,
+        source_version: str,
+        context_fingerprint: str,
+        ttl_seconds: int = 300,
+    ) -> None:
+        scoped_key = f"rm:tenant:{tenant_id}:evidence:{key}"
+        envelope = {
+            "data": data,
+            "source_version": source_version,
+            "context_fingerprint": context_fingerprint,
+            "created_at": time.time(),
+        }
+        await self._set(scoped_key, json.dumps(envelope), ttl=ttl_seconds)
+
+    async def get_versioned_evidence(
+        self,
+        tenant_id: str,
+        key: str,
+        expected_source_version: str,
+        expected_fingerprint: str,
+    ) -> Optional[Any]:
+        """Rejects stale or fingerprint-mismatched evidence."""
+        scoped_key = f"rm:tenant:{tenant_id}:evidence:{key}"
+        raw = await self._get(scoped_key)
+        if not raw:
+            return None
+        try:
+            env = json.loads(raw)
+            if env.get("source_version") != expected_source_version:
+                return None
+            if env.get("context_fingerprint") != expected_fingerprint:
+                return None
+            return env.get("data")
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     # Distributed Generation & Question Version Guard (LLD v1.3 Valkey)
     # ------------------------------------------------------------------
     async def get_generation_version(self, session_id: str) -> int:

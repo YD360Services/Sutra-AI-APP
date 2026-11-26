@@ -295,4 +295,33 @@ class TranscriptIntelligenceEngine:
             "vector_query": v_query
         }
 
+    def classify_multi_label_question(self, raw_transcript: str) -> Dict[str, Any]:
+        """
+        LLD v1.3 Item 30: Multi-label question & interviewer intent taxonomy.
+        Separates technical, experience_based, opinion_based, and exploratory labels
+        without requiring an extra LLM call.
+        """
+        norm = self.normalize(raw_transcript)
+        labels: List[Dict[str, Any]] = []
+
+        if any(k in norm for k in ("have you", "tell me about a time", "your project", "did you", "in your experience")):
+            labels.append({"label": "experience_based", "confidence": 0.88})
+        if any(k in norm for k in ("what do you think", "opinion", "prefer", "pros and cons", "better")):
+            labels.append({"label": "opinion_based", "confidence": 0.80})
+        if any(k in norm for k in ("how would you", "suppose", "if you had to", "imagine", "design a")):
+            labels.append({"label": "exploratory", "confidence": 0.85})
+        if self.detect_technologies(norm) or any(k in norm for k in ("explain", "what is", "difference", "how does")):
+            labels.append({"label": "technical", "confidence": 0.90})
+
+        if not labels:
+            labels.append({"label": "technical", "confidence": 0.55})
+
+        ai_test_signal = 0.25 if any(k in norm for k in ("ignore previous", "as an ai", "your prompt")) else 0.0
+        return {
+            "labels": labels,
+            "primary_label": labels[0]["label"],
+            "interviewer_intent": self.detect_intent(norm),
+            "ai_use_test_signal": ai_test_signal,
+        }
+
 transcript_engine = TranscriptIntelligenceEngine()

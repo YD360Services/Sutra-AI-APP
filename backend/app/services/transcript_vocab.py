@@ -101,8 +101,15 @@ _SOFTWARE_CORRECTIONS = [
     (r"poly\s?morph(ism)?", "polymorphism"),
     (r"micro\s?services", "microservices"),
     (r"multi\s?threading", "multithreading"),
+    (r"g\.?\s?r\.?\s?p\.?\s?c(?!\w)", "gRPC"),
+    (r"k\s?8\s?s(?!\w)", "Kubernetes"),
+    (r"fast\s?a\.?\s?p\.?\s?i", "FastAPI"),
+    (r"pie\s?test", "pytest"),
+    (r"pie\s?thon", "Python"),
 ]
 _COMPILED = [(re.compile(rf"(?<!\w)(?:{p})(?!\w)", re.IGNORECASE), r) for p, r in _SOFTWARE_CORRECTIONS]
+
+PROCESSOR_VERSION = "vocab-v1.3"
 
 
 def keyterms(software: bool) -> List[str]:
@@ -117,3 +124,69 @@ def correct_transcript(text: str, software: bool) -> str:
     for pattern, replacement in _COMPILED:
         out = pattern.sub(replacement, out)
     return out
+
+
+def correct_transcript_with_confidence(
+    text: str,
+    software: bool,
+    asr_confidence: float = 1.0,
+    min_asr_confidence: float = 0.35,
+) -> dict:
+    """
+    LLD v1.3 Item 22: Context-aware transcript correction with abstention and provenance.
+    Abstains on non-software roles or ultra-low ASR confidence to avoid harmful rewrites.
+    """
+    if not text:
+        return {
+            "raw_text": text,
+            "corrected_text": text,
+            "changed": False,
+            "abstained": False,
+            "reason": "empty_text",
+            "confidence": asr_confidence,
+            "replacements": [],
+            "processor_version": PROCESSOR_VERSION,
+        }
+
+    if not software:
+        return {
+            "raw_text": text,
+            "corrected_text": text,
+            "changed": False,
+            "abstained": True,
+            "reason": "non_software_role",
+            "confidence": asr_confidence,
+            "replacements": [],
+            "processor_version": PROCESSOR_VERSION,
+        }
+
+    if asr_confidence < min_asr_confidence:
+        return {
+            "raw_text": text,
+            "corrected_text": text,
+            "changed": False,
+            "abstained": True,
+            "reason": f"low_asr_confidence:{asr_confidence:.2f}<{min_asr_confidence}",
+            "confidence": asr_confidence,
+            "replacements": [],
+            "processor_version": PROCESSOR_VERSION,
+        }
+
+    out = text
+    applied = []
+    for pattern, replacement in _COMPILED:
+        matches = pattern.findall(out)
+        if matches:
+            applied.append({"replacement": replacement, "count": len(matches)})
+            out = pattern.sub(replacement, out)
+
+    return {
+        "raw_text": text,
+        "corrected_text": out,
+        "changed": out != text,
+        "abstained": False,
+        "reason": "applied_domain_vocab" if out != text else "no_match",
+        "confidence": asr_confidence,
+        "replacements": applied,
+        "processor_version": PROCESSOR_VERSION,
+    }

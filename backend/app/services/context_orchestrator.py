@@ -473,6 +473,37 @@ class ContextOrchestrator:
 
         return {"resolved": False, "resolved_question": question, "bound_entity": None, "confidence": 0.3}
 
+    async def update_conversation_state(
+        self,
+        session_id: str,
+        active_topic: str,
+        entities: List[str],
+        turn_range: str = "1-1",
+        summary_text: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        LLD v1.3 Item 28: Tracks structured active topic, entities/aliases,
+        turn range, and versioned rolling summary in Valkey/cache.
+        """
+        key = f"rm:session:{session_id}:conv_state"
+        raw = await redis_cache.get_cached_item(key)
+        prev = json.loads(raw) if raw else {"summary_version": 0, "entities": []}
+        merged_entities = list(dict.fromkeys(entities + prev.get("entities", [])))[:15]
+        state = {
+            "active_topic": active_topic,
+            "entities": merged_entities,
+            "turn_range": turn_range,
+            "summary_version": prev.get("summary_version", 0) + 1,
+            "rolling_summary": summary_text if summary_text is not None else prev.get("rolling_summary", ""),
+        }
+        await redis_cache.set_cached_item(key, json.dumps(state), expire_seconds=14400)
+        return state
+
+    async def get_conversation_state(self, session_id: str) -> Dict[str, Any]:
+        key = f"rm:session:{session_id}:conv_state"
+        raw = await redis_cache.get_cached_item(key)
+        return json.loads(raw) if raw else {"active_topic": "", "entities": [], "summary_version": 0, "rolling_summary": ""}
+
 context_orchestrator = ContextOrchestrator()
 
 

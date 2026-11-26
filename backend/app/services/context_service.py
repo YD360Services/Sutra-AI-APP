@@ -60,6 +60,32 @@ async def build_session_context(
         logger.debug(f"[ContextService] Technical RAG retrieval skipped: {e}")
 
     context["role_info"] = role_info_for(session)
+
+    # 4. Wire LLD v1.3 Answerability, Multi-Label Classification, Pronoun Resolution & Manifest (Items 29, 30, 31, 39, 40)
+    import hashlib
+    conv_state = await context_orchestrator.get_conversation_state(str(session_id)) if session_id else {"entities": []}
+    pronoun_res = context_orchestrator.resolve_pronoun_reference(
+        latest_question, active_entities=conv_state.get("entities", [])
+    )
+    answerability = context_orchestrator.classify_answerability_mode(
+        pronoun_res["resolved_question"],
+        candidate_projects_text=context.get("resume_context", ""),
+    )
+    q_class = transcript_engine.classify_multi_label_question(latest_question)
+
+    manifest = {
+        "has_resume": context.get("resume_context") not in ("None loaded.", "", None),
+        "has_jd": context.get("jd_context") not in ("None loaded.", "", None),
+        "has_knowledge": context.get("knowledge_context") not in ("None loaded.", "", None),
+        "answerability_mode": answerability["mode"],
+        "primary_label": q_class["primary_label"],
+    }
+    fp_raw = f"{pronoun_res['resolved_question']}|{context.get('resume_context','')[:200]}|{answerability['mode']}"
+    context["answerability"] = answerability
+    context["question_classification"] = q_class
+    context["resolved_question"] = pronoun_res["resolved_question"]
+    context["source_manifest"] = manifest
+    context["context_fingerprint"] = hashlib.sha256(fp_raw.encode("utf-8")).hexdigest()
     return context
 
 

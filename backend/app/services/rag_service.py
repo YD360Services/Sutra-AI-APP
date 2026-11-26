@@ -244,4 +244,152 @@ class RAGService:
 
         return "\n".join(formatted_lines)
 
+    @staticmethod
+    def compute_document_checksum(text: str) -> str:
+        import hashlib
+        return hashlib.sha256((text or "").strip().encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def reciprocal_rank_fusion(
+        vector_results: List[Dict[str, Any]],
+        lexical_results: List[Dict[str, Any]],
+        k: int = 60,
+    ) -> List[Dict[str, Any]]:
+        """
+        LLD v1.3 Item 36: Reciprocal Rank Fusion (RRF) merging pgvector and PostgreSQL FTS.
+        Handles empty results from either path gracefully.
+        """
+        scores: Dict[str, float] = {}
+        doc_map: Dict[str, Dict[str, Any]] = {}
+
+        for rank, doc in enumerate(vector_results):
+            doc_id = doc["id"]
+            doc_map[doc_id] = doc
+            scores[doc_id] = scores.get(doc_id, 0.0) + (1.0 / (k + rank + 1))
+
+        for rank, doc in enumerate(lexical_results):
+            doc_id = doc["id"]
+            if doc_id not in doc_map:
+                doc_map[doc_id] = doc
+            scores[doc_id] = scores.get(doc_id, 0.0) + (1.0 / (k + rank + 1))
+
+        sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+        fused = []
+        for doc_id in sorted_ids:
+            item = dict(doc_map[doc_id])
+            item["rrf_score"] = round(scores[doc_id], 6)
+            fused.append(item)
+        return fused
+
+    async def retrieve_hybrid(
+        self,
+        db: AsyncSession,
+        query: str,
+        user_id: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        top_k: int = 3,
+        include_public: bool = False,
+        source_types: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        LLD v1.3 Item 36: Hybrid pgvector + FTS retrieval with strict tenant/ACL filtering
+        applied BEFORE ranking and result return.
+        """
+        if not query or not query.strip():
+            return []
+
+        stmt = select(SemanticEmbedding)
+        conditions = []
+        effective_owner = tenant_id or user_id
+        if effective_owner:
+            if include_public:
+                conditions.append(or_(SemanticEmbedding.user_id == str(effective_owner), SemanticEmbedding.user_id.is_(None)))
+            else:
+                conditions.append(SemanticEmbedding.user_id == str(effective_owner))
+        elif not include_public:
+            # Strict ACL guard: unauthenticated queries cannot read private tenant chunks
+            return []
+
+        if source_types:
+            conditions.append(SemanticEmbedding.source_type.in_(source_types))
+        if conditions:
+            stmt = stmt.where(and_(*conditions))
+
+        result = await db.execute(stmt)
+        records = result.scalars().all()
+        if not records:
+            return []
+
+        # Path A: Vector Similarity
+        vec_candidates = []
+        try:
+            query_vector = await embedding_service.get_embedding(query)
+            for r in records:
+                emb = json.loads(r.embedding_json)
+                score = cosine_similarity(query_vector, emb)
+                if score >= 0.25:
+                    vec_candidates.append({
+                        "id": str(r.id),
+                        "text": r.chunk_text,
+                        "source_type": r.source_type,
+                        "source_id": r.source_id,
+                        "user_id": r.user_id,
+                        "score": round(score, 4),
+                        "metadata": json.loads(r.metadata_json) if r.metadata_json else {},
+                    })
+            vec_candidates.sort(key=lambda x: x["score"], reverse=True)
+        except Exception as e:
+            logger.debug(f"[RAGService] Vector path degraded cleanly to FTS-only: {e}")
+
+        # Path B: Lexical FTS
+        search_tokens = [w.lower() for w in re.findall(r"\b\w+\b", query) if len(w) > 2]
+        fts_candidates = []
+        if search_tokens:
+            for r in records:
+                haystack = (r.tsv_content or r.chunk_text).lower()
+                matches = sum(1 for tok in search_tokens if tok in haystack)
+                if matches > 0:
+                    fts_candidates.append({
+                        "id": str(r.id),
+                        "text": r.chunk_text,
+                        "source_type": r.source_type,
+                        "source_id": r.source_id,
+                        "user_id": r.user_id,
+                        "score": round(min(0.95, 0.40 + matches * 0.15), 4),
+                        "metadata": json.loads(r.metadata_json) if r.metadata_json else {},
+                    })
+            fts_candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        fused = self.reciprocal_rank_fusion(vec_candidates[: top_k * 2], fts_candidates[: top_k * 2])
+        return fused[:top_k]
+
+
+class ParallelRetrievalOrchestrator:
+    """
+    LLD v1.3 Item 37: Executes independent retrieval adapters in parallel under a shared deadline
+    so one slow/failing source never blocks live answer generation.
+    """
+
+    @staticmethod
+    async def gather_with_deadline(adapters: Dict[str, Any], timeout_s: float = 0.35) -> Dict[str, Any]:
+        import asyncio
+        names = list(adapters.keys())
+        coros = [adapters[name] for name in names]
+
+        async def _run_all():
+            return await asyncio.gather(*coros, return_exceptions=True)
+
+        results: Dict[str, Any] = {}
+        try:
+            raw_outputs = await asyncio.wait_for(_run_all(), timeout=timeout_s)
+            for name, out in zip(names, raw_outputs):
+                if isinstance(out, Exception):
+                    results[name] = {"status": "failed", "error": str(out), "data": None}
+                else:
+                    results[name] = {"status": "ok", "data": out}
+        except asyncio.TimeoutError:
+            for name in names:
+                results[name] = {"status": "timeout", "data": None}
+        return results
+
 rag_service = RAGService()

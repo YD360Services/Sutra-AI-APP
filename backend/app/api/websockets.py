@@ -8,8 +8,9 @@ import uuid
 import time
 
 from app.core.config import settings
-from app.services.deepgram_service import DeepgramService
-from app.services.transcript_vocab import correct_transcript, is_software_role, keyterms
+from app.services.deepgram_service import DeepgramService, ASRReconnectManager
+from app.services.audio_validator import AudioFrameValidator
+from app.services.transcript_vocab import correct_transcript, correct_transcript_with_confidence, is_software_role, keyterms
 from app.cache.redis import redis_cache, ValkeySessionCoordinator
 from app.services.transcript_intelligence import transcript_engine
 from app.services.context_orchestrator import context_orchestrator
@@ -692,10 +693,15 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
             await client_ws.send_json({"type": "status", "message": "Listening"})
 
             async def browser_to_deepgram():
+                audio_validator = AudioFrameValidator()
                 try:
                     while True:
                         msg = await client_ws.receive()
                         if "bytes" in msg and msg["bytes"]:
+                            val_res = audio_validator.validate_frame(msg["bytes"])
+                            if not val_res.valid:
+                                logger.debug(f"[AudioValidator] Dropping invalid frame in {session_id}: {val_res.reason}")
+                                continue
                             await dg_ws.send(msg["bytes"])
                         elif "text" in msg and msg["text"]:
                             try:
@@ -837,27 +843,42 @@ async def run_websocket_proxy(client_ws: WebSocket, session_id: str):
                             logger.debug(f"[Deepgram] Session {session_id} - {msg_type} event received")
                             continue
 
-                        # Safely extract channel dict (handles single-channel dict, multi-channel list, and non-dict cases)
-                        channel_data = data.get("channel")
-                        if not isinstance(channel_data, dict):
-                            channels_list = data.get("channels")
-                            if isinstance(channels_list, list) and channels_list and isinstance(channels_list[0], dict):
-                                channel_data = channels_list[0]
-                            elif isinstance(channel_data, list) and channel_data and isinstance(channel_data[0], dict):
-                                channel_data = channel_data[0]
-                            else:
-                                # Channel is non-dictionary or missing
-                                continue
-
-                        alternatives = channel_data.get("alternatives", [])
-                        if not isinstance(alternatives, list) or not alternatives or not isinstance(alternatives[0], dict):
+                        norm = DeepgramService.normalize_event(data)
+                        if not norm:
                             continue
 
-                        transcript = str(alternatives[0].get("transcript", "")).strip()
-                        if not transcript:
-                            continue
-                        # Role-aware fix-ups ("hoops" -> "OOPS" for software roles) before the candidate sees it.
-                        transcript = correct_transcript(transcript, software)
+                        # Context-aware correction with confidence abstention (Item 22)
+                        corr_res = correct_transcript_with_confidence(
+                            norm.raw_text,
+                            software,
+                            asr_confidence=norm.confidence,
+                        )
+                        transcript = corr_res["corrected_text"]
+
+                        # Persist immutable raw transcript segment asynchronously on final segments (Item 21)
+                        if norm.is_final:
+                            async def _persist_segment(raw_t: str, corr_t: str, conf: float, s_final: bool, proc_ver: str):
+                                try:
+                                    from app.db.database import SessionLocal
+                                    from app.db.models import TranscriptSegment
+                                    if SessionLocal is None:
+                                        return
+                                    async with SessionLocal() as db:
+                                        db.add(TranscriptSegment(
+                                            session_id=session_id,
+                                            raw_text=raw_t,
+                                            corrected_text=corr_t,
+                                            confidence=conf,
+                                            is_final=True,
+                                            speech_final=s_final,
+                                            processor_version=proc_ver,
+                                        ))
+                                        await db.commit()
+                                except Exception as seg_err:
+                                    logger.debug(f"[TranscriptSegment] Persist skipped: {seg_err}")
+                            asyncio.create_task(_persist_segment(
+                                norm.raw_text, transcript, norm.confidence, norm.speech_final, corr_res["processor_version"]
+                            ))
 
                         # Predictive Question Engine: Live speculation on interim speech tokens
                         if not bool(data.get("is_final")) and len(transcript.split()) >= 3:
