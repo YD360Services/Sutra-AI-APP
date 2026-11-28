@@ -1,13 +1,15 @@
 services:
   # 1. RoundMate Web Service (FastAPI REST API + Persistent Live WebSocket Gateway)
+  # Dynamically runs 2 workers when REDIS_URL is configured; safely falls back to 1 worker in-memory if Redis is not found.
   - type: web
     name: roundmate-backend
     env: python
     region: oregon
     plan: standard
     buildCommand: "pip install -r backend/requirements.txt"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2 --ws websockets"
-    healthCheckPath: /api/health
+    preDeployCommand: "cd backend && alembic upgrade head"
+    startCommand: "sh -c 'WORKERS=${WEB_CONCURRENCY:-$([ -n \"$REDIS_URL\" ] && echo 2 || echo 1)}; cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers $WORKERS --ws websockets'"
+    healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.0
@@ -16,10 +18,7 @@ services:
           name: roundmate-db
           property: connectionString
       - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: roundmate-valkey
-          property: connectionString
+        sync: false # Optional: provide Upstash/Valkey/Redis URL for multi-worker mode; omit for single-worker in-memory fallback
       - key: USE_SPEECHMATICS
         value: "false"
       - key: DEEPGRAM_API_KEY
@@ -31,35 +30,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
 
-  # 2. RoundMate Background Worker (Async Job Consumer for RAG Ingestion & Indexing)
-  - type: worker
-    name: roundmate-bg-worker
-    env: python
-    region: oregon
-    plan: starter
-    buildCommand: "pip install -r backend/requirements.txt"
-    startCommand: "python -m app.core.job_queue"
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.0
-      - key: DATABASE_URL
-        fromDatabase:
-          name: roundmate-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: roundmate-valkey
-          property: connectionString
-
-# 3. Render Managed Valkey (In-memory atomic session coordinator & job broker)
-keyvalues:
-  - name: roundmate-valkey
-    region: oregon
-    plan: starter
-    ipAllowList: [] # Private network access only inside Render
-
-# 4. Render Managed PostgreSQL (Durable ACID relational storage + pgvector)
+# 2. Render Managed PostgreSQL (Durable ACID relational storage + pgvector)
 databases:
   - name: roundmate-db
     region: oregon

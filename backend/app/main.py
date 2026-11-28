@@ -33,8 +33,12 @@ async def lifespan(app: FastAPI):
     settings.validate_critical_config(fail_fast=(settings.ENVIRONMENT in ("production", "staging")))
     logger.info(f"Config summary: {settings.redacted_summary()}")
     
-    # Connect to Redis
+    # Connect to Redis / Valkey (falls back to in-memory LRU if REDIS_URL is unset)
     await redis_cache.connect()
+    from app.core.job_queue import job_queue
+    if not redis_cache._redis_available:
+        logger.info("Redis not configured; starting in-process background job workers.")
+        await job_queue.start_workers()
     
     # Initialize database tables with fallback support
     from app.db.database import verify_and_initialize_db, close_database_pool
@@ -44,6 +48,9 @@ async def lifespan(app: FastAPI):
     
     # Shutdown actions
     logger.info("Cleaning up backend resources...")
+    from app.api.websockets import graceful_drain_websockets
+    await graceful_drain_websockets()
+    await job_queue.stop_workers()
     await redis_cache.disconnect()
     await close_database_pool()
 

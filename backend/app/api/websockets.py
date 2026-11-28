@@ -993,3 +993,31 @@ async def legacy_deepgram_ws(client_ws: WebSocket):
 @router.websocket("/ws/audio/{session_id}")
 async def session_deepgram_ws(client_ws: WebSocket, session_id: str):
     await run_websocket_proxy(client_ws, session_id)
+
+
+async def graceful_drain_websockets():
+    """
+    LLD v1.3 Item 55: Graceful shutdown draining.
+    Notifies active outbound queues, cancels active generation tasks, and drains cleanly.
+    """
+    for sid, task in list(_active_generation_tasks.items()):
+        if task and not task.done():
+            task.cancel()
+    _active_generation_tasks.clear()
+
+    for sid, q in list(_outbound_queues.items()):
+        try:
+            if isinstance(q, PriorityOutboundQueue):
+                await q.enqueue({
+                    "protocol_version": 1,
+                    "event": "error",
+                    "session_id": sid,
+                    "code": "SERVER_DRAINING",
+                    "message": "Server restarting, please reconnect with jitter.",
+                })
+                await q._queue.put(None)
+            else:
+                await q.put(None)
+        except Exception:
+            pass
+    _outbound_queues.clear()

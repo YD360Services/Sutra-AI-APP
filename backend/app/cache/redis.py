@@ -416,3 +416,22 @@ class ValkeySessionCoordinator:
         except Exception:
             return None
 
+
+class SessionFenceManager:
+    """
+    LLD v1.3 Item 56: Lease/epoch fencing mechanism across multi-instance Render deploys.
+    Prevents an old worker from committing writes after a new connection takes ownership.
+    """
+    @staticmethod
+    async def acquire_epoch(session_id: str) -> int:
+        key = f"rm:session:{session_id}:fence_epoch"
+        return await redis_cache._incr(key, ttl=86400)
+
+    @staticmethod
+    async def validate_epoch(session_id: str, expected_epoch: int) -> bool:
+        key = f"rm:session:{session_id}:fence_epoch"
+        val = await redis_cache._get(key)
+        if val is None:
+            return True
+        return int(val) == expected_epoch
+
